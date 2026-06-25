@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+namespace grupo_donato_gestao\Database\Schema\Versions;
+use CodeIgniter\Database\BaseConnection;use grupo_donato_gestao\Database\Schema\SchemaVersion;
+class V044_create_cash_movements extends SchemaVersion{public function version():string{return '044';}public function description():string{return 'Cria livro-caixa append-only.';}public function up(BaseConnection $db,string $prefix):void{$t=$prefix.'gd_cash_movements';$this->ensureTable($db,$t,"CREATE TABLE IF NOT EXISTS `$t` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,`unit_id` BIGINT UNSIGNED NOT NULL,`financial_account_id` BIGINT UNSIGNED NOT NULL,`movement_date` DATE NOT NULL,`movement_type` VARCHAR(10) NOT NULL,`source_type` VARCHAR(30) NOT NULL,`source_id` BIGINT UNSIGNED NOT NULL,`description` VARCHAR(255) NOT NULL,`amount` DECIMAL(15,2) NOT NULL,`reversal_of_movement_id` BIGINT UNSIGNED NULL,`created_at` DATETIME NULL,`created_by` BIGINT UNSIGNED NULL,PRIMARY KEY(`id`),UNIQUE KEY `uniq_cash_source`(`unit_id`,`source_type`,`source_id`,`movement_type`),KEY `idx_cash_ledger`(`unit_id`,`financial_account_id`,`movement_date`,`id`)) ENGINE=InnoDB");}}

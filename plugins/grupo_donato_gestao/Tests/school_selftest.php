@@ -1,0 +1,44 @@
+<?php
+
+echo "# Fase 4 — escola de futebol e personal\n";
+$schoolTables=["gd_school_profiles","gd_classes","gd_enrollments","gd_attendance_sessions","gd_attendance_records"];
+gd_assert("schema 034–038 aplicado",array_reduce($schoolTables,fn($ok,$t)=>$ok&&$db->tableExists($prefix.$t),true));
+$token=substr(hash('sha256',uniqid('school',true)),0,8);
+$guardian=$db->table($prefix.'gd_people')->where('unit_id',$unit_id)->where('deleted',0)->get(1)->getRow();
+$studentSvc=new \grupo_donato_gestao\Services\SchoolStudentService($unit_id);
+$student=$studentSvc->save(['full_name'=>'Aluno Fase 4 '.$token,'birth_date'=>'2014-05-10','new_family_name'=>'Família Fase 4 '.$token,'guardian_ids'=>[(int)$guardian->id],'primary_guardian_id'=>(int)$guardian->id,'contact_type'=>'phone','contact_value'=>'1199'.$token,'status'=>'active'],0,true);
+gd_assert("aluno reutiliza pessoa e perfil complementar",!empty($student['saved'])&&$student['person_id']>0&&$student['id']>0);
+$detail=$studentSvc->get((int)$student['id']);
+gd_assert("família e responsável principal ficam integrados",$detail&&$detail->family&&count($detail->guardians)===1&&(int)$detail->guardians[0]->is_primary===1);
+$studentList=$studentSvc->listPage(['search_by'=>'Aluno Fase 4 '.$token,'limit'=>10]);
+gd_assert("lista de alunos integra responsável, contato e frequência",count($studentList['data'])===1&&$studentList['data'][0]->guardian_name!==null&&$studentList['data'][0]->primary_contact!==null);
+$series=$db->table($prefix.'gd_booking_series')->where('unit_id',$unit_id)->where('deleted',0)->orderBy('id','DESC')->get(1)->getRow();
+$classSvc=new \grupo_donato_gestao\Services\SchoolClassService($unit_id);
+$class=$classSvc->save(['name'=>'Sub-12 '.$token,'modality'=>'Futebol','class_type'=>'group','capacity'=>1,'booking_series_id'=>(int)($series->id??0),'status'=>'active']);
+gd_assert("turma pode vincular série existente",$class['id']>0&&(!$series||(int)$class['booking_series_id']===(int)$series->id));
+$classList=$classSvc->listPage(['search_by'=>'Sub-12 '.$token,'limit'=>10]);
+gd_assert("lista de turmas integra instrutor, recurso e ocupação",count($classList['data'])===1&&isset($classList['data'][0]->enrolled));
+$enrollSvc=new \grupo_donato_gestao\Services\SchoolEnrollmentService($unit_id);
+$enrollment=$enrollSvc->save(['class_id'=>$class['id'],'school_profile_id'=>$student['id'],'starts_on'=>'2098-01-01','status'=>'active','preferred_due_day'=>10]);
+gd_assert("matrícula ativa é criada sem cobrança",$enrollment['id']>0&&!$db->fieldExists('amount',$prefix.'gd_enrollments'));
+gd_assert("matrícula aberta duplicada é bloqueada",gd_throws(fn()=>$enrollSvc->save(['class_id'=>$class['id'],'school_profile_id'=>$student['id'],'starts_on'=>'2098-01-01','status'=>'active']),'gd_school_duplicate_enrollment'));
+$second=$studentSvc->save(['full_name'=>'Aluno Dois '.$token,'birth_date'=>'2015-01-01','new_family_name'=>'Família Dois '.$token,'status'=>'active'],0,true);
+gd_assert("capacidade da turma é aplicada no backend",gd_throws(fn()=>$enrollSvc->save(['class_id'=>$class['id'],'school_profile_id'=>$second['id'],'starts_on'=>'2098-01-01','status'=>'active']),'gd_school_capacity_reached'));
+$attendance=new \grupo_donato_gestao\Services\SchoolAttendanceService($unit_id);
+$savedRoster=$attendance->saveBatch((int)$class['id'],'2098-01-10',[(int)$student['id']=>['status'=>'present','notes'=>'ok']]);
+gd_assert("presença em lote cria sessão e marcação",$savedRoster['totals']['present']===1);
+$updatedRoster=$attendance->saveBatch((int)$class['id'],'2098-01-10',[(int)$student['id']=>['status'=>'justified','notes'=>'atestado']]);
+gd_assert("presença existente pode ser corrigida sem duplicar",$updatedRoster['totals']['justified']===1&&$db->table($prefix.'gd_attendance_records')->where('school_profile_id',$student['id'])->where('class_id',$class['id'])->countAllResults()===1);
+$frequency=$studentSvc->history((int)$student['id']);
+gd_assert("detalhe do aluno calcula frequência simples",$frequency['marked']===1&&$frequency['present']===0&&$frequency['percentage']===0.0);
+$personal=$classSvc->save(['name'=>'Personal '.$token,'modality'=>'Futebol','class_type'=>'personal','status'=>'active']);
+$personalRow=$classSvc->get((int)$personal['id']);
+gd_assert("personal usa a mesma entidade com capacidade padrão 1",$personalRow->class_type==='personal'&&(int)$personalRow->capacity===1);
+$otherUnit=$db->table($prefix.'gd_units')->where('id !=',$unit_id)->where('deleted',0)->get(1)->getRow();
+if($otherUnit){$foreign=$db->table($prefix.'gd_school_profiles')->where('unit_id',(int)$otherUnit->id)->where('deleted',0)->get(1)->getRow();gd_assert("IDOR de aluno respeita unidade",!$foreign||$studentSvc->get((int)$foreign->id)===null);}else{gd_assert("IDOR de aluno respeita unidade",true,'sem segunda unidade');}
+$schoolAccess=new \grupo_donato_gestao\Services\AccessService($pm('gd_attendance_manage'));
+gd_assert("permissões filhas implicam visão escolar",$schoolAccess->can('gd_school_view')&&!$schoolAccess->can('gd_classes_manage'));
+$getRoutes=$routes->getRoutes('GET');$postRoutes=$routes->getRoutes('POST');
+gd_assert("rotas escolares separam leitura e escrita",isset($getRoutes['grupo_donato/school/students'],$getRoutes['grupo_donato/school/attendance/roster'])&&isset($postRoutes['grupo_donato/school/students/save'],$postRoutes['grupo_donato/school/classes/save'],$postRoutes['grupo_donato/school/attendance/save']));
+gd_assert("escritas escolares estão sob CSRF",in_array('csrf',(array)get_array_value($routes->getRoutesOptions('grupo_donato/school/attendance/save','POST'),'filter'),true));
+gd_assert("auditoria registra operações escolares",$db->table($prefix.'gd_audit_logs')->where('unit_id',$unit_id)->whereIn('entity_type',['school_profile','school_class','school_enrollment','school_attendance_session'])->countAllResults()>=5);

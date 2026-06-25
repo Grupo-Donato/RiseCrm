@@ -1,0 +1,7 @@
+<?php
+
+use App\Billing\ExampleBankConnector;
+
+app_hooks()->add_filter('gdc_filter_billing_connector_example_bank', static function ($current) {
+    return new ExampleBankConnector();
+});

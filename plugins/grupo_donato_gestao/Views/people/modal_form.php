@@ -1,0 +1,25 @@
+<?php
+$e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
+$id = (int) ($model_info->id ?? 0);
+?>
+<?php echo form_open(get_uri("grupo_donato/people/save"), ["id" => "gd-person-form", "class" => "general-form", "role" => "form"]); ?>
+<div class="modal-body clearfix"><div class="container-fluid">
+    <input type="hidden" name="id" value="<?php echo $id; ?>"><input type="hidden" name="duplicate_override" value="0">
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_full_name"); ?></label><div class="col-md-9"><?php echo form_input(["name" => "full_name", "value" => $model_info->full_name ?? "", "class" => "form-control", "maxlength" => 190, "data-rule-required" => true, "data-msg-required" => app_lang("field_required")]); ?></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_first_name"); ?></label><div class="col-md-4"><?php echo form_input(["name" => "first_name", "value" => $model_info->first_name ?? "", "class" => "form-control", "maxlength" => 100]); ?></div><label class="col-md-2"><?php echo app_lang("gd_last_name"); ?></label><div class="col-md-3"><?php echo form_input(["name" => "last_name", "value" => $model_info->last_name ?? "", "class" => "form-control", "maxlength" => 150]); ?></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_preferred_name"); ?></label><div class="col-md-9"><?php echo form_input(["name" => "preferred_name", "value" => $model_info->preferred_name ?? "", "class" => "form-control", "maxlength" => 150]); ?></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_birth_date"); ?></label><div class="col-md-9"><?php echo form_input(["type" => "date", "name" => "birth_date", "value" => $model_info->birth_date ?? "", "class" => "form-control"]); ?></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_status"); ?></label><div class="col-md-9"><select name="status" class="form-control"><?php foreach ($statuses as $option) { ?><option value="<?php echo $e($option["id"]); ?>"<?php echo ($model_info->status ?? "active") === $option["id"] ? " selected" : ""; ?>><?php echo $e($option["text"]); ?></option><?php } ?></select></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("gd_rise_user_id"); ?></label><div class="col-md-3"><?php echo form_input(["type" => "number", "name" => "rise_user_id", "value" => $model_info->rise_user_id ?? "", "class" => "form-control", "min" => 1]); ?></div><label class="col-md-3"><?php echo app_lang("gd_rise_contact_id"); ?></label><div class="col-md-3"><?php echo form_input(["type" => "number", "name" => "rise_contact_id", "value" => $model_info->rise_contact_id ?? "", "class" => "form-control", "min" => 1]); ?></div></div></div>
+    <div class="form-group"><div class="row"><label class="col-md-3"><?php echo app_lang("note"); ?></label><div class="col-md-9"><?php echo form_textarea(["name" => "notes", "value" => $model_info->notes ?? "", "class" => "form-control", "rows" => 3]); ?></div></div></div>
+    <?php if ($id) { ?><div class="form-group"><div class="row"><label class="col-md-3 text-danger"><?php echo app_lang("gd_delete_reason"); ?></label><div class="col-md-9"><?php echo form_input(["name" => "reason", "class" => "form-control", "maxlength" => 500]); ?></div></div></div><?php } ?>
+</div></div>
+<div class="modal-footer"><?php if ($id) { ?><button type="button" id="gd-delete-person" class="btn btn-danger me-auto"><?php echo app_lang("delete"); ?></button><?php } ?><button type="button" class="btn btn-default" data-bs-dismiss="modal"><?php echo app_lang("close"); ?></button><button type="submit" class="btn btn-primary"><?php echo app_lang("save"); ?></button></div>
+<?php echo form_close(); ?>
+<script type="text/javascript">
+$(document).ready(function () {
+    var form = $("#gd-person-form");
+    form.appForm({onSuccess: function (result) { if ($("#gd-people-table").length) { $("#gd-people-table").appTable({newData: result.data, dataId: result.id}); } else { location.reload(); } }, onError: function (result) { if (result.duplicate_confirmation_required && window.confirm('<?php echo addslashes(app_lang("gd_confirm_duplicate_override")); ?>')) { form.find("[name=duplicate_override]").val("1"); setTimeout(function () { form.trigger("submit"); }, 100); } return true; }});
+    $("#gd-delete-person").click(function () { var reason = form.find("[name=reason]").val(); if (!reason) { appAlert.error('<?php echo addslashes(app_lang("gd_delete_reason_required")); ?>', {container: ".modal-body", animate: false}); return; } $.post('<?php echo_uri("grupo_donato/people/delete"); ?>', form.serialize(), function (result) { if (result.success) { location.href = '<?php echo_uri("grupo_donato/people"); ?>'; } else { appAlert.error(result.message, {container: ".modal-body", animate: false}); } }, "json"); });
+});
+</script>

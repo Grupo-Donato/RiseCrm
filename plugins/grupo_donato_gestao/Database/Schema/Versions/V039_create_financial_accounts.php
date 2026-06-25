@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+namespace grupo_donato_gestao\Database\Schema\Versions;
+use CodeIgniter\Database\BaseConnection;use grupo_donato_gestao\Database\Schema\SchemaVersion;
+class V039_create_financial_accounts extends SchemaVersion{public function version():string{return '039';}public function description():string{return 'Cria contas financeiras.';}public function up(BaseConnection $db,string $prefix):void{$t=$prefix.'gd_financial_accounts';$this->ensureTable($db,$t,"CREATE TABLE IF NOT EXISTS `$t` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,`unit_id` BIGINT UNSIGNED NOT NULL,`code` VARCHAR(40) NOT NULL,`name` VARCHAR(150) NOT NULL,`account_type` VARCHAR(30) NOT NULL,`status` VARCHAR(20) NOT NULL DEFAULT 'active',`notes` TEXT NULL,`created_at` DATETIME NULL,`created_by` BIGINT UNSIGNED NULL,`updated_at` DATETIME NULL,`updated_by` BIGINT UNSIGNED NULL,`deleted` TINYINT(1) NOT NULL DEFAULT 0,PRIMARY KEY(`id`),UNIQUE KEY `uniq_fin_account_code`(`unit_id`,`code`,`deleted`),KEY `idx_fin_account_status`(`unit_id`,`status`,`deleted`)) ENGINE=InnoDB");}}

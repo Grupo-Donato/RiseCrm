@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+namespace grupo_donato_gestao\Database\Schema\Versions;
+use CodeIgniter\Database\BaseConnection;use grupo_donato_gestao\Database\Schema\SchemaVersion;
+class V041_create_receivable_items extends SchemaVersion{public function version():string{return '041';}public function description():string{return 'Cria itens snapshot das cobranças.';}public function up(BaseConnection $db,string $prefix):void{$t=$prefix.'gd_receivable_items';$this->ensureTable($db,$t,"CREATE TABLE IF NOT EXISTS `$t` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,`unit_id` BIGINT UNSIGNED NOT NULL,`receivable_id` BIGINT UNSIGNED NOT NULL,`description` VARCHAR(255) NOT NULL,`product_id` BIGINT UNSIGNED NULL,`quantity` DECIMAL(15,3) NOT NULL DEFAULT 1.000,`unit_amount` DECIMAL(15,2) NOT NULL,`total_amount` DECIMAL(15,2) NOT NULL,`created_at` DATETIME NULL,`created_by` BIGINT UNSIGNED NULL,`updated_at` DATETIME NULL,`updated_by` BIGINT UNSIGNED NULL,`deleted` TINYINT(1) NOT NULL DEFAULT 0,PRIMARY KEY(`id`),KEY `idx_receivable_items`(`unit_id`,`receivable_id`,`deleted`)) ENGINE=InnoDB");}}

@@ -1,0 +1,25 @@
+<?php
+
+declare(strict_types=1);
+
+namespace grupo_donato_gestao\Controllers;
+
+use grupo_donato_gestao\Config\Constants;
+use grupo_donato_gestao\Services\DataPrivacyService;
+use grupo_donato_gestao\Services\PersonService;
+
+class People extends Gd_Controller
+{
+    private $model;private PersonService $service;private int $unit_id;
+    public function __construct(){parent::__construct();$this->access->require('gd_people_view');$this->unit_id=(int)$this->active_unit_id();if(!$this->unit_id)throw new \RuntimeException('No active unit.');$this->model=$this->gd_model('Gd_people_model');$this->service=new PersonService($this->unit_id,$this->user_id(),$this->login_user);}
+    public function index(){return $this->gd_render('people/index',['can_manage'=>$this->access->can('gd_people_manage')]);}
+    public function view($id){$row=$this->service->get((int)$id);if(!$row)return show_404();$contactRows=$this->gd_model('Gd_contact_methods_model')->get_details(['unit_id'=>$this->unit_id,'person_id'=>(int)$row->id,'limit'=>100])['data'];$contactValues=array_map(fn($contact)=>$contact->normalized_value,$contactRows);$canAudit=$this->access->can('gd_audit_view');$audits=$canAudit?$this->gd_model('Gd_audit_logs_model')->get_details(['unit_id'=>$this->unit_id,'entity_type'=>'person','entity_id'=>(int)$row->id,'limit'=>8])->getResult():[];return $this->gd_render('people/view',['person'=>$row,'duplicates'=>$this->service->duplicates(['full_name'=>$row->full_name,'birth_date'=>$row->birth_date,'contact_values'=>$contactValues],(int)$row->id),'audits'=>$audits,'can_manage'=>$this->access->can('gd_people_manage'),'can_relations'=>$this->access->can('gd_customer_relations_manage'),'can_contacts'=>$this->access->can('gd_contacts_manage'),'can_audit'=>$canAudit]);}
+    public function list_data(){$o=append_server_side_filtering_commmon_params(['unit_id'=>$this->unit_id,'status'=>$this->request->getPost('status')]);$r=$this->model->get_details($o);$rows=[];foreach($r['data'] as$x)$rows[]=$this->row($x);$r['data']=$rows;echo json_encode($r);}
+    public function modal_form(){$this->access->require('gd_people_manage');$id=(int)$this->request->getPost('id');$row=$id?$this->service->get($id):null;if($id&&!$row)return show_404();$statuses=[];foreach(Constants::PERSON_STATUSES as$v)$statuses[]=['id'=>$v,'text'=>app_lang('gd_status_'.$v)];return $this->gd_view('people/modal_form',['model_info'=>$row?:new \stdClass(),'statuses'=>$statuses]);}
+    public function save(){$this->access->require('gd_people_manage');try{$r=$this->service->save($this->input(),(int)$this->request->getPost('id'),(bool)$this->request->getPost('duplicate_override'));if(!$r['saved'])return $this->json_error(app_lang('gd_duplicate_confirmation_required'),['duplicate_confirmation_required'=>true,'duplicates'=>$r['duplicates']]);$saved=$this->service->get($r['id']);$saved->account_count=0;$saved->primary_contact=null;return $this->json_success(app_lang('record_saved'),['id'=>$r['id'],'data'=>$this->row($saved),'duplicates'=>$r['duplicates']]);}catch(\Throwable$e){return $this->error($e);}}
+    public function delete(){$this->access->require('gd_people_manage');try{$this->service->delete((int)$this->request->getPost('id'),(string)$this->request->getPost('reason'));return $this->json_success(app_lang('record_deleted'));}catch(\Throwable$e){return $this->error($e);}}
+    public function duplicates(){try{return $this->json_success('', ['duplicates'=>$this->service->duplicates($this->input(),(int)$this->request->getPost('id'))]);}catch(\Throwable$e){return $this->error($e);}}
+    private function input():array{return['first_name'=>$this->request->getPost('first_name'),'last_name'=>$this->request->getPost('last_name'),'full_name'=>$this->request->getPost('full_name'),'preferred_name'=>$this->request->getPost('preferred_name'),'birth_date'=>$this->request->getPost('birth_date'),'status'=>$this->request->getPost('status'),'rise_user_id'=>$this->request->getPost('rise_user_id'),'rise_contact_id'=>$this->request->getPost('rise_contact_id'),'notes'=>$this->request->getPost('notes')];}
+    private function row($x):array{$actions=anchor(get_uri('grupo_donato/people/view/'.$x->id),"<i data-feather='eye' class='icon-16'></i>",['title'=>app_lang('gd_view_details')]);if($this->access->can('gd_people_manage'))$actions.=modal_anchor(get_uri('grupo_donato/people/modal_form'),"<i data-feather='edit' class='icon-16'></i>",['title'=>app_lang('edit'),'data-post-id'=>$x->id]);$contact=($x->primary_contact_type??'')==='email'?DataPrivacyService::maskEmail($x->primary_contact??''):DataPrivacyService::maskPhone($x->primary_contact??'');return[$this->escape($x->full_name),$this->escape($x->preferred_name),$this->escape($contact),$x->birth_date?format_to_date($x->birth_date):'',(int)($x->account_count??0),app_lang('gd_status_'.$x->status),$x->updated_at?format_to_datetime($x->updated_at):'',$actions];}
+    private function error(\Throwable$e):void{$key=$e->getMessage();$this->json_error(str_starts_with($key,'gd_')?app_lang($key):app_lang('error_occurred'));}
+}

@@ -1,0 +1,7 @@
+<?php $e=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,"UTF-8"); ?>
+<div id="page-content" class="page-wrapper clearfix"><div class="card"><div class="page-title clearfix">
+<h4><?php echo app_lang("gd_weekly_availability") . " — " . $e($resource->code . " / " . $resource->name); ?></h4><div class="title-button-group">
+<?php if ($can_manage) echo modal_anchor(get_uri("grupo_donato/resources/availability/modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> " . app_lang("gd_add_rule"), ["class"=>"btn btn-default","data-post-resource_id"=>$resource->id]); ?>
+<?php echo anchor(get_uri("grupo_donato/resources/view/".$resource->id),app_lang("back"),["class"=>"btn btn-default"]); ?></div></div>
+<div class="table-responsive"><table id="gd-availability-table" class="display" width="100%"></table></div></div></div>
+<script>$(document).ready(function(){ $("#gd-availability-table").appTable({source:'<?php echo_uri("grupo_donato/resources/availability/list_data"); ?>',serverSide:true,postData:{resource_id:<?php echo (int)$resource->id; ?>},columns:[{title:'<?php echo app_lang("gd_weekday"); ?>'},{title:'<?php echo app_lang("gd_time_window"); ?>'},{title:'<?php echo app_lang("gd_validity"); ?>'},{title:'<?php echo app_lang("gd_status"); ?>'},{title:'<?php echo app_lang("gd_notes"); ?>'},{title:'<i data-feather="menu" class="icon-16"></i>',class:'text-center option w100'}]}); });</script>

@@ -1,0 +1,72 @@
+# Local editor and assistant state
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Environment-specific secrets
+.env
+*.env
+!.env.example
+
+# Dependency and build caches
+node_modules/
+vendor/
+
+# Local archive artifacts
+*.rar
+*.zip
+
+# CodeIgniter runtime data
+/writable/*
+!/writable/.htaccess
+!/writable/index.html
+!/writable/cache/
+/writable/cache/*
+!/writable/cache/index.html
+!/writable/debugbar/
+/writable/debugbar/*
+!/writable/debugbar/index.html
+!/writable/logs/
+/writable/logs/*
+!/writable/logs/index.html
+!/writable/session/
+/writable/session/*
+!/writable/session/index.html
+!/writable/uploads/
+/writable/uploads/*
+!/writable/uploads/index.html
+
+# Runtime uploads and temporary files
+/files/*
+!/files/index.html
+!/files/general/
+/files/general/*
+!/files/general/index.html
+!/files/profile_images/
+/files/profile_images/*
+!/files/profile_images/index.html
+!/files/project_files/
+/files/project_files/*
+!/files/project_files/index.html
+!/files/timeline_files/
+/files/timeline_files/*
+!/files/timeline_files/index.html
+!/files/temp/
+/files/temp/*
+!/files/temp/index.html
+
+# Keep packaged system assets, ignore generated replacements
+!/files/system/
+/files/system/*
+!/files/system/index.html
+!/files/system/1px.jpg
+!/files/system/default-invoice-logo.png
+!/files/system/import-*.xlsx
+!/files/system/notification.mp3
+!/files/system/store-item-no-image.png
+!/files/system/pwa/
+/files/system/pwa/*
+!/files/system/pwa/index.html
+!/files/system/pwa/default-pwa-icon.png

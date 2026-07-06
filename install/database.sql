@@ -1354,7 +1354,7 @@ INSERT INTO `settings` (`setting_name`, `setting_value`, `type`, `deleted`) VALU
 ('default_due_date_after_billing_date', '14', 'app', '0'),
 ('default_permissions_for_non_primary_contact', 'projects', 'app', '0'),
 ('default_proposal_template', '1', 'app', '0'),
-('default_theme_color', 'F2F2F2', 'app', '0'),
+('default_theme_color', '0b1020', 'app', '0'),
 ('email_sent_from_address', 'admin_email', 'app', '0'),
 ('email_sent_from_name', 'admin_first_name', 'app', '0'),
 ('enable_audio_recording', '1', 'app', '0'),
@@ -1366,6 +1366,7 @@ INSERT INTO `settings` (`setting_name`, `setting_value`, `type`, `deleted`) VALU
 ('invoice_number_format', '{SERIAL}', 'app', '0'),
 ('invoice_prefix', 'INVOICE #', 'app', '0'),
 ('item_purchase_code', 'ITEM-PURCHASE-CODE', 'app', '0'),
+('language', 'portuguese', 'app', '0'),
 ('module_announcement', '1', 'app', '0'),
 ('module_attendance', '1', 'app', '0'),
 ('module_chat', '1', 'app', '0'),
@@ -1718,7 +1719,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `deleted` (`deleted`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
 
-INSERT INTO `users` (`id`, `first_name`, `last_name`, `user_type`, `is_admin`, `role_id`, `email`, `password`, `image`, `status`, `message_checked_at`, `client_id`, `notification_checked_at`, `is_primary_contact`, `job_title`, `disable_login`, `note`, `address`, `alternative_address`, `phone`, `alternative_phone`, `dob`, `ssn`, `gender`, `sticky_note`, `skype`, `language`, `enable_web_notification`, `enable_email_notification`, `created_at`, `last_online`, `requested_account_removal`, `client_permissions`, `deleted`) VALUES ('1', 'admin_first_name', 'admin_last_name', 'staff', '1', '0', 'admin_email', 'admin_password', NULL, 'active', NULL, '0', NULL, '0', 'Admin', '0', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'male', NULL, NULL, '', '1', '1', '0000-00-00 00:00:00', NULL, '0', NULL, '0');
+INSERT INTO `users` (`id`, `first_name`, `last_name`, `user_type`, `is_admin`, `role_id`, `email`, `password`, `image`, `status`, `message_checked_at`, `client_id`, `notification_checked_at`, `is_primary_contact`, `job_title`, `disable_login`, `note`, `address`, `alternative_address`, `phone`, `alternative_phone`, `dob`, `ssn`, `gender`, `sticky_note`, `skype`, `language`, `enable_web_notification`, `enable_email_notification`, `created_at`, `last_online`, `requested_account_removal`, `client_permissions`, `deleted`) VALUES ('1', 'admin_first_name', 'admin_last_name', 'staff', '1', '0', 'admin_email', 'admin_password', NULL, 'active', NULL, '0', NULL, '0', 'Admin', '0', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'male', NULL, NULL, 'portuguese', '1', '1', '0000-00-00 00:00:00', NULL, '0', NULL, '0');
 
 CREATE TABLE IF NOT EXISTS `verification` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -1729,4 +1730,3 @@ CREATE TABLE IF NOT EXISTS `verification` (
   `deleted` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
-

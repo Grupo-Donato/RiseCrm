@@ -112,7 +112,8 @@ class App_Controller extends Controller {
         $users = $this->Users_model->get_one($login_user_id);
 
         //assign language
-        $language = isset($users->language) && $users->language ? $users->language : get_setting("language");
+        $system_language = get_setting("language") ? get_setting("language") : "portuguese";
+        $language = isset($users->language) && $users->language ? $users->language : $system_language;
         service('request')->setLocale($language);
 
         $this->session = \Config\Services::session();

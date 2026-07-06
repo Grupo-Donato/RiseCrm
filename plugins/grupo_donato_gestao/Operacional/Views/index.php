@@ -661,11 +661,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                             <div class="form-group">
                                 <label for="bombeiros-chamada-turma">Turma</label>
                                 <?php
-                                echo form_dropdown("turma", [
-                                    "" => "-",
-                                    "08:30-11:00" => "08:30-11:00",
-                                    "13:30-16:00" => "13:30-16:00"
-                                ], "", ["id" => "bombeiros-chamada-turma", "class" => "form-control"]);
+                                echo form_dropdown("turma", bombeiros_turmas_grouped(), "", ["id" => "bombeiros-chamada-turma", "class" => "form-control"]);
                                 ?>
                             </div>
                         </div>

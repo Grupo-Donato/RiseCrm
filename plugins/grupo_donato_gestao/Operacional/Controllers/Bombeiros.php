@@ -8,6 +8,10 @@ class Bombeiros extends Security_Controller
 {
     private const DEFAULT_UNIT_SLUG = "sao_bernardo_do_campo";
     private const DEFAULT_UNIT_NAME = "Sao Bernardo do Campo";
+    private const EXAME_DOCUMENT_MAX_BYTES = 10485760; // 10 MB para PDF/arquivos já fechados.
+    private const EXAME_IMAGE_MAX_UPLOAD_BYTES = 26214400; // 25 MB antes da compactação.
+    private const EXAME_IMAGE_MAX_DIMENSION = 1800;
+    private const EXAME_IMAGE_JPEG_QUALITY = 78;
 
     public $General_files_model;
     public $Bombeiros_unidades_model;
@@ -516,6 +520,8 @@ class Bombeiros extends Security_Controller
     {
         $db = db_connect();
         $public_matricula = (bool) $public_matricula;
+        $novo_exame_relativo = null;
+        $arquivo_anterior_exame = null;
 
         try {
             if (!$public_matricula && !$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students")) {
@@ -583,6 +589,20 @@ class Bombeiros extends Security_Controller
                 echo json_encode(["success" => false, "message" => "Data da primeira parcela inválida."]);
                 return;
             }
+
+            // Exame médico (anexo opcional): validamos antes da transação, mas só
+            // gravamos o arquivo depois de existir o id da matrícula/aluno.
+            $exame_file = $public_matricula ? null : $this->request->getFile("exame_medico");
+            if ($exame_file && $exame_file->getError() !== UPLOAD_ERR_NO_FILE) {
+                $exame_erro = $this->_validar_exame_medico($exame_file);
+                if ($exame_erro) {
+                    echo json_encode(["success" => false, "message" => $exame_erro]);
+                    return;
+                }
+            } else {
+                $exame_file = null;
+            }
+            $arquivo_anterior_exame = $aluno_atual ? ($aluno_atual->exame_medico ?? null) : null;
 
             $dados_resp = [
                 "nome" => trim($this->request->getPost("responsavel_nome")),
@@ -706,6 +726,12 @@ class Bombeiros extends Security_Controller
                 ]);
             }
 
+            if ($exame_file) {
+                $dados_exame = $this->_salvar_exame_medico($exame_file, $save_id);
+                $novo_exame_relativo = $dados_exame["exame_medico"] ?? null;
+                $this->Bombeiros_alunos_model->ci_save($dados_exame, $save_id);
+            }
+
             $db->transComplete();
 
             if ($matricula_lock_acquired) {
@@ -715,6 +741,10 @@ class Bombeiros extends Security_Controller
 
             if ($db->transStatus() === false) {
                 throw new \RuntimeException(app_lang("error_occurred"));
+            }
+
+            if ($novo_exame_relativo && $arquivo_anterior_exame) {
+                $this->_remover_exame_medico_arquivo($arquivo_anterior_exame);
             }
 
             if (($dados_aluno["status"] ?? "") === "Ativo") {
@@ -728,6 +758,9 @@ class Bombeiros extends Security_Controller
                 if (!empty($matricula_lock_acquired)) {
                     $this->_liberar_trava_matricula($db);
                 }
+            }
+            if ($novo_exame_relativo) {
+                $this->_remover_exame_medico_arquivo($novo_exame_relativo);
             }
             log_message("error", "Erro ao salvar aluno Bombeiros: " . $e->getMessage());
             echo json_encode(["success" => false, "message" => "Erro: " . $e->getMessage()]);
@@ -1993,6 +2026,249 @@ class Bombeiros extends Security_Controller
         return view('grupo_donato_gestao\Operacional\Views\comprovante_template', $this->_comprovante_view_data($comprovante));
     }
 
+    public function baixar_exame_medico($aluno_id)
+    {
+        $aluno = $this->Bombeiros_alunos_model->get_details(["id" => (int) $aluno_id, "unidade_id" => $this->_active_unit_id()])->getRow();
+        if (!$aluno || empty($aluno->exame_medico)) {
+            return $this->response->setStatusCode(404)->setBody("Exame médico não encontrado.");
+        }
+
+        $arquivo = $this->_exame_medico_absolute_path($aluno->exame_medico);
+        if (!$arquivo || !is_file($arquivo)) {
+            return $this->response->setStatusCode(404)->setBody("Arquivo do exame médico indisponível.");
+        }
+
+        $ext = strtolower(pathinfo($arquivo, PATHINFO_EXTENSION));
+        $mimes = [
+            "pdf" => "application/pdf",
+            "jpg" => "image/jpeg",
+            "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "webp" => "image/webp"
+        ];
+        $mime = $aluno->exame_medico_mime ?: ($mimes[$ext] ?? "application/octet-stream");
+        $nome_base = $aluno->exame_medico_nome ?: ("exame_medico_" . ($aluno->matricula ?: $aluno->id) . "." . $ext);
+        $nome_arquivo = $this->_safe_download_filename($nome_base, $ext);
+        $disposition = in_array($ext, ["pdf", "jpg", "jpeg", "png", "webp"], true) ? "inline" : "attachment";
+
+        $this->response->setHeader("Content-Type", $mime);
+        $this->response->setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+        $this->response->setHeader("Content-Disposition", $disposition . "; filename=\"" . $nome_arquivo . "\"");
+        $this->response->setBody(file_get_contents($arquivo));
+        return $this->response;
+    }
+
+    private function _validar_exame_medico($file)
+    {
+        if (!$file->isValid()) {
+            return "Não foi possível enviar o exame médico: " . $file->getErrorString();
+        }
+
+        $tipo = $this->_exame_medico_tipo_upload($file);
+        if (!$tipo) {
+            return "Formato de exame médico não suportado. Envie PDF ou imagem JPG/PNG/WebP.";
+        }
+
+        if (($tipo["category"] ?? "") === "pdf") {
+            if ($file->getSize() > self::EXAME_DOCUMENT_MAX_BYTES) {
+                return "O PDF do exame médico deve ter no máximo 10 MB.";
+            }
+
+            $handle = @fopen($file->getTempName(), "rb");
+            $header = $handle ? fread($handle, 4) : "";
+            if ($handle) {
+                fclose($handle);
+            }
+            if ($header !== "%PDF") {
+                return "O arquivo selecionado não parece ser um PDF válido.";
+            }
+
+            return "";
+        }
+
+        if ($file->getSize() > self::EXAME_IMAGE_MAX_UPLOAD_BYTES) {
+            return "A imagem do exame médico deve ter no máximo 25 MB antes da compactação.";
+        }
+
+        $image_info = @getimagesize($file->getTempName());
+        if (!$image_info || empty($image_info["mime"])) {
+            return "A imagem do exame médico não pôde ser lida. Envie JPG, PNG ou PDF.";
+        }
+
+        if (($tipo["ext"] ?? "") === "webp" && !function_exists("imagecreatefromwebp") && $file->getSize() > self::EXAME_DOCUMENT_MAX_BYTES) {
+            return "Imagem WebP acima de 10 MB não pode ser compactada neste servidor. Envie JPG, PNG ou PDF.";
+        }
+
+        return "";
+    }
+
+    private function _salvar_exame_medico($file, $aluno_id)
+    {
+        $upload_path = $this->_exame_medico_base_dir();
+        $tipo = $this->_exame_medico_tipo_upload($file);
+        if (!$tipo) {
+            throw new \RuntimeException("Formato de exame médico não suportado.");
+        }
+
+        $original_name = $this->_limpar_nome_arquivo($file->getClientName() ?: $file->getName());
+        $base_name = "exame_" . (int) $aluno_id . "_" . date("YmdHis") . "_" . bin2hex(random_bytes(4));
+        $target_ext = ($tipo["category"] ?? "") === "image" && in_array($tipo["ext"], ["jpg", "jpeg", "png"], true) ? "jpg" : $tipo["ext"];
+        $filename = $base_name . "." . $target_ext;
+        $absolute_path = $upload_path . $filename;
+
+        if (($tipo["category"] ?? "") === "image" && in_array($tipo["ext"], ["jpg", "jpeg", "png"], true)) {
+            $this->_compactar_imagem_exame($file->getTempName(), $absolute_path, $tipo["ext"]);
+
+            $original_size = (int) $file->getSize();
+            $compressed_size = is_file($absolute_path) ? (int) filesize($absolute_path) : 0;
+            if (!$compressed_size) {
+                throw new \RuntimeException("Não foi possível compactar a imagem do exame médico.");
+            }
+
+            if ($original_size > 0 && $compressed_size > $original_size && $original_size <= self::EXAME_DOCUMENT_MAX_BYTES) {
+                @unlink($absolute_path);
+                $target_ext = $tipo["ext"] === "jpeg" ? "jpg" : $tipo["ext"];
+                $filename = $base_name . "." . $target_ext;
+                $absolute_path = $upload_path . $filename;
+                if (!@copy($file->getTempName(), $absolute_path)) {
+                    throw new \RuntimeException("Não foi possível gravar o exame médico.");
+                }
+            }
+        } else {
+            if (!@copy($file->getTempName(), $absolute_path)) {
+                throw new \RuntimeException("Não foi possível gravar o exame médico.");
+            }
+        }
+
+        @chmod($absolute_path, 0640);
+        $final_size = (int) filesize($absolute_path);
+        $final_ext = strtolower(pathinfo($absolute_path, PATHINFO_EXTENSION));
+        $final_mime = [
+            "pdf" => "application/pdf",
+            "png" => "image/png",
+            "webp" => "image/webp",
+            "jpg" => "image/jpeg",
+            "jpeg" => "image/jpeg"
+        ][$final_ext] ?? "application/octet-stream";
+
+        return [
+            "exame_medico" => "uploads/grupo_donato_exames/" . $filename,
+            "exame_medico_nome" => $original_name ?: ("exame_medico." . $final_ext),
+            "exame_medico_mime" => $final_mime,
+            "exame_medico_tamanho" => $final_size,
+            "exame_medico_enviado_em" => date("Y-m-d H:i:s")
+        ];
+    }
+
+    private function _exame_medico_tipo_upload($file)
+    {
+        $ext = strtolower($file->getClientExtension() ?: pathinfo($file->getName(), PATHINFO_EXTENSION));
+        $ext = $ext === "jpeg" ? "jpg" : $ext;
+        $mime = strtolower((string) ($file->getMimeType() ?: $file->getClientMimeType()));
+
+        if ($ext === "pdf" && in_array($mime, ["application/pdf", "application/x-pdf", "application/octet-stream"], true)) {
+            return ["category" => "pdf", "ext" => "pdf", "mime" => "application/pdf"];
+        }
+
+        $image_info = @getimagesize($file->getTempName());
+        $image_mime = strtolower((string) ($image_info["mime"] ?? $mime));
+        $image_exts = [
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/webp" => "webp"
+        ];
+
+        if (isset($image_exts[$image_mime]) && in_array($ext, ["jpg", "png", "webp"], true)) {
+            return ["category" => "image", "ext" => $image_exts[$image_mime], "mime" => $image_mime];
+        }
+
+        return null;
+    }
+
+    private function _compactar_imagem_exame($source_path, $target_path, $ext)
+    {
+        if ($ext === "png") {
+            $source = @imagecreatefrompng($source_path);
+        } else {
+            $source = @imagecreatefromjpeg($source_path);
+        }
+
+        if (!$source) {
+            throw new \RuntimeException("Não foi possível ler a imagem do exame médico.");
+        }
+
+        $width = imagesx($source);
+        $height = imagesy($source);
+        $max = self::EXAME_IMAGE_MAX_DIMENSION;
+        $scale = min(1, $max / max($width, $height));
+        $new_width = max(1, (int) round($width * $scale));
+        $new_height = max(1, (int) round($height * $scale));
+        $target = imagecreatetruecolor($new_width, $new_height);
+        $white = imagecolorallocate($target, 255, 255, 255);
+        imagefill($target, 0, 0, $white);
+        imagecopyresampled($target, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+
+        $saved = imagejpeg($target, $target_path, self::EXAME_IMAGE_JPEG_QUALITY);
+        imagedestroy($source);
+        imagedestroy($target);
+
+        if (!$saved) {
+            throw new \RuntimeException("Não foi possível compactar a imagem do exame médico.");
+        }
+    }
+
+    private function _exame_medico_base_dir()
+    {
+        $upload_path = WRITEPATH . "uploads/grupo_donato_exames/";
+        if (!is_dir($upload_path) && !@mkdir($upload_path, 0750, true)) {
+            throw new \RuntimeException("Não foi possível criar a pasta de exames médicos.");
+        }
+
+        return $upload_path;
+    }
+
+    private function _exame_medico_absolute_path($relative_path)
+    {
+        $base_dir = realpath($this->_exame_medico_base_dir());
+        $arquivo = realpath(WRITEPATH . ltrim((string) $relative_path, "/\\"));
+        if (!$base_dir || !$arquivo || strpos($arquivo, $base_dir) !== 0) {
+            return null;
+        }
+
+        return $arquivo;
+    }
+
+    private function _remover_exame_medico_arquivo($relative_path)
+    {
+        $arquivo = $this->_exame_medico_absolute_path($relative_path);
+        if ($arquivo && is_file($arquivo)) {
+            @unlink($arquivo);
+        }
+    }
+
+    private function _limpar_nome_arquivo($filename)
+    {
+        $filename = trim((string) $filename);
+        $filename = basename(str_replace("\\", "/", $filename));
+        $filename = preg_replace('/[^\w.\- ]+/u', "_", $filename);
+        $filename = preg_replace('/\s+/', " ", $filename);
+
+        return mb_substr($filename, 0, 180);
+    }
+
+    private function _safe_download_filename($filename, $fallback_ext)
+    {
+        $filename = $this->_limpar_nome_arquivo($filename);
+        if (!$filename) {
+            $filename = "exame_medico." . $fallback_ext;
+        }
+        if (!pathinfo($filename, PATHINFO_EXTENSION)) {
+            $filename .= "." . $fallback_ext;
+        }
+
+        return str_replace('"', "", $filename);
+    }
+
     private function _aluno_row_data($id)
     {
         $data = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
@@ -2009,6 +2285,9 @@ class Bombeiros extends Security_Controller
             "title" => "Editar aluno",
             "data-post-id" => $data->id
         ]);
+        if (!empty($data->exame_medico)) {
+            $options .= "<a href='" . get_uri("grupo_donato/operacional/baixar_exame_medico/" . $data->id) . "' target='_blank' rel='noopener' title='Exame médico'><i data-feather='file-text' class='icon-16'></i></a>";
+        }
         $options .= js_anchor("<i data-feather='x' class='icon-16'></i>", [
             "class" => "delete",
             "title" => app_lang("delete"),
@@ -2946,11 +3225,7 @@ class Bombeiros extends Security_Controller
 
     private function _turmas_matricula_options()
     {
-        return [
-            "" => "Selecione",
-            "08:30-11:00" => "08:30-11:00",
-            "13:30-16:00" => "13:30-16:00"
-        ];
+        return bombeiros_turmas_grouped(true, "Selecione");
     }
 
     private function _melhor_horario_ligacao_options()
@@ -3139,7 +3414,8 @@ class Bombeiros extends Security_Controller
             "uniforme_efetuado", "material_efetuado", "melhor_horario_ligacao", "cidade_assinatura",
             "estado_assinatura", "dia_assinatura", "mes_assinatura", "ano_assinatura", "assinatura_contratada",
             "assinatura_contratante", "li_ciente", "origem_matricula", "status", "data_cancelamento", "motivo_cancelamento",
-            "observacao_cancelamento", "responsavel_nome",
+            "observacao_cancelamento", "exame_medico", "exame_medico_nome", "exame_medico_mime",
+            "exame_medico_tamanho", "exame_medico_enviado_em", "responsavel_nome",
             "responsavel_nascimento", "responsavel_rg", "responsavel_cpf", "responsavel_whats",
             "responsavel_celular", "responsavel_email", "responsavel_endereco", "responsavel_numero",
             "responsavel_complemento", "responsavel_bairro", "responsavel_cep", "responsavel_cidade",
@@ -4303,20 +4579,11 @@ class Bombeiros extends Security_Controller
 
     private function _normalizar_horario_operacional($value)
     {
-        $value = strtolower(trim((string) $value));
-        $value = str_replace(["às", "as", " ate ", " até ", " - "], "-", $value);
-        $value = str_replace("h", ":", $value);
-        $value = preg_replace('/\s+/', '', $value);
-        $value = str_replace(["–", "—"], "-", $value);
-
-        if (strpos($value, "08:30") !== false || strpos($value, "8:30") !== false) {
-            return "08:30-11:00";
-        }
-        if (strpos($value, "13:30") !== false) {
-            return "13:30-16:00";
-        }
-
-        return "";
+        // As turmas agora possuem dia + período (ex.: "Seg/Qua Manhã 08:30-10:00")
+        // e vêm de um dropdown controlado (bombeiros_turmas_grouped). O valor já é
+        // canônico, então basta preservá-lo; normalizações agressivas antigas
+        // colidiam com os novos horários (08:30 aparece em mais de uma turma).
+        return trim((string) $value);
     }
 
     private function _money_to_float($value)
@@ -4466,7 +4733,7 @@ class Bombeiros extends Security_Controller
 
     private function _prompt_matricula($texto = "")
     {
-        $prompt = "Você é um assistente administrativo especialista em matrículas Grupo Donato/Bombeiros e leitura de fichas escaneadas com preenchimento manuscrito. Analise a ficha de matrícula visualmente, prestando atenção aos campos preenchidos à mão, escrita cursiva, números parcialmente inclinados e valores marcados com X. Retorne APENAS um objeto JSON válido, sem markdown, sem comentários, sem texto antes/depois e sem colocar o objeto dentro de data ou outro wrapper. Use exatamente estes campos: responsavel_nome, responsavel_nascimento, responsavel_rg, responsavel_cpf, responsavel_endereco, responsavel_numero, responsavel_complemento, responsavel_bairro, responsavel_cep, responsavel_cidade, responsavel_whats, responsavel_celular, responsavel_recado, responsavel_email, nome_aluno, nascimento_aluno, rg_aluno, cpf_aluno, curso_nome, num_parcelas, valor_parcela, valor_mensalidade, valor_inscricao, data_inscricao, valor_mensal, data_primeira_parcela, data_inicio, horario, matricula_efetuada, uniforme_efetuado, material_efetuado, melhor_horario_ligacao, tamanho_camisa, cidade_assinatura, estado_assinatura, dia_assinatura, mes_assinatura, ano_assinatura, assinatura_contratada, assinatura_contratante, li_ciente, unidade. Regras: todos os campos devem existir no JSON; use string vazia para campos sem informação, exceto checkboxes que devem ser 0; priorize o texto manuscrito dentro das linhas dos campos; use os rótulos impressos apenas para identificar o campo correto; se um caractere manuscrito for ambíguo, escolha a leitura mais provável pelo contexto do formulário e do Brasil, mas não invente campos completamente vazios; valor_parcela e valor_mensalidade devem ter o mesmo valor da parcela do curso; datas completas em AAAA-MM-DD; se a data de assinatura tiver só o ano, preencha apenas ano_assinatura; valores monetários em número com ponto decimal, como 237.00; campos de checkbox/efetuado/li_ciente devem ser 1 quando marcados ou confirmados e 0 quando não marcados; horario deve usar formato 08:30-11:00 ou 13:30-16:00; melhor_horario_ligacao deve ser manha, tarde ou qualquer; não invente dados que estejam em branco; se o HTML tiver atributo value preenchido, esse valor conta como dado preenchido.";
+        $prompt = "Você é um assistente administrativo especialista em matrículas Grupo Donato/Bombeiros e leitura de fichas escaneadas com preenchimento manuscrito. Analise a ficha de matrícula visualmente, prestando atenção aos campos preenchidos à mão, escrita cursiva, números parcialmente inclinados e valores marcados com X. Retorne APENAS um objeto JSON válido, sem markdown, sem comentários, sem texto antes/depois e sem colocar o objeto dentro de data ou outro wrapper. Use exatamente estes campos: responsavel_nome, responsavel_nascimento, responsavel_rg, responsavel_cpf, responsavel_endereco, responsavel_numero, responsavel_complemento, responsavel_bairro, responsavel_cep, responsavel_cidade, responsavel_whats, responsavel_celular, responsavel_recado, responsavel_email, nome_aluno, nascimento_aluno, rg_aluno, cpf_aluno, curso_nome, num_parcelas, valor_parcela, valor_mensalidade, valor_inscricao, data_inscricao, valor_mensal, data_primeira_parcela, data_inicio, horario, matricula_efetuada, uniforme_efetuado, material_efetuado, melhor_horario_ligacao, tamanho_camisa, cidade_assinatura, estado_assinatura, dia_assinatura, mes_assinatura, ano_assinatura, assinatura_contratada, assinatura_contratante, li_ciente, unidade. Regras: todos os campos devem existir no JSON; use string vazia para campos sem informação, exceto checkboxes que devem ser 0; priorize o texto manuscrito dentro das linhas dos campos; use os rótulos impressos apenas para identificar o campo correto; se um caractere manuscrito for ambíguo, escolha a leitura mais provável pelo contexto do formulário e do Brasil, mas não invente campos completamente vazios; valor_parcela e valor_mensalidade devem ter o mesmo valor da parcela do curso; datas completas em AAAA-MM-DD; se a data de assinatura tiver só o ano, preencha apenas ano_assinatura; valores monetários em número com ponto decimal, como 237.00; campos de checkbox/efetuado/li_ciente devem ser 1 quando marcados ou confirmados e 0 quando não marcados; horario deve conter o dia e o intervalo da turma como no formulário (ex.: Seg/Qua Manhã 08:30-10:00, Ter/Qui Tarde 15:45-17:00, Sábado 09:30-11:00) ou vazio se não constar; melhor_horario_ligacao deve ser manha, tarde ou qualquer; não invente dados que estejam em branco; se o HTML tiver atributo value preenchido, esse valor conta como dado preenchido.";
         if ($texto) {
             $prompt .= " TEXTO: " . substr($texto, 0, 15000);
         }
@@ -4935,16 +5202,10 @@ class Bombeiros extends Security_Controller
 
     private function _normalizar_horario_ia($value)
     {
-        $value = trim(str_replace(["às", "ás", " ate ", " até ", " a "], ["-", "-", "-", "-", "-"], mb_strtolower((string) $value, "UTF-8")));
-        $value = preg_replace("/\s+/", "", $value);
-        if (preg_match("/(08:?30).*(11:?00)/", $value)) {
-            return "08:30-11:00";
-        }
-        if (preg_match("/(13:?30).*(16:?00)/", $value)) {
-            return "13:30-16:00";
-        }
-
-        return "";
+        // Mantém o texto da turma lido pela IA. Como as turmas passaram a incluir
+        // o dia da semana, não é possível deduzir a turma correta só pelo horário;
+        // preservamos o valor para o operador ajustar/confirmar no cadastro.
+        return trim((string) $value);
     }
 
     private function _normalizar_melhor_horario_ia($value)

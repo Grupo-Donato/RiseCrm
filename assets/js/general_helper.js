@@ -1525,7 +1525,11 @@ function getCookie(cname) {
 }
 
 function setThemeColor() {
-    var color = getCookie("theme_color") || AppHelper.settings.defaultThemeColor;
+    var color = getCookie("theme_color");
+    if (!color || (color === "F2F2F2" && AppHelper.settings.defaultThemeColor !== "F2F2F2")) {
+        color = AppHelper.settings.defaultThemeColor;
+    }
+
     if (color && color !== "F2F2F2") {
         var href = AppHelper.assetsDirectory + "css/color/" + color + ".css";
         $("#custom-theme-color").remove();

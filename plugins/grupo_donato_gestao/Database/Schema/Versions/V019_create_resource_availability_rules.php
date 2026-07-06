@@ -29,7 +29,7 @@ class V019_create_resource_availability_rules extends SchemaVersion
                 `status` VARCHAR(30) NOT NULL DEFAULT 'active',
                 `sort_order` INT UNSIGNED NOT NULL DEFAULT 0,
                 `notes` TEXT NULL,
-                `active_exact_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`resource_id`,':',`weekday`,':',`start_time`,':',`end_time`,':',`spans_next_day`,':',IFNULL(`valid_from`,'0000-00-00'),':',IFNULL(`valid_until`,'9999-12-31')), NULL)) PERSISTENT,
+                `active_exact_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`resource_id`,':',`weekday`,':',`start_time`,':',`end_time`,':',`spans_next_day`,':',IFNULL(`valid_from`,'0000-00-00'),':',IFNULL(`valid_until`,'9999-12-31')), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

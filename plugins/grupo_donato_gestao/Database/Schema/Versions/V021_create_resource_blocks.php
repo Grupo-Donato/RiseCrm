@@ -27,7 +27,7 @@ class V021_create_resource_blocks extends SchemaVersion
                 `reason` VARCHAR(255) NULL,
                 `status` VARCHAR(30) NOT NULL DEFAULT 'active',
                 `metadata` MEDIUMTEXT NULL,
-                `active_exact_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`resource_id`,':',`block_type`,':',`starts_at_utc`,':',`ends_at_utc`), NULL)) PERSISTENT,
+                `active_exact_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`resource_id`,':',`block_type`,':',`starts_at_utc`,':',`ends_at_utc`), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

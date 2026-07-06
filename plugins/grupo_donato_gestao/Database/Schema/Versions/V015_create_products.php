@@ -35,7 +35,7 @@ class V015_create_products extends SchemaVersion
                 `status` VARCHAR(30) NOT NULL DEFAULT 'draft',
                 `rise_item_id` BIGINT UNSIGNED NULL,
                 `metadata` MEDIUMTEXT NULL,
-                `active_code_key` VARCHAR(120) AS (IF(`deleted`=0, CONCAT(`unit_id`, ':', `code`), NULL)) PERSISTENT,
+                `active_code_key` VARCHAR(120) AS (IF(`deleted`=0, CONCAT(`unit_id`, ':', `code`), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

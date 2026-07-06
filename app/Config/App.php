@@ -149,7 +149,7 @@ class App extends BaseConfig {
      *
      * @var string
      */
-    public $defaultLocale = 'english';
+    public $defaultLocale = 'portuguese';
 
     /**
      * --------------------------------------------------------------------------

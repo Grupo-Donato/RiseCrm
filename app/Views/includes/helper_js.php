@@ -105,7 +105,7 @@ $custom_filters = unserialize($custom_filters);
     AppHelper.settings.disableResponsiveDataTableForMobile = "<?php echo_escaped_value(get_setting("disable_responsive_datatable_for_mobile")); ?>";
     AppHelper.settings.disableResponsiveDataTable = "<?php echo_escaped_value(get_setting("disable_responsive_datatable")); ?>";
 
-    AppHelper.settings.defaultThemeColor = "<?php echo_escaped_value(get_setting("default_theme_color")); ?>";
+    AppHelper.settings.defaultThemeColor = "<?php echo_escaped_value(get_setting("default_theme_color") ? get_setting("default_theme_color") : "0b1020"); ?>";
     AppHelper.settings.timepickerMinutesInterval = <?php echo $timepicker_minutes_interval; ?>;
 
     AppHelper.settings.filters = <?php echo json_encode($custom_filters); ?>;

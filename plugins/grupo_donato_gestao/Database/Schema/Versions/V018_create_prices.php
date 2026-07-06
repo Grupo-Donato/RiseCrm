@@ -29,7 +29,7 @@ class V018_create_prices extends SchemaVersion
                 `valid_from` DATE NULL,
                 `valid_until` DATE NULL,
                 `status` VARCHAR(30) NOT NULL DEFAULT 'active',
-                `active_scope_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`price_list_id`, ':', `product_id`, ':', IFNULL(`variant_id`,0), ':', IFNULL(`resource_id`,0), ':', `minimum_quantity`, ':', IFNULL(`valid_from`,'0000-00-00')), NULL)) PERSISTENT,
+                `active_scope_key` VARCHAR(190) AS (IF(`deleted`=0 AND `status`='active', CONCAT(`price_list_id`, ':', `product_id`, ':', IFNULL(`variant_id`,0), ':', IFNULL(`resource_id`,0), ':', `minimum_quantity`, ':', IFNULL(`valid_from`,'0000-00-00')), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

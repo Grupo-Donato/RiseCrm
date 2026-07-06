@@ -25,23 +25,41 @@ abstract class SchemaVersion
     protected function ensureTable(BaseConnection $db, string $table, string $createSql): void
     {
         if (!$db->tableExists($table)) {
-            $db->query($createSql);
+            $this->queryOrFail($db, $createSql);
         }
     }
 
     protected function ensureColumn(BaseConnection $db, string $table, string $column, string $definition): void
     {
-        $exists = $db->query("SHOW COLUMNS FROM `" . $table . "` LIKE " . $db->escape($column))->getRow();
+        $query = $this->queryOrFail($db, "SHOW COLUMNS FROM `" . $table . "` LIKE " . $db->escape($column));
+        $exists = $query->getRow();
         if (!$exists) {
-            $db->query("ALTER TABLE `" . $table . "` ADD `" . $column . "` " . $definition);
+            $this->queryOrFail($db, "ALTER TABLE `" . $table . "` ADD `" . $column . "` " . $definition);
         }
     }
 
     protected function ensureIndex(BaseConnection $db, string $table, string $indexName, string $definition): void
     {
-        $exists = $db->query("SHOW INDEX FROM `" . $table . "` WHERE Key_name=" . $db->escape($indexName))->getRow();
+        $query = $this->queryOrFail($db, "SHOW INDEX FROM `" . $table . "` WHERE Key_name=" . $db->escape($indexName));
+        $exists = $query->getRow();
         if (!$exists) {
-            $db->query("ALTER TABLE `" . $table . "` ADD " . $definition);
+            $this->queryOrFail($db, "ALTER TABLE `" . $table . "` ADD " . $definition);
         }
+    }
+
+    /**
+     * CI can return false for failed schema statements when DBDebug is off.
+     * Convert that into a useful exception before callers try getRow().
+     */
+    private function queryOrFail(BaseConnection $db, string $sql)
+    {
+        $result = $db->query($sql);
+        if ($result === false) {
+            $error = $db->error();
+            $message = $error['message'] ?? 'unknown database error';
+            throw new \RuntimeException($message);
+        }
+
+        return $result;
     }
 }

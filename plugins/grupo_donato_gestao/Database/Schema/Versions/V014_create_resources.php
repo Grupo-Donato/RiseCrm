@@ -30,7 +30,7 @@ class V014_create_resources extends SchemaVersion
                 `is_active` TINYINT(1) NOT NULL DEFAULT 1,
                 `sort_order` INT NOT NULL DEFAULT 0,
                 `metadata` MEDIUMTEXT NULL,
-                `active_code_key` VARCHAR(120) AS (IF(`deleted`=0, CONCAT(`unit_id`, ':', `code`), NULL)) PERSISTENT,
+                `active_code_key` VARCHAR(120) AS (IF(`deleted`=0, CONCAT(`unit_id`, ':', `code`), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

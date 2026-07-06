@@ -26,7 +26,7 @@ class V005_create_settings extends SchemaVersion
             CREATE TABLE IF NOT EXISTS `$table` (
                 `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `unit_id` BIGINT UNSIGNED NULL,
-                `unit_scope_id` BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) PERSISTENT,
+                `unit_scope_id` BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) STORED,
                 `key` VARCHAR(120) NOT NULL,
                 `value` MEDIUMTEXT NULL,
                 `value_type` VARCHAR(20) NOT NULL DEFAULT 'string',
@@ -43,7 +43,7 @@ class V005_create_settings extends SchemaVersion
                 KEY `idx_deleted` (`deleted`)
             ) ENGINE=InnoDB
         ");
-        $this->ensureColumn($db, $table, "unit_scope_id", "BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) PERSISTENT");
+        $this->ensureColumn($db, $table, "unit_scope_id", "BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) STORED");
         $this->ensureIndex($db, $table, "uniq_normalized_scope_key", "UNIQUE KEY `uniq_normalized_scope_key` (`unit_scope_id`, `key`)");
     }
 }

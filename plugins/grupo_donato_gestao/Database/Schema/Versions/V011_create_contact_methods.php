@@ -28,7 +28,7 @@ class V011_create_contact_methods extends SchemaVersion
                 `receives_notifications` TINYINT(1) NOT NULL DEFAULT 0,
                 `is_verified` TINYINT(1) NOT NULL DEFAULT 0,
                 `status` VARCHAR(20) NOT NULL DEFAULT 'active',
-                `primary_contact_key` VARCHAR(100) AS (IF(`deleted`=0 AND `status`='active' AND `is_primary`=1, CONCAT(`person_id`, ':', `contact_type`), NULL)) PERSISTENT,
+                `primary_contact_key` VARCHAR(100) AS (IF(`deleted`=0 AND `status`='active' AND `is_primary`=1, CONCAT(`person_id`, ':', `contact_type`), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

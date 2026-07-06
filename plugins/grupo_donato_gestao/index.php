@@ -68,6 +68,35 @@ if (!function_exists('gd_current_login_user')) {
         }
     }
 
+    /** Checa acesso ao plugin de cobrança sem criar dependência dura entre plugins. */
+    function gd_cobranca_can_view($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if (class_exists('grupo_donato_cobranca\\Config\\Permissions')) {
+            try {
+                return \grupo_donato_cobranca\Config\Permissions::can($user, \grupo_donato_cobranca\Config\Permissions::VIEW);
+            } catch (\Throwable $e) {
+                return false;
+            }
+        }
+
+        $permissions = $user->permissions ?? [];
+        if (is_string($permissions)) {
+            $unserialized = @unserialize($permissions, ['allowed_classes' => false]);
+            $permissions = is_array($unserialized) ? $unserialized : [];
+        }
+        if (!is_array($permissions)) {
+            return false;
+        }
+
+        return !empty($permissions['gdc_billing_view'])
+            || !empty($permissions['gdc_billing_manage'])
+            || !empty($permissions['gdc_billing_settings']);
+    }
+
     /** Constrói o item de menu do plugin filtrado por permissão. */
     function gd_left_menu($sidebar_menu)
     {
@@ -79,43 +108,74 @@ if (!function_exists('gd_current_login_user')) {
         $access = new AccessService($user);
         $can = static fn($key) => $access->can($key);
 
-        // Protótipo: submenu enxuto operacional. A pedido, foram removidos do menu:
-        // Visão geral, Financeiro, Presença e Configurações — todos continuam acessíveis
-        // por URL/abas internas (e Configurações também pelo painel de Settings do Rise).
         $can_calendar = $can('gd_calendar_view');
+        $can_bookings = $can('gd_bookings_view');
+        $can_booking_series = $can('gd_booking_series_view');
         $can_court_rentals = $can('gd_court_rentals_view');
         $can_school = $can('gd_school_view');
         $can_finance = $can('gd_finance_view');
+        $can_billing = gd_cobranca_can_view($user);
 
-        if (!$can_calendar && !$can_court_rentals && !$can_school && !$can_finance) {
+        if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_school && !$can_finance && !$can_billing) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
+        // Protótipo: menu principal enxuto, preservando escola/caixa fora das locações.
         $submenu = [];
         if ($can_school) {
             $submenu[] = ["name" => "customers_students", "language_key" => "gd_menu_customers_students", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/students"), "class" => "users"];
             $submenu[] = ["name" => "classes_personal", "language_key" => "gd_menu_classes_personal", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/classes"), "class" => "layers"];
         }
-        if ($can_calendar) {
-            $submenu[] = ["name" => "agenda", "language_key" => "gd_menu_agenda", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/calendar"), "class" => "calendar"];
-        }
-        if ($can_court_rentals) {
-            $submenu[] = ["name" => "court_monthly", "language_key" => "gd_menu_court_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "dollar-sign"];
-        }
         if ($can_finance) {
             $submenu[] = ["name" => "cash_expenses", "language_key" => "gd_menu_cash_expenses", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/cash"), "class" => "book"];
         }
 
-        $landing_uri = $can_school ? "grupo_donato/school/students" : ($can_calendar ? "grupo_donato/calendar" : ($can_court_rentals ? "grupo_donato/court-rentals/monthly" : ($can_finance ? "grupo_donato/finance/cash" : "grupo_donato/school/students")));
-        $sidebar_menu['grupo_donato'] = [
-            "name" => "Grupo Donato",
-            "language_key" => "gd_app_title",
-            "class" => "activity",
-            "is_custom_menu_item" => true,
-            "url" => get_uri($landing_uri),
-            "position" => 12,
-            "submenu" => $submenu,
-        ];
+        if ($submenu) {
+            $landing_uri = $can_school ? "grupo_donato/school/students" : "grupo_donato/finance/cash";
+            $sidebar_menu['grupo_donato'] = [
+                "name" => "Grupo Donato",
+                "language_key" => "gd_app_title",
+                "class" => "activity",
+                "is_custom_menu_item" => true,
+                "url" => get_uri($landing_uri),
+                "position" => 12,
+                "submenu" => $submenu,
+            ];
+        }
+
+        $rental_submenu = [];
+        if ($can_calendar) {
+            $rental_submenu[] = ["name" => "rental_agenda", "language_key" => "gd_menu_rental_agenda", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/calendar"), "class" => "calendar"];
+        }
+        if ($can_bookings) {
+            $rental_submenu[] = ["name" => "rental_bookings", "language_key" => "gd_menu_rental_bookings", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/bookings"), "class" => "calendar-check"];
+        }
+        if ($can_booking_series) {
+            $rental_submenu[] = ["name" => "rental_series", "language_key" => "gd_menu_rental_series", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/booking-series"), "class" => "repeat"];
+        }
+        if ($can_court_rentals) {
+            $rental_submenu[] = ["name" => "rental_single", "language_key" => "gd_menu_rental_single", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals"), "class" => "shopping-bag"];
+            $rental_submenu[] = ["name" => "rental_monthly", "language_key" => "gd_menu_rental_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "dollar-sign"];
+        }
+        if ($can_finance) {
+            $rental_submenu[] = ["name" => "rental_finance", "language_key" => "gd_menu_rental_finance", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/receivables?source_type=court_rental"), "class" => "file-text"];
+        }
+        if ($can_billing) {
+            $rental_submenu[] = ["name" => "rental_charges", "language_key" => "gd_menu_rental_charges", "is_custom_menu_item" => true, "url" => get_uri("cobranca/charges"), "class" => "credit-card"];
+        }
+
+        if ($rental_submenu) {
+            $sidebar_menu['locacoes'] = [
+                "name" => "Locações",
+                "language_key" => "gd_menu_rentals",
+                "class" => "grid",
+                "is_custom_menu_item" => true,
+                "url" => $rental_submenu[0]["url"],
+                "position" => 13,
+                "submenu" => $rental_submenu,
+            ];
+            unset($sidebar_menu['cobranca']);
+        }
 
         return $sidebar_menu;
     }

@@ -27,11 +27,10 @@ $status_pagamento = [
     ["id" => "vencido", "text" => "Vencido"]
 ];
 
-$turmas_pagamento = [
-    ["id" => "", "text" => "Todas as turmas"],
-    ["id" => "08:30-11:00", "text" => "08:30-11:00"],
-    ["id" => "13:30-16:00", "text" => "13:30-16:00"]
-];
+$turmas_pagamento = [["id" => "", "text" => "Todas as turmas"]];
+foreach (bombeiros_turmas_values() as $turma_valor => $turma_label) {
+    $turmas_pagamento[] = ["id" => $turma_valor, "text" => $turma_valor];
+}
 $pagamento_select_options = function ($items) {
     $options = [];
     foreach ($items as $item) {

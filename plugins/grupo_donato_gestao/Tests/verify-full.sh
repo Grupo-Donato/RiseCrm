@@ -8,6 +8,16 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cd "$ROOT"
 
+db_config_value() {
+  local key="$1"
+  sed -nE "s/^[[:space:]]*'${key}'[[:space:]]*=>[[:space:]]*'([^']*)'.*/\\1/p" "$ROOT/app/Config/Database.php" | head -n 1
+}
+
+db_config_number() {
+  local key="$1"
+  sed -nE "s/^[[:space:]]*'${key}'[[:space:]]*=>[[:space:]]*([0-9]+).*/\\1/p" "$ROOT/app/Config/Database.php" | head -n 1
+}
+
 step() {
   local name="$1"; shift
   echo "[FULL] $name"
@@ -58,9 +68,18 @@ mysqlcheck_bin="${GD_MYSQLCHECK_EXE:-}"
 if [ -z "$mysqlcheck_bin" ] && command -v mysqlcheck >/dev/null 2>&1; then mysqlcheck_bin="$(command -v mysqlcheck)"; fi
 if [ -n "$mysqlcheck_bin" ] && [ -z "${GD_SKIP_DB_CHECK:-}" ]; then
   echo "[FULL] database CHECK TABLE"
-  db_name="${GD_DB_NAME:-rise_crm}"; db_user="${GD_DB_USER:-root}"; args=(--check --silent "--user=$db_user")
-  if [ -n "${GD_DB_PASSWORD:-}" ]; then args+=("--password=$GD_DB_PASSWORD"); fi
-  "$mysqlcheck_bin" "${args[@]}" "$db_name"
+  db_name="${GD_DB_NAME:-$(db_config_value database)}"
+  db_user="${GD_DB_USER:-$(db_config_value username)}"
+  db_pass="${GD_DB_PASSWORD:-$(db_config_value password)}"
+  db_host="${GD_DB_HOST:-$(db_config_value hostname)}"
+  db_port="${GD_DB_PORT:-$(db_config_number port)}"
+  db_port="${db_port:-3306}"
+  args=(--check --silent "--host=$db_host" "--port=$db_port" "--user=$db_user")
+  if [ -n "$db_pass" ]; then
+    MYSQL_PWD="$db_pass" "$mysqlcheck_bin" "${args[@]}" "$db_name"
+  else
+    "$mysqlcheck_bin" "${args[@]}" "$db_name"
+  fi
   echo "  PASS"
 else
   echo "[FULL] database CHECK TABLE"

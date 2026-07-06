@@ -21,7 +21,7 @@
                             <div class="col-md-10">
                                 <?php
                                 echo form_dropdown(
-                                        "language", $language_dropdown, get_setting('language') ? get_setting('language') : "english", "class='select2 mini'"
+                                        "language", $language_dropdown, get_setting('language') ? get_setting('language') : "portuguese", "class='select2 mini'"
                                 );
                                 ?>
                             </div>

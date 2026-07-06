@@ -179,7 +179,7 @@
                                     <label for="default_theme_color" class="col-md-3"><?php echo app_lang('default_theme_color'); ?></label>
                                     <div class="col-md-9">
                                         <?php echo get_custom_theme_color_list(); ?>
-                                        <input id="default-theme-color" type="hidden" name="default_theme_color" value="<?php echo get_setting("default_theme_color"); ?>" />
+                                        <input id="default-theme-color" type="hidden" name="default_theme_color" value="<?php echo get_setting("default_theme_color") ? get_setting("default_theme_color") : "0b1020"; ?>" />
                                     </div>
                                 </div>
                             </div>
@@ -245,7 +245,7 @@
             showCropBox(this);
         });
 
-        var existingColor = "<?php echo get_setting("default_theme_color"); ?>";
+        var existingColor = "<?php echo get_setting("default_theme_color") ? get_setting("default_theme_color") : "0b1020"; ?>";
         if (existingColor === "F2F2F2") {
             $("#settings-color-plate span:first-child").addClass("active");
         } else {

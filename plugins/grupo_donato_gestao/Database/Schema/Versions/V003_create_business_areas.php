@@ -26,7 +26,7 @@ class V003_create_business_areas extends SchemaVersion
             CREATE TABLE IF NOT EXISTS `$table` (
                 `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `unit_id` BIGINT UNSIGNED NULL,
-                `unit_scope_id` BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) PERSISTENT,
+                `unit_scope_id` BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) STORED,
                 `code` VARCHAR(40) NOT NULL,
                 `name` VARCHAR(150) NOT NULL,
                 `status` VARCHAR(30) NOT NULL DEFAULT 'active',
@@ -42,7 +42,7 @@ class V003_create_business_areas extends SchemaVersion
                 KEY `idx_deleted` (`deleted`)
             ) ENGINE=InnoDB
         ");
-        $this->ensureColumn($db, $table, "unit_scope_id", "BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) PERSISTENT");
+        $this->ensureColumn($db, $table, "unit_scope_id", "BIGINT UNSIGNED AS (IFNULL(`unit_id`, 0)) STORED");
         $this->ensureIndex($db, $table, "uniq_scope_code", "UNIQUE KEY `uniq_scope_code` (`unit_scope_id`, `code`)");
     }
 }

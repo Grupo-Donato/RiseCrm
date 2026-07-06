@@ -33,7 +33,7 @@ class V036_create_enrollments extends SchemaVersion
                 `updated_at` DATETIME NULL,
                 `updated_by` BIGINT UNSIGNED NULL,
                 `deleted` TINYINT(1) NOT NULL DEFAULT 0,
-                `open_guard` TINYINT GENERATED ALWAYS AS (CASE WHEN `deleted`=0 AND `status` IN ('active','paused') THEN 1 ELSE NULL END) PERSISTENT,
+                `open_guard` TINYINT GENERATED ALWAYS AS (CASE WHEN `deleted`=0 AND `status` IN ('active','paused') THEN 1 ELSE NULL END) STORED,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uniq_open_enrollment` (`class_id`,`school_profile_id`,`open_guard`),
                 KEY `idx_enrollment_class` (`unit_id`,`class_id`,`status`,`deleted`),

@@ -32,7 +32,7 @@ class V012_create_addresses extends SchemaVersion
                 `country` VARCHAR(80) NULL,
                 `is_primary` TINYINT(1) NOT NULL DEFAULT 0,
                 `status` VARCHAR(20) NOT NULL DEFAULT 'active',
-                `primary_account_id` BIGINT UNSIGNED AS (IF(`deleted`=0 AND `status`='active' AND `is_primary`=1, `account_id`, NULL)) PERSISTENT,
+                `primary_account_id` BIGINT UNSIGNED AS (IF(`deleted`=0 AND `status`='active' AND `is_primary`=1, `account_id`, NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,

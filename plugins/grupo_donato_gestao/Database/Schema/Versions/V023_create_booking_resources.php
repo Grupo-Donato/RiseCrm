@@ -25,7 +25,7 @@ class V023_create_booking_resources extends SchemaVersion
                 `buffer_after_minutes` INT UNSIGNED NOT NULL DEFAULT 0,
                 `occupancy_starts_at_utc` DATETIME NOT NULL,
                 `occupancy_ends_at_utc` DATETIME NOT NULL,
-                `active_booking_resource_key` VARCHAR(190) AS (IF(`deleted`=0, CONCAT(`booking_id`,':',`resource_id`), NULL)) PERSISTENT,
+                `active_booking_resource_key` VARCHAR(190) AS (IF(`deleted`=0, CONCAT(`booking_id`,':',`resource_id`), NULL)) STORED,
                 `created_at` DATETIME NULL,
                 `created_by` BIGINT UNSIGNED NULL,
                 `updated_at` DATETIME NULL,

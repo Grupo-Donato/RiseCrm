@@ -1,14 +1,39 @@
 <?php
-$turmas = [
-    "" => "-",
-    "08:30-11:00" => "08:30-11:00",
-    "13:30-16:00" => "13:30-16:00"
-];
+$turmas = bombeiros_turmas_grouped();
 $status_options = ["Ativo" => "Ativo", "Pendente" => "Pendente", "Inadimplente" => "Inadimplente", "Concluido" => "Concluído", "Inativo" => "Inativo", "Cancelado" => "Cancelado"];
 $melhor_horario_options = ["" => "-", "manha" => "Manhã", "tarde" => "Tarde", "qualquer" => "Qualquer horário"];
+$exame_medico_nome = !empty($model_info->exame_medico_nome) ? $model_info->exame_medico_nome : "Exame médico anexado";
+$exame_medico_tamanho = (int) ($model_info->exame_medico_tamanho ?? 0);
+$exame_medico_tamanho_label = "";
+if ($exame_medico_tamanho > 0) {
+    $exame_medico_tamanho_label = $exame_medico_tamanho >= 1048576
+        ? number_format($exame_medico_tamanho / 1048576, 1, ",", ".") . " MB"
+        : number_format($exame_medico_tamanho / 1024, 0, ",", ".") . " KB";
+}
 ?>
 
-<?php echo form_open(get_uri("grupo_donato/operacional/save_aluno"), ["id" => "bombeiros-aluno-form", "class" => "general-form", "role" => "form", "enctype" => "multipart/form-data"]); ?>
+<style>
+    #bombeiros-aluno-form .gd-file-input {
+        color: #ffffff;
+    }
+
+    #bombeiros-aluno-form .gd-file-input::file-selector-button,
+    #bombeiros-aluno-form .gd-file-input::-webkit-file-upload-button {
+        background-color: #f8fafc !important;
+        border: 0;
+        border-right: 1px solid rgba(15, 23, 42, 0.16);
+        color: #17365f !important;
+        font-weight: 600;
+    }
+
+    #bombeiros-aluno-form .gd-file-input:hover::file-selector-button,
+    #bombeiros-aluno-form .gd-file-input:hover::-webkit-file-upload-button {
+        background-color: #e8eef7 !important;
+        color: #17365f !important;
+    }
+</style>
+
+<?php echo form_open_multipart(get_uri("grupo_donato/operacional/save_aluno"), ["id" => "bombeiros-aluno-form", "class" => "general-form", "role" => "form"]); ?>
 <div class="modal-body clearfix">
     <div class="container-fluid">
         <input type="hidden" name="id" value="<?php echo (int) $model_info->id; ?>" />
@@ -247,6 +272,31 @@ $melhor_horario_options = ["" => "-", "manha" => "Manhã", "tarde" => "Tarde", "
                     <label class="mr15"><?php echo form_checkbox("matricula_efetuada", "1", (int) $model_info->matricula_efetuada === 1, "id='bombeiros-aluno-matricula-efetuada'"); ?> Matrícula</label>
                     <label class="mr15"><?php echo form_checkbox("uniforme_efetuado", "1", (int) $model_info->uniforme_efetuado === 1, "id='bombeiros-aluno-uniforme-efetuado'"); ?> Uniforme</label>
                     <label><?php echo form_checkbox("material_efetuado", "1", (int) $model_info->material_efetuado === 1, "id='bombeiros-aluno-material-efetuado'"); ?> Material</label>
+                </div>
+            </div>
+        </div>
+
+        <h5 class="mb15 mt20">Exame médico</h5>
+
+        <div class="form-group">
+            <div class="row">
+                <label for="bombeiros-aluno-exame-medico" class="col-md-3">Anexar exame</label>
+                <div class="col-md-9">
+                    <input type="file" name="exame_medico" id="bombeiros-aluno-exame-medico" class="form-control gd-file-input" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp" />
+                    <?php if (!empty($model_info->exame_medico) && !empty($model_info->id)) { ?>
+                        <div class="mt10">
+                            Exame salvo na matrícula:
+                            <a href="<?php echo get_uri("grupo_donato/operacional/baixar_exame_medico/" . (int) $model_info->id); ?>" target="_blank" rel="noopener">
+                                <span data-feather="file-text" class="icon-16"></span> <?php echo esc($exame_medico_nome); ?>
+                            </a>
+                            <?php if ($exame_medico_tamanho_label) { ?>
+                                <span class="text-off">(<?php echo $exame_medico_tamanho_label; ?>)</span>
+                            <?php } ?>
+                            <div class="text-off">Selecione um novo arquivo para substituir o exame atual.</div>
+                        </div>
+                    <?php } else { ?>
+                        <div class="text-off mt5">Formatos aceitos: PDF ou imagem (JPG/PNG/WebP). Fotos grandes serão compactadas automaticamente.</div>
+                    <?php } ?>
                 </div>
             </div>
         </div>

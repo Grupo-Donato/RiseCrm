@@ -70,6 +70,9 @@ if (!function_exists('gdc_current_login_user')) {
         if (!$user || !Permissions::can($user, Permissions::VIEW)) {
             return $menu;
         }
+        if (isset($menu['locacoes'])) {
+            return $menu;
+        }
         $menu['cobranca'] = [
             'name' => 'Cobrança',
             'language_key' => 'gdc_app_title',

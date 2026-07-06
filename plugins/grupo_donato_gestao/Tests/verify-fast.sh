@@ -5,6 +5,16 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 PLUGIN="$ROOT/plugins/grupo_donato_gestao"
 cd "$ROOT"
 
+db_config_value() {
+  local key="$1"
+  sed -nE "s/^[[:space:]]*'${key}'[[:space:]]*=>[[:space:]]*'([^']*)'.*/\\1/p" "$ROOT/app/Config/Database.php" | head -n 1
+}
+
+db_config_number() {
+  local key="$1"
+  sed -nE "s/^[[:space:]]*'${key}'[[:space:]]*=>[[:space:]]*([0-9]+).*/\\1/p" "$ROOT/app/Config/Database.php" | head -n 1
+}
+
 echo "[FAST] PHP lint"
 count=0
 while IFS= read -r -d '' file; do
@@ -26,10 +36,20 @@ mysql_bin="${GD_MYSQL_EXE:-}"
 if [ -z "$mysql_bin" ] && command -v mysql >/dev/null 2>&1; then mysql_bin="$(command -v mysql)"; fi
 if [ -z "$mysql_bin" ] && [ -x /c/xampp/mysql/bin/mysql.exe ]; then mysql_bin=/c/xampp/mysql/bin/mysql.exe; fi
 if [ -n "$mysql_bin" ] && [ -z "${GD_SKIP_DB_CHECK:-}" ]; then
-  db_name="${GD_DB_NAME:-rise_crm}"; db_user="${GD_DB_USER:-root}"; mysql_args=(--batch --skip-column-names "--user=$db_user")
-  if [ -n "${GD_DB_PASSWORD:-}" ]; then mysql_args+=("--password=$GD_DB_PASSWORD"); fi
-  sql="SELECT CONCAT((SELECT MAX(version) FROM \`rise_gd_schema_versions\` WHERE status='completed'),'|',(SELECT value FROM \`rise_gd_settings\` WHERE unit_id IS NULL AND \`key\`='schema_version' AND deleted=0 LIMIT 1));"
-  db_state="$(printf '%s\n' "$sql" | "$mysql_bin" "${mysql_args[@]}" "$db_name")"
+  db_name="${GD_DB_NAME:-$(db_config_value database)}"
+  db_user="${GD_DB_USER:-$(db_config_value username)}"
+  db_pass="${GD_DB_PASSWORD:-$(db_config_value password)}"
+  db_host="${GD_DB_HOST:-$(db_config_value hostname)}"
+  db_port="${GD_DB_PORT:-$(db_config_number port)}"
+  db_prefix="${GD_DB_PREFIX:-$(db_config_value DBPrefix)}"
+  db_port="${db_port:-3306}"
+  mysql_args=(--batch --skip-column-names "--host=$db_host" "--port=$db_port" "--user=$db_user")
+  sql="SELECT CONCAT((SELECT MAX(version) FROM \`${db_prefix}gd_schema_versions\` WHERE status='completed'),'|',(SELECT value FROM \`${db_prefix}gd_settings\` WHERE unit_id IS NULL AND \`key\`='schema_version' AND deleted=0 LIMIT 1));"
+  if [ -n "$db_pass" ]; then
+    db_state="$(printf '%s\n' "$sql" | MYSQL_PWD="$db_pass" "$mysql_bin" "${mysql_args[@]}" "$db_name")"
+  else
+    db_state="$(printf '%s\n' "$sql" | "$mysql_bin" "${mysql_args[@]}" "$db_name")"
+  fi
   test "$db_state" = "$marker|$marker"
   echo "  PASS version=$version schema=$marker database=$db_state"
 else
@@ -58,7 +78,7 @@ echo "[FAST] Language catalog"
 language="$PLUGIN/Language/portuguese/default_lang.php"
 duplicates="$(grep -oE '"gd_[A-Za-z0-9_]+"[[:space:]]*=>' "$language" | sed -E 's/^"([^"]+)".*/\1/' | sort | uniq -d)"
 test -z "$duplicates"
-for key in gd_app_title gd_menu_calendar gd_menu_bookings gd_booking_conflict gd_menu_booking_series gd_booking_series_not_found gd_school_students gd_school_classes gd_school_attendance gd_finance_overview gd_finance_receivables gd_finance_cash; do
+for key in gd_app_title gd_menu_calendar gd_menu_bookings gd_booking_conflict gd_menu_booking_series gd_booking_series_not_found gd_school_students gd_school_classes gd_school_attendance gd_finance_overview gd_finance_receivables gd_finance_cash gd_menu_rentals gd_menu_rental_agenda gd_menu_rental_bookings gd_menu_rental_series gd_menu_rental_single gd_menu_rental_monthly gd_menu_rental_finance gd_menu_rental_charges; do
   grep -Fq "\"$key\" =>" "$language"
 done
 key_count="$(grep -oE '"gd_[A-Za-z0-9_]+"[[:space:]]*=>' "$language" | wc -l | tr -d ' ')"

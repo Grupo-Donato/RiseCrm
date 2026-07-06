@@ -5,10 +5,20 @@ namespace App\Models;
 class Users_model extends Crud_model {
 
     protected $table = null;
+    private const DEFAULT_LANGUAGE = "portuguese";
 
     function __construct() {
         $this->table = 'users';
         parent::__construct($this->table);
+    }
+
+    function ci_save(&$data = array(), $id = 0) {
+        if (!$id && is_array($data) && (!array_key_exists("language", $data) || !$data["language"])) {
+            $default_language = function_exists("get_setting") ? get_setting("language") : "";
+            $data["language"] = $default_language ? $default_language : self::DEFAULT_LANGUAGE;
+        }
+
+        return parent::ci_save($data, $id);
     }
 
     function authenticate($email, $password) {

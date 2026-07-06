@@ -29,6 +29,56 @@ if (function_exists("service")) {
 }
 
 if (!function_exists("bombeiros_install_or_update")) {
+    /*
+     * Fonte única das turmas/horários do Grupo Donato. Todas as telas
+     * (cadastro de aluno, matrícula pública, chamada e filtro de pagamentos)
+     * consomem estas opções para não haver divergência entre os valores
+     * gravados no aluno e os valores oferecidos nos filtros/chamada.
+     *
+     * O VALOR (chave) é o texto completo gravado na coluna `turma`; o rótulo
+     * exibido é curto porque o próprio optgroup já indica o dia da semana.
+     */
+    function bombeiros_turmas_grouped($incluir_placeholder = true, $placeholder = "-")
+    {
+        $grupos = [
+            "Segunda e Quarta" => [
+                "Seg/Qua Manhã 08:30-10:00" => "Manhã 08:30-10:00",
+                "Seg/Qua Tarde 14:15-15:45" => "Tarde 14:15-15:45",
+                "Seg/Qua Noite 19:30-21:00" => "Noite 19:30-21:00",
+            ],
+            "Terça e Quinta" => [
+                "Ter/Qui Manhã 09:15-10:30" => "Manhã 09:15-10:30",
+                "Ter/Qui Tarde 14:15-15:45" => "Tarde 14:15-15:45",
+                "Ter/Qui Tarde 15:45-17:00" => "Tarde 15:45-17:00",
+                "Ter/Qui Noite 18:30-19:45" => "Noite 18:30-19:45",
+            ],
+            "Sábado" => [
+                "Sábado 08:00-09:30" => "08:00-09:30",
+                "Sábado 09:30-11:00" => "09:30-11:00",
+                "Sábado 11:00-12:15" => "11:00-12:15",
+            ],
+        ];
+
+        if ($incluir_placeholder) {
+            return ["" => $placeholder] + $grupos;
+        }
+
+        return $grupos;
+    }
+
+    // Lista achatada [valor => valor] com todas as turmas válidas (sem grupos).
+    function bombeiros_turmas_values()
+    {
+        $flat = [];
+        foreach (bombeiros_turmas_grouped(false) as $opcoes) {
+            foreach ($opcoes as $valor => $rotulo) {
+                $flat[$valor] = $valor;
+            }
+        }
+
+        return $flat;
+    }
+
     function bombeiros_left_menu_sections()
     {
         return [
@@ -95,6 +145,27 @@ if (!function_exists("bombeiros_install_or_update")) {
         $native_names = [];
         $prefixed_native_names = [];
         $legacy_submenu_names = [];
+        $rentals_items = [
+            ["name" => "Locações"],
+            ["name" => "rental_agenda", "is_sub_menu" => "1"],
+            ["name" => "rental_bookings", "is_sub_menu" => "1"],
+            ["name" => "rental_series", "is_sub_menu" => "1"],
+            ["name" => "rental_single", "is_sub_menu" => "1"],
+            ["name" => "rental_monthly", "is_sub_menu" => "1"],
+            ["name" => "rental_finance", "is_sub_menu" => "1"],
+            ["name" => "rental_charges", "is_sub_menu" => "1"],
+        ];
+        $rentals_names = array_map(function ($item) {
+            return $item["name"];
+        }, $rentals_items);
+        $legacy_rental_names = [
+            "locacoes",
+            "Locações",
+            "Cobrança",
+            "agenda",
+            "court_monthly",
+            "cobranca",
+        ];
         foreach (bombeiros_left_menu_sections() as $key => $item) {
             $native_name = bombeiros_left_menu_native_name($key, $item);
             $native_items[] = ["name" => $native_name];
@@ -120,9 +191,15 @@ if (!function_exists("bombeiros_install_or_update")) {
 
             $changed = false;
             $inserted_native_items = false;
+            $inserted_rentals_items = false;
             $rebuilt = [];
             foreach ($items as $item) {
                 $name = $item["name"] ?? "";
+
+                if (in_array($name, $rentals_names, true) || in_array($name, $legacy_rental_names, true)) {
+                    $changed = true;
+                    continue;
+                }
 
                 if (in_array($name, $native_names, true) || in_array($name, $prefixed_native_names, true)) {
                     $changed = true;
@@ -146,8 +223,15 @@ if (!function_exists("bombeiros_install_or_update")) {
                 $rebuilt[] = $item;
             }
 
+            if (!$inserted_rentals_items) {
+                array_splice($rebuilt, 0, 0, $rentals_items);
+                $inserted_rentals_items = true;
+                $changed = true;
+            }
+
             if (!$inserted_native_items && $row->setting_name === "default_left_menu") {
-                array_splice($rebuilt, min(4, count($rebuilt)), 0, $native_items);
+                $native_insert_at = $inserted_rentals_items ? min(count($rentals_items) + 4, count($rebuilt)) : min(4, count($rebuilt));
+                array_splice($rebuilt, $native_insert_at, 0, $native_items);
                 $changed = true;
             }
 
@@ -468,6 +552,11 @@ if (!function_exists("bombeiros_install_or_update")) {
             $ensure_column($table_name, "material_02_status", "varchar(50) DEFAULT NULL AFTER `material_02`");
             $ensure_column($table_name, "material_02_data", "date DEFAULT NULL AFTER `material_02_status`");
             $ensure_column($table_name, "materiais_observacao", "text DEFAULT NULL AFTER `material_02_data`");
+            $ensure_column($table_name, "exame_medico", "varchar(255) DEFAULT NULL AFTER `materiais_observacao`");
+            $ensure_column($table_name, "exame_medico_nome", "varchar(255) DEFAULT NULL AFTER `exame_medico`");
+            $ensure_column($table_name, "exame_medico_mime", "varchar(120) DEFAULT NULL AFTER `exame_medico_nome`");
+            $ensure_column($table_name, "exame_medico_tamanho", "int(11) DEFAULT NULL AFTER `exame_medico_mime`");
+            $ensure_column($table_name, "exame_medico_enviado_em", "datetime DEFAULT NULL AFTER `exame_medico_tamanho`");
             $ensure_index($table_name, "idx_matricula", "KEY `idx_matricula` (`matricula`)");
             bombeiros_ensure_enum_values($db, $table_name, "status", ["Ativo", "Cancelado", "Inativo", "Pendente", "Inadimplente", "Concluido"], "Ativo");
 

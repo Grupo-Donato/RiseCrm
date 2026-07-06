@@ -30,6 +30,7 @@ $routes->match(["get", "post"], "siamesa_gerencial_plugin/(:any)", static functi
 });
 
 $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\Operacional\Controllers"], function ($routes) {
+    $routes->get("", "Bombeiros::index");
     $routes->get("/", "Bombeiros::index");
     $routes->get("index", "Bombeiros::index");
 
@@ -106,6 +107,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
 
     $routes->post("buscar_dados_comprovante", "Bombeiros::buscar_dados_comprovante");
     $routes->post("gerar_comprovante", "Bombeiros::gerar_comprovante");
+    $routes->get("baixar_exame_medico/(:num)", "Bombeiros::baixar_exame_medico/$1");
     $routes->get("baixar_comprovante/(:num)", "Bombeiros::baixar_comprovante/$1");
     $routes->get("baixar_comprovante_pdf/(:num)", "Bombeiros::baixar_comprovante_pdf/$1");
     $routes->get("visualizar_comprovante/(:num)", "Bombeiros::visualizar_comprovante/$1");

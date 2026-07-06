@@ -27,6 +27,14 @@ abstract class Gd_Controller extends Security_Controller
     protected AuditService $audit;
     protected string $request_id;
 
+    /**
+     * Quando true, respostas de erro JSON recebem status HTTP coerente
+     * (400/404/409/422/500) além do corpo {success:false}. Fica desligado por
+     * padrão para não alterar o comportamento de módulos que já esperam HTTP 200;
+     * os controllers de locações (agenda/reservas/séries/locação) habilitam.
+     */
+    protected bool $emit_http_status = false;
+
     public function __construct()
     {
         parent::__construct();
@@ -66,11 +74,16 @@ abstract class Gd_Controller extends Security_Controller
 
     protected function json_success(string $message = "", array $extra = []): void
     {
+        // Garante Content-Type application/json (o núcleo do Rise usa text/html por
+        // padrão). O corpo é enviado por echo — capturado pelo output buffer do
+        // CodeIgniter — e o header definido aqui persiste na resposta compartilhada.
+        $this->response->setContentType("application/json; charset=UTF-8");
         echo json_encode(array_merge(["success" => true, "message" => $message], $extra));
     }
 
     protected function json_error(string $message = "", array $extra = []): void
     {
+        $this->response->setContentType("application/json; charset=UTF-8");
         echo json_encode(array_merge(["success" => false, "message" => $message], $extra));
     }
 
@@ -98,6 +111,25 @@ abstract class Gd_Controller extends Security_Controller
     protected function gd_fail(\Throwable $e): void
     {
         $key = $e->getMessage();
-        $this->json_error(str_starts_with($key, "gd_") ? app_lang($key) : app_lang("error_occurred"));
+        $is_gd = str_starts_with($key, "gd_");
+        if ($this->emit_http_status) {
+            $this->response->setStatusCode($this->http_status_for_error($e, $key));
+        }
+        $extra = $is_gd ? ["error_code" => $key] : ["error_code" => "gd_error"];
+        $this->json_error($is_gd ? app_lang($key) : app_lang("error_occurred"), $extra);
+    }
+
+    /**
+     * Mapeia uma exceção de domínio para o status HTTP do contrato.
+     * 422 para validação/regra; 409 para conflito de agenda/versão/lock;
+     * 404 para registro inexistente/fora da unidade; 500 para falha não tratada.
+     */
+    protected function http_status_for_error(\Throwable $e, string $key): int
+    {
+        if (str_starts_with($key, "gd_invalid") || str_ends_with($key, "_required")) { return 422; }
+        if (str_ends_with($key, "_conflict") || str_contains($key, "lock_unavailable") || str_contains($key, "lock_timeout")) { return 409; }
+        if (str_ends_with($key, "_not_found")) { return 404; }
+        if ($e instanceof \DomainException) { return 422; }
+        return 500;
     }
 }

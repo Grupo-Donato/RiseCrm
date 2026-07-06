@@ -44,6 +44,12 @@ class AvailabilityService extends CustomerDataService
         $open=array_values(array_filter($exceptions,static fn($r)=>(string)$r->exception_type==="open"));
         $matched=[];$open_ranges=[];foreach($open as $row){$open_ranges[]=[(string)$row->starts_at_utc,(string)$row->ends_at_utc];$matched[]=(int)$row->id;}
         if($this->covered($start,$end,$open_ranges)){$base["available"]=true;$base["source"]="open_exception";$base["reason_code"]="available_open_exception";$base["matched_exception_ids"]=array_values(array_unique($matched));return $base;}
+        // Operação simplificada do Grupo Donato: enquanto uma quadra não possuir
+        // grade semanal configurada, ela fica disponível por padrão. Bloqueios e
+        // exceções de fechamento continuam prevalecendo acima deste fallback.
+        // Assim que existir ao menos uma regra semanal para o recurso, a grade
+        // passa a ser restritiva e somente os intervalos cobertos ficam abertos.
+        if(!$rules){$base["available"]=true;$base["source"]="resource_default";$base["reason_code"]="available_without_schedule";return $base;}
         [$weekly_ranges,$rule_ids]=$this->weeklyRanges($rules,$start,$end);
         if($this->covered($start,$end,$weekly_ranges)){$base["available"]=true;$base["source"]="weekly_rule";$base["reason_code"]="available_weekly_rule";$base["matched_rule_ids"]=$rule_ids;return $base;}
         $base["source"]="none";$base["reason_code"]="outside_availability";return $base;

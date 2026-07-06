@@ -167,10 +167,13 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("court-rentals/link-modal", "Court_rentals::link_modal");
     $routes->post("court-rentals/customer-options", "Court_rentals::customer_options");
     $routes->post("court-rentals/contact-options", "Court_rentals::contact_options");
+    $routes->post("court-rentals/product-options", "Court_rentals::product_options");
+    $routes->post("court-rentals/price-list-options", "Court_rentals::price_list_options");
     $routes->post("court-rentals/check-availability", "Court_rentals::check_availability");
     $routes->post("court-rentals/preview", "Court_rentals::preview");
     $routes->post("court-rentals/resolve-price", "Court_rentals::resolve_price");
     $routes->post("court-rentals/save-draft", "Court_rentals::save_draft");
+    $routes->post("court-rentals/save-rental", "Court_rentals::save_rental");
     $routes->post("court-rentals/save-single", "Court_rentals::save_single");
     $routes->post("court-rentals/save-monthly", "Court_rentals::save_monthly");
     $routes->post("court-rentals/link-existing", "Court_rentals::link_existing");

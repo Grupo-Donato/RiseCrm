@@ -6,7 +6,7 @@ Múltiplas janelas não sobrepostas são aceitas. Janelas adjacentes são válid
 
 Regras ativas do mesmo recurso não podem se sobrepor quando suas vigências se cruzam, inclusive entre uma janela overnight e o dia seguinte. O Service valida novamente sob `GET_LOCK` e transação; a chave gerada `active_exact_key` também rejeita duplicata operacional exata.
 
-`AvailabilityService::check()` e `checkMany()` consideram o intervalo solicitado inteiro. Regras adjacentes podem compor cobertura contínua. Recurso sem regra aplicável fica indisponível; não existe disponibilidade implícita.
+`AvailabilityService::check()` e `checkMany()` consideram o intervalo solicitado inteiro. Regras adjacentes podem compor cobertura contínua. Para a operação simplificada do Grupo Donato, uma quadra que ainda não possua nenhuma regra semanal fica disponível por padrão, respeitando bloqueios e exceções de fechamento. Assim que o recurso possuir ao menos uma regra semanal ativa, a grade passa a ser restritiva e os horários fora da cobertura ficam indisponíveis.
 
 ## Precedência
 
@@ -15,7 +15,8 @@ Regras ativas do mesmo recurso não podem se sobrepor quando suas vigências se 
 3. exceção `closed` intersectante;
 4. exceção `open` cobrindo o intervalo;
 5. regra semanal cobrindo o intervalo;
-6. indisponível por ausência de cobertura.
+6. disponibilidade padrão quando o recurso não possui nenhuma regra semanal;
+7. indisponível por ausência de cobertura quando já existe grade configurada.
 
 O retorno inclui `available`, recurso, intervalo UTC, timezone, `source`, `reason_code` e IDs das regras, exceções e bloqueios correspondentes. `checkMany()` carrega recursos, regras, exceções e bloqueios em quatro consultas em lote, sem N+1.
 

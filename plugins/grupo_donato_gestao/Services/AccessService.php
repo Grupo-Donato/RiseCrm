@@ -85,9 +85,11 @@ class AccessService
         $request = \Config\Services::request();
         if ($request->isAJAX() || strtolower((string) $request->getMethod()) === "post") {
             http_response_code(403);
+            header("Content-Type: application/json; charset=UTF-8");
             echo json_encode([
                 "success" => false,
                 "message" => app_lang("gd_access_denied"),
+                "error_code" => "gd_access_denied",
             ]);
             exit();
         }
@@ -105,9 +107,11 @@ class AccessService
         $request = \Config\Services::request();
         if ($request->isAJAX() || strtolower((string) $request->getMethod()) === "post") {
             http_response_code(403);
+            header("Content-Type: application/json; charset=UTF-8");
             echo json_encode([
                 "success" => false,
                 "message" => app_lang("gd_access_denied"),
+                "error_code" => "gd_access_denied",
             ]);
             exit();
         }

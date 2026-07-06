@@ -20,6 +20,34 @@ class ProductService extends CatalogDataService
 
     public function get(int $id): ?object { return $this->model->get_scoped($id, $this->unit_id); }
 
+    /**
+     * Busca Select2 de produtos compatíveis com locação: ativos, tipos
+     * `rental`/`service`/`fee`, da unidade ativa. Nunca retorna produto de outra
+     * unidade. Paginação por offset/limit.
+     *
+     * @return array<int,array<string,mixed>> linhas [id, code, name, product_type]
+     */
+    public function options(string $q, int $limit = 20, int $offset = 0): array
+    {
+        $t = $this->db->prefixTable("gd_products");
+        $qb = $this->db->table($t)->select("id,code,name,product_type")
+            ->where("unit_id", $this->unit_id)->where("deleted", 0)->where("status", "active")
+            ->whereIn("product_type", Constants::COURT_RENTAL_PRODUCT_TYPES);
+        $q = trim($q);
+        if ($q !== "") { $qb->groupStart()->like("name", $q)->orLike("code", $q)->groupEnd(); }
+        return $qb->orderBy("name")->limit(max(1, min(50, $limit)), max(0, $offset))->get()->getResultArray();
+    }
+
+    /** Valida que um produto é utilizável em locação (ativo, tipo compatível, da unidade/global). */
+    public function assertRentalCompatible(int $id): object
+    {
+        $row = $this->get($id);
+        if (!$row || (string) $row->status !== "active" || !in_array((string) $row->product_type, Constants::COURT_RENTAL_PRODUCT_TYPES, true)) {
+            throw new \DomainException("gd_invalid_product");
+        }
+        return $row;
+    }
+
     public function save(array $input, int $id = 0, bool $duplicate_override = false): array
     {
         $existing = $id ? $this->get($id) : null;

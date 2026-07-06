@@ -19,7 +19,7 @@ final class Constants
     public const ROUTE_PREFIX = "grupo_donato";
 
     /** Versão do plugin (deve bater com o cabeçalho de metadados do index.php). */
-    public const PLUGIN_VERSION = "0.9.1";
+    public const PLUGIN_VERSION = "0.9.6";
 
     /**
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
@@ -73,6 +73,12 @@ final class Constants
 
     /** Moeda padrão (ISO 4217). */
     public const DEFAULT_CURRENCY = "BRL";
+
+    /** Preços oficiais de locação de quadras do Grupo Donato. */
+    public const COURT_RENTAL_PRICE_PRESETS = [
+        "single" => [90 => "380.00", 120 => "460.00"],
+        "recurring" => [90 => "900.00", 120 => "1050.00"],
+    ];
 
     /** Status de categorias de catálogo. */
     public const PRODUCT_CATEGORY_STATUSES = ["active", "inactive", "archived"];

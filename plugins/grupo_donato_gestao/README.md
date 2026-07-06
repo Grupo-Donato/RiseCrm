@@ -2,11 +2,11 @@
 
 Plugin do Rise CRM para a gestão integrada do Grupo Donato.
 
-**Estado:** Fases 1 a 5 + **finalização do protótipo** (versão 0.9.0, schema 001–049, 49 tabelas). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico com cobranças, pagamentos, despesas, caixa e indicadores. O protótipo expõe um **submenu de 9 telas** com dashboard operacional, atalhos e navegação por abas/botões — ver [docs/prototype-guide.md](docs/prototype-guide.md) (demo em ≤15 min) e [docs/reports/prototype-final.md](docs/reports/prototype-final.md).
+**Estado:** Fases 1 a 5 + **locações simplificadas** (versão 0.9.6, schema 001–049, 49 tabelas). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico. O formulário de locação agora trabalha com as regras reais do Grupo Donato: avulso de 1h30 ou 2h, mensalista de 1h30 ou 2h e pacote especial de quadra + churrasqueira, com preço e horário calculados automaticamente.
 
 > **Importação (Cenário 2):** as tabelas `gd_import_*` (046–049) existem mas o módulo está **oculto** e **não foi continuado** no protótipo. `import_selftest` está desligado da suíte.
 >
-> **Bump 1.0.0 pendente:** o `verify-full` está verde em todo o escopo do plugin; falta apenas reverter `app/Config/Logger.php` (arquivo de core alterado fora deste trabalho) ao baseline para a homologação ficar 100% verde.
+> **Homologação:** nesta entrega, `verify-fast` foi executado com sucesso com checagem de banco desabilitada, além de lint em todos os arquivos PHP. O `verify-full` deve ser repetido no ambiente completo do Rise, com banco, plugins e usuário autenticado, antes da publicação em produção.
 
 ## Requisitos
 
@@ -77,4 +77,4 @@ Segredos são recusados pelo `SettingsService`; não há criptografia caseira. R
 
 As restrições de homologação são: não foi executada falha induzida de DDL em banco isolado e não houve automação de console JavaScript em navegador; os fluxos HTTP, banco, permissões e serviços foram verificados no ambiente real.
 
-Próxima etapa: reverter `app/Config/Logger.php` ao baseline, re-rodar `verify-full` e marcar 1.0.0. Importação permanece **não continuada** (oculta no protótipo). Ampliar o domínio só com nova fase formalmente definida.
+Próxima etapa: executar o prompt de backend em [docs/agent/CODEX_LOCACOES_BACKEND_PROMPT.md](docs/agent/CODEX_LOCACOES_BACKEND_PROMPT.md), validar o contrato em [docs/agent/LOCACOES_BACKEND_CONTRACT.md](docs/agent/LOCACOES_BACKEND_CONTRACT.md) e rodar `verify-full` no ambiente completo. Importação permanece **não continuada** e oculta no protótipo.

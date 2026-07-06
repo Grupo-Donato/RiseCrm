@@ -49,3 +49,16 @@ gd_assert('rotas financeiras separam leitura e escrita',isset($getFinance['grupo
 gd_assert('CSRF protege escrita financeira',in_array('csrf',(array)get_array_value($routes->getRoutesOptions('grupo_donato/finance/payments/save','POST'),'filter'),true));
 gd_assert('nenhum schema financeiro usa exclusão física',array_reduce(['gd_receivables','gd_payments','gd_expenses'],fn($ok,$t)=>$ok&&in_array('deleted',$db->getFieldNames($prefix.$t),true),true));
 gd_assert('não existem campos de integração bancária',!array_filter($financeTables,fn($t)=>array_intersect(['gateway_id','bank_reconciliation_id','pix_transaction_id'],$db->getFieldNames($prefix.$t))));
+// ---- 2.7: situação financeira agregada por locação em lote (sem N+1) ----
+// r2 (mensalista) é parcial e vence no futuro; criamos ainda uma cobrança já
+// vencida para o mesmo mensalista para exercitar o cálculo de "vencido".
+$pastDueCr=$fin->createReceivable(['source_type'=>'court_rental','source_id'=>(int)$monthly['id'],'reference_month'=>'2020-01','description'=>'Vencida CR '.$token,'issue_date'=>'2020-01-01','due_date'=>'2020-01-10','original_amount'=>'60.00','unit_amount'=>'60.00','quantity'=>'1']);
+$crBal=$fin->balancesBySource('court_rental',[(int)$monthly['id'],(int)$single['id']]);
+gd_assert('saldo agregado por locação retorna aberto/vencido/parcial em lote',isset($crBal[(int)$monthly['id']],$crBal[(int)$single['id']])&&$crBal[(int)$monthly['id']]['partial']===true&&\grupo_donato_gestao\Services\DataNormalizationService::decimalCompare($crBal[(int)$monthly['id']]['balance'],'0.00')>0&&\grupo_donato_gestao\Services\DataNormalizationService::decimalCompare($crBal[(int)$monthly['id']]['overdue'],'0.00')>0);
+gd_assert('saldo agregado lista as cobranças abertas da locação',count($crBal[(int)$monthly['id']]['open_ids'])===2&&count($crBal[(int)$single['id']]['open_ids'])===1&&$crBal[(int)$single['id']]['partial']===false);
+gd_assert('saldo agregado ignora origem sem cobrança aberta',!isset($crBal[999999]));
+// ---- 2.8: geração de cobrança avulsa é idempotente (retorna a existente, sem duplicar) ----
+$dupSingle=(new \grupo_donato_gestao\Services\ReceivableGenerationService($unit_id))->generateCourtRental((int)$single['id'],['amount'=>'80.00','due_date'=>'2098-02-05']);
+gd_assert('geração de cobrança avulsa é idempotente',empty($dupSingle['created'])&&!empty($dupSingle['duplicate'])&&(int)($dupSingle['id']??0)===(int)$singleCharge['id']);
+$crReceivables=$db->table($prefix.'gd_receivables')->where('unit_id',$unit_id)->where('source_type','court_rental')->where('source_id',(int)$single['id'])->where('deleted',0)->countAllResults();
+gd_assert('idempotência mantém uma única cobrança avulsa por locação',$crReceivables===1);

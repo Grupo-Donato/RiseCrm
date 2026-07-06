@@ -20,6 +20,22 @@ class PriceListService extends CatalogDataService
 
     public function get(int $id): ?object { return $this->model->get_scoped($id, $this->unit_id); }
 
+    /**
+     * Busca Select2 de tabelas de preço ativas da unidade ativa. Paginação por
+     * offset/limit.
+     *
+     * @return array<int,array<string,mixed>> linhas [id, code, name, currency]
+     */
+    public function options(string $q, int $limit = 20, int $offset = 0): array
+    {
+        $t = $this->db->prefixTable("gd_price_lists");
+        $qb = $this->db->table($t)->select("id,code,name,currency")
+            ->where("unit_id", $this->unit_id)->where("deleted", 0)->where("status", "active");
+        $q = trim($q);
+        if ($q !== "") { $qb->groupStart()->like("name", $q)->orLike("code", $q)->groupEnd(); }
+        return $qb->orderBy("priority", "DESC")->orderBy("name")->limit(max(1, min(50, $limit)), max(0, $offset))->get()->getResultArray();
+    }
+
     public function save(array $input, int $id = 0, bool $duplicate_override = false): array
     {
         $existing = $id ? $this->get($id) : null;

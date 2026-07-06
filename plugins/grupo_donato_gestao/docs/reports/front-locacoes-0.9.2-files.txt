@@ -1,0 +1,24 @@
+# Arquivos alterados — front de locações 0.9.2
+
+MODIFICADO  Config/Constants.php
+MODIFICADO  Controllers/Booking_series.php
+MODIFICADO  Controllers/Bookings.php
+MODIFICADO  Controllers/Calendar.php
+MODIFICADO  Controllers/Court_rentals.php
+NOVO        ENTREGA_LOCACOES.md
+MODIFICADO  Language/portuguese/default_lang.php
+MODIFICADO  README.md
+MODIFICADO  Views/booking_series/index.php
+MODIFICADO  Views/bookings/index.php
+MODIFICADO  Views/calendar/index.php
+NOVO        Views/components/rentals_nav.php
+NOVO        Views/components/rentals_styles.php
+MODIFICADO  Views/court_rentals/index.php
+MODIFICADO  Views/court_rentals/monthly.php
+MODIFICADO  Views/court_rentals/monthly_modal.php
+MODIFICADO  Views/court_rentals/single_modal.php
+MODIFICADO  Views/court_rentals/view.php
+NOVO        docs/LOCACOES_FRONT_AUDIT.md
+NOVO        docs/agent/CODEX_LOCACOES_BACKEND_PROMPT.md
+NOVO        docs/agent/LOCACOES_BACKEND_CONTRACT.md
+MODIFICADO  index.php

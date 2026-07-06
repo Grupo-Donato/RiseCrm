@@ -137,3 +137,41 @@ foreach (["gd_court_rental_status_" => \grupo_donato_gestao\Config\Constants::CO
 }
 $missingCrKeys = array_values(array_filter($crDynamicKeys, static fn($key) => app_lang($key) === $key));
 gd_assert("chaves dinâmicas da Fase 3C resolvem", !$missingCrKeys, implode(",", $missingCrKeys));
+
+// ---- 2.1: filtro por quadra cobre avulsa (gd_booking_resources) e recorrente (gd_booking_series_resources) ----
+$byResource = $rentalService->listPage(["resource_id" => $bookA, "limit" => 100]);
+$byResourceIds = array_map(static fn($r) => (int) $r->id, $byResource["data"]);
+gd_assert("filtro por quadra encontra avulsa vinculada a booking", in_array((int) $single["id"], $byResourceIds, true));
+gd_assert("filtro por quadra encontra recorrente vinculada a série", in_array((int) $monthly["id"], $byResourceIds, true));
+gd_assert("contagem filtrada por quadra usa o mesmo escopo dos dados", $byResource["recordsFiltered"] === count($byResource["data"]) || $byResource["recordsFiltered"] >= count($byResource["data"]));
+$byOther = $rentalService->listPage(["resource_id" => $bookC, "limit" => 100]);
+$byOtherIds = array_map(static fn($r) => (int) $r->id, $byOther["data"]);
+gd_assert("filtro por outra quadra exclui locações não vinculadas a ela", !in_array((int) $single["id"], $byOtherIds, true) && !in_array((int) $monthly["id"], $byOtherIds, true));
+
+// ---- 2.2: resumo de agenda no fuso da unidade (sem substring de UTC) ----
+$singleSchedule = $rentalService->get($single["id"])->schedule;
+gd_assert("resumo de avulsa é canônico no fuso local", ($singleSchedule["kind"] ?? "") === "single" && substr((string) $singleSchedule["starts_at_local"], 0, 16) === "2099-12-01 10:00" && $singleSchedule["local_time"] === "10:00–11:00" && ($singleSchedule["display"] ?? "") !== "");
+$recurringSchedule = $rentalService->get($monthly["id"])->schedule;
+gd_assert("resumo de recorrente traz dias e horário local", ($recurringSchedule["kind"] ?? "") === "recurring" && $recurringSchedule["local_start_time"] === "08:00" && in_array(1, $recurringSchedule["weekdays"], true));
+$tzSvc = new \grupo_donato_gestao\Services\TemporalService($unit_id);
+$midStart = $tzSvc->utcToLocal($tzSvc->localToUtc("2099-12-20", "23:00"))->format("Y-m-d H:i");
+$midEnd = $tzSvc->utcToLocal($tzSvc->localToUtc("2099-12-21", "00:30"))->format("Y-m-d H:i");
+gd_assert("horário que cruza meia-noite preserva data/hora local (virada de dia)", $midStart === "2099-12-20 23:00" && $midEnd === "2099-12-21 00:30");
+
+// ---- 2.5/2.6: options de produto e tabela de preço (escopo por unidade + tipos compatíveis) ----
+$prodOptions = (new \grupo_donato_gestao\Services\ProductService($unit_id))->options("", 50);
+$optTypes = array_values(array_unique(array_map(static fn($r) => (string) $r["product_type"], $prodOptions)));
+gd_assert("options de produto só traz tipos compatíveis com locação", !array_diff($optTypes, \grupo_donato_gestao\Config\Constants::COURT_RENTAL_PRODUCT_TYPES));
+gd_assert("options de produto inclui o de locação e exclui o físico", (bool) array_filter($prodOptions, static fn($r) => (int) $r["id"] === (int) $rental["id"]) && !array_filter($prodOptions, static fn($r) => (int) $r["id"] === (int) $phys["id"]));
+gd_assert("options de produto respeita a unidade (não vaza de outra)", !array_filter((new \grupo_donato_gestao\Services\ProductService($unit2_id))->options("", 50), static fn($r) => (int) $r["id"] === (int) $rental["id"]));
+$plOptions = (new \grupo_donato_gestao\Services\PriceListService($unit_id))->options("", 50);
+gd_assert("options de tabela de preço traz a lista ativa de teste", (bool) array_filter($plOptions, static fn($r) => (int) $r["id"] === (int) $list["id"]));
+
+// ---- 2.4: evento de calendário expõe court_rental_id + booking_type do vínculo ativo ----
+$calSvc = new \grupo_donato_gestao\Services\CalendarService($unit_id, true);
+$calStart = $tzSvc->utcToIsoLocal($tzSvc->localToUtc("2099-12-01", "00:00"));
+$calEnd = $tzSvc->utcToIsoLocal($tzSvc->localToUtc("2099-12-02", "00:00"));
+$calEvents = $calSvc->events($calStart, $calEnd, [$bookA], ["booking"], []);
+$calMatch = array_values(array_filter($calEvents, static fn($e) => (int) ($e["extendedProps"]["booking_id"] ?? 0) === (int) $single["booking_id"]));
+gd_assert("calendário inclui court_rental_id, booking_type e resource_ids no evento vinculado", $calMatch && (int) ($calMatch[0]["extendedProps"]["court_rental_id"] ?? 0) === (int) $single["id"] && ($calMatch[0]["extendedProps"]["booking_type"] ?? "") === "customer_rental" && isset($calMatch[0]["extendedProps"]["resource_ids"]));
+gd_assert("calendário sem tipos solicitados não devolve disponibilidade padrão", !array_filter($calSvc->events($calStart, $calEnd, [$bookA], [], []), static fn($e) => ($e["extendedProps"]["event_type"] ?? "") === "weekly_rule"));

@@ -12,7 +12,19 @@ class Bookings extends Gd_Controller
 {
     private int $unit_id;private BookingService $service;private TemporalService $time;
     public function __construct(){parent::__construct();$this->access->require("gd_bookings_view");$this->unit_id=(int)$this->active_unit_id();if(!$this->unit_id){throw new \RuntimeException("No active unit.");}$this->service=new BookingService($this->unit_id,$this->user_id(),$this->login_user);$this->time=new TemporalService($this->unit_id);}
-    public function index(){return $this->gd_render("bookings/index",["can_manage"=>$this->access->can("gd_bookings_manage"),"types"=>Constants::BOOKING_TYPES,"statuses"=>Constants::BOOKING_STATUSES,"resources"=>$this->service->bookableResources()]);}
+    public function index(){
+        if($this->access->can("gd_court_rentals_view")){return redirect()->to(get_uri("grupo_donato/court-rentals")."?tab=bookings");}
+        return $this->gd_render("bookings/index",[
+            "can_manage"=>$this->access->can("gd_bookings_manage"),
+            "can_calendar"=>$this->access->can("gd_calendar_view"),
+            "can_court_rentals"=>false,
+            "can_bookings"=>true,
+            "can_series"=>$this->access->can("gd_booking_series_view"),
+            "types"=>Constants::BOOKING_TYPES,
+            "statuses"=>Constants::BOOKING_STATUSES,
+            "resources"=>$this->service->bookableResources()
+        ]);
+    }
     public function list_data(){try{$r=$this->service->listPage(append_server_side_filtering_commmon_params(["resource_id"=>$this->request->getPost("resource_id"),"booking_type"=>$this->request->getPost("booking_type"),"status"=>$this->request->getPost("status"),"customer_account_id"=>$this->request->getPost("customer_account_id"),"date_from"=>$this->request->getPost("date_from"),"date_to"=>$this->request->getPost("date_to")]));$rows=[];foreach($r["data"] as $x){$rows[]=$this->row($x);}$r["data"]=$rows;return $this->response->setJSON($r);}catch(\Throwable $e){$this->gd_fail($e);}}
     public function modal(){try{$this->access->require("gd_bookings_manage");$id=(int)($this->request->getGet("id")?:$this->request->getPost("id"));$row=$id?$this->service->get($id):null;if($id&&!$row){return show_404();}$accounts=$this->service->customerOptions("",50);$contacts=$row&&$row->customer_account_id?$this->service->contactOptions((int)$row->customer_account_id):[];return $this->gd_view("bookings/modal_form",["model_info"=>$row?:new \stdClass(),"resources"=>$this->service->bookableResources(),"accounts"=>$accounts,"contacts"=>$contacts,"types"=>Constants::BOOKING_TYPES,"initial_statuses"=>$this->access->can("gd_booking_status_manage")?Constants::BOOKING_INITIAL_STATUSES:["hold","pending_confirmation"],"timezone"=>$this->time->timezoneName(),"starts_local"=>$row?$this->time->utcToLocalInput($row->starts_at_utc):"","ends_local"=>$row?$this->time->utcToLocalInput($row->ends_at_utc):"","hold_local"=>$row&&$row->hold_expires_at_utc?$this->time->utcToLocalInput($row->hold_expires_at_utc):"","series_scope"=>(string)$this->request->getPost("series_scope")]);}catch(\Throwable $e){$this->gd_fail($e);}}
     public function save(){try{$this->access->require("gd_bookings_manage");$r=$this->service->save($this->input(),(int)$this->request->getPost("id"),$this->access->can("gd_booking_status_manage"));$this->json_success(app_lang("record_saved"),$r);}catch(\Throwable $e){$this->gd_fail($e);}}

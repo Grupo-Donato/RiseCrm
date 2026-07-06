@@ -24,6 +24,13 @@ class CourtRentalService extends CatalogDataService
     private $links;
     private $items;
     private ?object $login_user;
+    private ?TemporalService $time = null;
+
+    /** Conversor de fuso da unidade (lazy — reusa o serviço canônico). */
+    private function time(): TemporalService
+    {
+        return $this->time ??= new TemporalService($this->unit_id);
+    }
 
     public function __construct(int $unit_id, int $actor_id = 0, ?object $login_user = null)
     {
@@ -84,7 +91,19 @@ class CourtRentalService extends CatalogDataService
             if ($value = trim((string) ($options["date_from"] ?? ""))) { $q->where("COALESCE($table.effective_until,'9999-12-31') >=", $value); }
             if ($value = trim((string) ($options["date_to"] ?? ""))) { $q->where("COALESCE($table.effective_from,'0001-01-01') <=", $value); }
             if (($rid = (int) ($options["resource_id"] ?? 0)) > 0) {
-                $q->where("EXISTS (SELECT 1 FROM `$links` lr JOIN `$sresources` sr ON sr.series_id=lr.booking_series_id AND sr.deleted=0 WHERE lr.rental_id=$table.id AND lr.unit_id=$table.unit_id AND lr.deleted=0 AND sr.resource_id=" . $rid . ")", null, false);
+                // O vínculo comercial pode apontar para uma série (mensalista) ou
+                // para um booking avulso; o filtro por quadra precisa cobrir os dois
+                // via recursos de série (gd_booking_series_resources) e recursos de
+                // booking (gd_booking_resources), considerando apenas links ativos.
+                $bresources = $this->db->prefixTable("gd_booking_resources");
+                $q->where(
+                    "EXISTS (SELECT 1 FROM `$links` lr WHERE lr.rental_id=$table.id AND lr.unit_id=$table.unit_id AND lr.deleted=0 AND lr.link_kind <> 'historical' AND ("
+                    . "EXISTS (SELECT 1 FROM `$sresources` sr WHERE sr.series_id=lr.booking_series_id AND sr.unit_id=lr.unit_id AND sr.deleted=0 AND sr.resource_id=$rid)"
+                    . " OR EXISTS (SELECT 1 FROM `$bresources` br WHERE br.booking_id=lr.booking_id AND br.unit_id=lr.unit_id AND br.deleted=0 AND br.resource_id=$rid)"
+                    . "))",
+                    null,
+                    false
+                );
             }
             if (($weekday = (int) ($options["weekday"] ?? 0)) >= 1 && $weekday <= 7) {
                 $series = $this->db->prefixTable("gd_booking_series");
@@ -171,7 +190,10 @@ class CourtRentalService extends CatalogDataService
             $rlock->acquire($this->unit_id, $resource_ids);
             if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental single transaction"); }
             $in_tx = true;
-            $booking = (new BookingService($this->unit_id, $this->actor_id, $this->login_user))->save($booking_input, 0, false, true, true);
+            // A criação integrada de locação é uma operação gerencial completa.
+            // Quando o formulário estiver marcado para confirmar/ativar, permite
+            // que a reserva vinculada já seja criada como confirmada.
+            $booking = (new BookingService($this->unit_id, $this->actor_id, $this->login_user))->save($booking_input, 0, true, true, true);
             $number = $this->nextNumber();
             $id = $this->insertRental($commercial, $number, "draft");
             $primary_resource = $resource_ids ? min($resource_ids) : 0;
@@ -547,23 +569,45 @@ class CourtRentalService extends CatalogDataService
         return $links;
     }
 
+    /**
+     * Resumo canônico da agenda no fuso da unidade.
+     *
+     * Para avulsa, converte o horário do booking de UTC para o fuso local usando
+     * o TemporalService (sem substring de UTC). Para recorrente, usa os horários
+     * locais já persistidos na série. Retorna também um `display` pronto para a
+     * view, mantendo `local_time`/`weekdays`/`next_occurrence_utc` por compat.
+     */
     private function scheduleSummary(object $rental, array $links): array
     {
-        $resource_ids = []; $weekdays = []; $local_time = ""; $next = null;
+        $kind = ((string) ($rental->rental_type ?? "")) === "recurring" ? "recurring" : "single";
+        $resource_ids = []; $weekdays = []; $local_time = ""; $next_utc = null;
+        $starts_at_local = null; $ends_at_local = null; $local_start_time = null; $local_end_time = null;
         foreach ($links as $link) {
             if ((int) ($link->deleted ?? 0) === 1 || (string) ($link->link_kind ?? "") === "historical") { continue; }
             if (!empty($link->series)) {
                 $s = $link->series;
                 foreach ($this->db->table($this->db->prefixTable("gd_booking_series_resources"))->select("resource_id")->where("series_id", $s->id)->where("unit_id", $this->unit_id)->where("deleted", 0)->get()->getResult() as $sr) { $resource_ids[] = (int) $sr->resource_id; }
                 foreach (json_decode((string) $s->weekdays, true) ?: [] as $wd) { $weekdays[] = (int) $wd; }
-                if ($local_time === "" && $s->local_start_time) { $local_time = substr((string) $s->local_start_time, 0, 5) . "–" . substr((string) $s->local_end_time, 0, 5); }
+                if ($local_start_time === null && $s->local_start_time) {
+                    $local_start_time = substr((string) $s->local_start_time, 0, 5);
+                    $local_end_time = substr((string) $s->local_end_time, 0, 5);
+                    if ($local_time === "") { $local_time = $local_start_time . "–" . $local_end_time; }
+                }
                 $occ = $this->db->table($this->db->prefixTable("gd_bookings"))->select("MIN(starts_at_utc) AS n", false)->where("unit_id", $this->unit_id)->where("series_id", $s->id)->where("deleted", 0)->whereIn("status", Constants::BOOKING_BLOCKING_STATUSES)->where("starts_at_utc >=", gmdate("Y-m-d H:i:s"))->get(1)->getRow();
-                if ($occ && $occ->n && ($next === null || $occ->n < $next)) { $next = $occ->n; }
+                if ($occ && $occ->n && ($next_utc === null || $occ->n < $next_utc)) { $next_utc = $occ->n; }
             } elseif (!empty($link->booking)) {
                 $b = $link->booking;
                 foreach ($this->db->table($this->db->prefixTable("gd_booking_resources"))->select("resource_id")->where("booking_id", $b->id)->where("unit_id", $this->unit_id)->where("deleted", 0)->get()->getResult() as $br) { $resource_ids[] = (int) $br->resource_id; }
-                if ($local_time === "") { $local_time = substr((string) $b->starts_at_utc, 11, 5) . "–" . substr((string) $b->ends_at_utc, 11, 5); }
-                if ($b->starts_at_utc >= gmdate("Y-m-d H:i:s") && ($next === null || $b->starts_at_utc < $next)) { $next = $b->starts_at_utc; }
+                if ($starts_at_local === null) {
+                    try {
+                        $ls = $this->time()->utcToLocal((string) $b->starts_at_utc);
+                        $le = $this->time()->utcToLocal((string) $b->ends_at_utc);
+                        $starts_at_local = $ls->format("Y-m-d H:i:s");
+                        $ends_at_local = $le->format("Y-m-d H:i:s");
+                        if ($local_time === "") { $local_time = $ls->format("H:i") . "–" . $le->format("H:i"); }
+                    } catch (\Throwable $e) { /* horário malformado: ignora, não vaza UTC como local */ }
+                }
+                if ($b->starts_at_utc >= gmdate("Y-m-d H:i:s") && ($next_utc === null || $b->starts_at_utc < $next_utc)) { $next_utc = $b->starts_at_utc; }
             }
         }
         $resource_ids = array_values(array_unique($resource_ids));
@@ -572,7 +616,40 @@ class CourtRentalService extends CatalogDataService
             foreach ($this->db->table($this->db->prefixTable("gd_resources"))->select("code,name")->whereIn("id", $resource_ids)->where("unit_id", $this->unit_id)->orderBy("code")->get()->getResult() as $r) { $names[] = $r->code . " — " . $r->name; }
         }
         sort($weekdays);
-        return ["resource_names" => implode(", ", $names), "weekdays" => array_values(array_unique($weekdays)), "local_time" => $local_time, "next_occurrence_utc" => $next];
+        $weekdays = array_values(array_unique($weekdays));
+        $next_local = null;
+        if ($next_utc !== null) { try { $next_local = $this->time()->utcToLocal((string) $next_utc)->format("Y-m-d H:i:s"); } catch (\Throwable $e) { $next_local = null; } }
+        return [
+            "kind" => $kind,
+            "resource_names" => implode(", ", $names),
+            "weekdays" => $weekdays,
+            "local_time" => $local_time,
+            "local_start_time" => $local_start_time,
+            "local_end_time" => $local_end_time,
+            "starts_at_local" => $starts_at_local,
+            "ends_at_local" => $ends_at_local,
+            "next_occurrence_utc" => $next_utc,
+            "next_occurrence_local" => $next_local,
+            "display" => $this->buildScheduleDisplay($kind, $weekdays, $local_time, $starts_at_local, $ends_at_local),
+        ];
+    }
+
+    /** Texto pronto do horário (recorrente: dias · hora; avulsa: data/hora local). */
+    private function buildScheduleDisplay(string $kind, array $weekdays, string $local_time, ?string $starts_at_local, ?string $ends_at_local): string
+    {
+        if ($kind === "recurring" && $weekdays) {
+            $labels = array_map(static fn($d) => app_lang("gd_weekday_short_" . (int) $d), $weekdays);
+            return implode(", ", $labels) . ($local_time !== "" ? " · " . $local_time : "");
+        }
+        if ($kind === "single" && $starts_at_local) {
+            try {
+                $s = new \DateTimeImmutable($starts_at_local);
+                $e = $ends_at_local ? new \DateTimeImmutable($ends_at_local) : null;
+                $same_day = $e && $s->format("Y-m-d") === $e->format("Y-m-d");
+                return $s->format("d/m/Y H:i") . ($e ? "–" . ($same_day ? $e->format("H:i") : $e->format("d/m/Y H:i")) : "");
+            } catch (\Throwable $e) { return $local_time; }
+        }
+        return $local_time;
     }
 
     private function priceDifference(object $rental): ?string

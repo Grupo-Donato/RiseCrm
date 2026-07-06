@@ -32,7 +32,18 @@ class Booking_series extends Gd_Controller
 
     public function index()
     {
-        return $this->gd_render("booking_series/index", ["can_manage" => $this->access->can("gd_booking_series_manage"), "statuses" => Constants::BOOKING_SERIES_STATUSES, "resources" => $this->bookings->bookableResources()]);
+        if ($this->access->can("gd_court_rentals_view")) {
+            return redirect()->to(get_uri("grupo_donato/court-rentals") . "?tab=series");
+        }
+        return $this->gd_render("booking_series/index", [
+            "can_manage" => $this->access->can("gd_booking_series_manage"),
+            "can_calendar" => $this->access->can("gd_calendar_view"),
+            "can_court_rentals" => false,
+            "can_bookings" => $this->access->can("gd_bookings_view"),
+            "can_series" => true,
+            "statuses" => Constants::BOOKING_SERIES_STATUSES,
+            "resources" => $this->bookings->bookableResources(),
+        ]);
     }
 
     public function list_data()

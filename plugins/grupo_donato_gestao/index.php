@@ -6,7 +6,7 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 Plugin Name: Grupo Donato — Gestão
 Plugin URL: https://grupodonato.local
 Description: Gestão integrada de cadastro, agenda, locações, escola, personal e financeiro básico (até a Fase 5).
-Version: 0.9.1
+Version: 0.9.6
 Requires at least: 3.9.6
 Author: Grupo Donato
 */
@@ -143,19 +143,21 @@ if (!function_exists('gd_current_login_user')) {
             ];
         }
 
+        // A navegação de locações foi consolidada em três pontos de trabalho.
+        // Reservas, ocupações e séries continuam existindo tecnicamente, mas
+        // aparecem como abas da mesma tela para evitar itens duplicados.
         $rental_submenu = [];
         if ($can_calendar) {
             $rental_submenu[] = ["name" => "rental_agenda", "language_key" => "gd_menu_rental_agenda", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/calendar"), "class" => "calendar"];
         }
-        if ($can_bookings) {
-            $rental_submenu[] = ["name" => "rental_bookings", "language_key" => "gd_menu_rental_bookings", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/bookings"), "class" => "calendar-check"];
-        }
-        if ($can_booking_series) {
-            $rental_submenu[] = ["name" => "rental_series", "language_key" => "gd_menu_rental_series", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/booking-series"), "class" => "repeat"];
+        if ($can_court_rentals || $can_bookings || $can_booking_series) {
+            $reservations_uri = $can_court_rentals
+                ? "grupo_donato/court-rentals"
+                : ($can_bookings ? "grupo_donato/bookings" : "grupo_donato/booking-series");
+            $rental_submenu[] = ["name" => "rental_bookings", "language_key" => "gd_menu_rental_bookings", "is_custom_menu_item" => true, "url" => get_uri($reservations_uri), "class" => "clipboard"];
         }
         if ($can_court_rentals) {
-            $rental_submenu[] = ["name" => "rental_single", "language_key" => "gd_menu_rental_single", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals"), "class" => "shopping-bag"];
-            $rental_submenu[] = ["name" => "rental_monthly", "language_key" => "gd_menu_rental_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "dollar-sign"];
+            $rental_submenu[] = ["name" => "rental_monthly", "language_key" => "gd_menu_rental_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "repeat"];
         }
         if ($can_finance) {
             $rental_submenu[] = ["name" => "rental_finance", "language_key" => "gd_menu_rental_finance", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/receivables?source_type=court_rental"), "class" => "file-text"];

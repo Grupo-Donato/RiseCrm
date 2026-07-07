@@ -3,6 +3,7 @@
 namespace grupo_donato_gestao\Operacional\Controllers;
 
 use App\Controllers\Security_Controller;
+use grupo_donato_gestao\Services\RoleAccessService;
 
 class Bombeiros extends Security_Controller
 {
@@ -49,6 +50,10 @@ class Bombeiros extends Security_Controller
         $this->Bombeiros_person_unit_access_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_person_unit_access_model");
         $this->Bombeiros_leads_palestra_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_leads_palestra_model");
         $this->Bombeiros_custos_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_custos_model");
+
+        if (!$public_matricula_request) {
+            $this->_enforce_operational_route_access();
+        }
     }
 
     public function index()
@@ -56,15 +61,17 @@ class Bombeiros extends Security_Controller
         $unidade_atual = $this->_active_unit();
         $dashboard_periodo = $this->_dashboard_periodo();
         $gd_active_tab = $this->_gd_active_tab();
+        $gd_allowed_sections = $this->_gd_allowed_sections();
         $view_data["unidade_atual"] = $unidade_atual;
         $view_data["unidades_contexto_dropdown"] = $this->_unidades_contexto_dropdown();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown(false);
         $view_data["gd_active_tab"] = $gd_active_tab;
+        $view_data["gd_allowed_sections"] = $gd_allowed_sections;
         $view_data["dashboard_periodo"] = $dashboard_periodo;
-        $view_data["dashboard_resumo"] = $this->_dashboard_resumo_data($dashboard_periodo["mes"], $dashboard_periodo["ano"]);
-        $view_data["qualidade_resumo"] = $this->_qualidade_resumo_data();
-        $view_data["financeiro_resumo"] = $this->_financeiro_resumo_data();
-        $view_data["mensagens_contexto"] = $this->_mensagens_contexto_data();
+        $view_data["dashboard_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_dashboard_resumo_data($dashboard_periodo["mes"], $dashboard_periodo["ano"]) : [];
+        $view_data["qualidade_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_qualidade_resumo_data() : [];
+        $view_data["financeiro_resumo"] = $this->_gd_can_access_section("financeiro") ? $this->_financeiro_resumo_data() : [];
+        $view_data["mensagens_contexto"] = $this->_gd_can_access_section("mensagens") ? $this->_mensagens_contexto_data() : [];
         return $this->template->render('grupo_donato_gestao\Operacional\Views\index', $view_data);
     }
 
@@ -3255,6 +3262,65 @@ class Bombeiros extends Security_Controller
             || strpos($uri, "grupo_donato/operacional/salvar_matricula_publica") === 0;
     }
 
+    private function _enforce_operational_route_access()
+    {
+        $allowed_sections = $this->_gd_allowed_sections();
+        if (!$allowed_sections) {
+            $this->_deny_operational_access();
+        }
+
+        $router = service("router");
+        $method = strtolower((string) $router->methodName());
+        if (!$method || $method === "index") {
+            return;
+        }
+
+        $section = RoleAccessService::operational_route_section($method);
+        if (!$section) {
+            $this->_deny_operational_access();
+        }
+
+        if ($section === RoleAccessService::OPERATIONAL_ANY_SECTION) {
+            return;
+        }
+
+        if (!$this->_gd_can_access_section($section)) {
+            $this->_deny_operational_access();
+        }
+    }
+
+    private function _deny_operational_access()
+    {
+        $is_ajax_or_post = $this->request->isAJAX() || strtolower((string) $this->request->getMethod()) === "post";
+        if ($is_ajax_or_post) {
+            http_response_code(403);
+            header("Content-Type: application/json; charset=UTF-8");
+            echo json_encode([
+                "success" => false,
+                "message" => "Você não tem permissão para acessar esta área.",
+                "error_code" => "gd_operacional_access_denied"
+            ]);
+            exit();
+        }
+
+        app_redirect("forbidden");
+    }
+
+    private function _gd_allowed_sections()
+    {
+        return RoleAccessService::allowed_operational_sections($this->login_user);
+    }
+
+    private function _gd_can_access_section($section)
+    {
+        return RoleAccessService::can_access_operational_section($this->login_user, (string) $section);
+    }
+
+    private function _gd_default_tab()
+    {
+        return RoleAccessService::default_operational_section($this->login_user) ?: "alunos";
+    }
+
     private function _get_unidade_ativa()
     {
         $slug = $this->session->get("grupo_donato_operacional_unidade_slug");
@@ -3478,7 +3544,11 @@ class Bombeiros extends Security_Controller
             "pagamentos", "financeiro", "custos", "materiais", "leads", "mensagens", "unidades"
         ];
 
-        return in_array($active_tab, $allowed_tabs, true) ? $active_tab : "dashboard";
+        if (!in_array($active_tab, $allowed_tabs, true)) {
+            $active_tab = $this->_gd_default_tab();
+        }
+
+        return $this->_gd_can_access_section($active_tab) ? $active_tab : $this->_gd_default_tab();
     }
 
     private function _dashboard_resumo_data($mes_referencia = 0, $ano_referencia = 0)

@@ -79,6 +79,43 @@ if (!function_exists("bombeiros_install_or_update")) {
         return $flat;
     }
 
+    function bombeiros_current_login_user()
+    {
+        if (function_exists("gd_current_login_user")) {
+            return gd_current_login_user();
+        }
+
+        try {
+            $users = model("App\\Models\\Users_model");
+            $uid = $users->login_user_id();
+            if (!$uid) {
+                return null;
+            }
+            $user = $users->get_access_info($uid);
+            if ($user) {
+                if (!empty($user->permissions) && is_string($user->permissions)) {
+                    $permissions = @unserialize($user->permissions, ["allowed_classes" => false]);
+                    $user->permissions = is_array($permissions) ? $permissions : [];
+                } else if (empty($user->permissions)) {
+                    $user->permissions = [];
+                }
+            }
+            return $user ?: null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    function bombeiros_allowed_left_menu_sections()
+    {
+        $user = bombeiros_current_login_user();
+        if (!$user) {
+            return [];
+        }
+
+        return \grupo_donato_gestao\Services\RoleAccessService::allowed_operational_sections($user);
+    }
+
     function bombeiros_left_menu_sections()
     {
         return [
@@ -106,6 +143,12 @@ if (!function_exists("bombeiros_install_or_update")) {
         $items = [];
         $position = 3;
         $active_key = "";
+        $allowed_sections = array_flip(bombeiros_allowed_left_menu_sections());
+        $sections = array_intersect_key(bombeiros_left_menu_sections(), $allowed_sections);
+
+        if (!$sections) {
+            return [];
+        }
 
         if (function_exists("uri_string") && strpos(uri_string(), "grupo_donato/operacional") === 0) {
             $tab = "";
@@ -113,10 +156,11 @@ if (!function_exists("bombeiros_install_or_update")) {
                 $request = service("request");
                 $tab = $request ? $request->getGet("gd_tab") : "";
             }
-            $active_key = "grupo_donato_" . ($tab ?: "dashboard");
+            $active_tab = $tab && isset($sections[$tab]) ? $tab : array_key_first($sections);
+            $active_key = "grupo_donato_" . $active_tab;
         }
 
-        foreach (bombeiros_left_menu_sections() as $key => $item) {
+        foreach ($sections as $key => $item) {
             $menu_key = "grupo_donato_" . $key;
             $items[$menu_key] = [
                 "name" => bombeiros_left_menu_native_name($key, $item),

@@ -119,9 +119,10 @@ ksort($ano_dropdown);
         $("#bombeiros-custo-form").appForm({
             onSuccess: function (result) {
                 if (result.success) {
-                    $("#bombeiros-custos-table").appTable({newData: result.data, dataId: result.id});
-                    if (window.reloadGdOperationalTables) {
-                        reloadGdOperationalTables();
+                    if (window.reloadBombeirosTable) {
+                        reloadBombeirosTable("#bombeiros-custos-table");
+                    } else {
+                        $("#bombeiros-custos-table").appTable({reload: true});
                     }
                 }
             }

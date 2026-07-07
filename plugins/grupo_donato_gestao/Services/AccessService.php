@@ -36,6 +36,15 @@ class AccessService
         if (($this->login_user->user_type ?? "") !== "staff") {
             return false;
         }
+
+        if (RoleAccessService::is_full_access_role($this->login_user)) {
+            return true;
+        }
+
+        if (RoleAccessService::is_professor($this->login_user)) {
+            return false;
+        }
+
         $permissions = $this->login_user->permissions ?? [];
         if ((bool) get_array_value($permissions, $permission_key)) {
             return true;

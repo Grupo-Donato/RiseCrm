@@ -20,6 +20,15 @@ final class Permissions
         if (($user->user_type ?? '') !== 'staff') {
             return false;
         }
+        if (class_exists('\\grupo_donato_gestao\\Services\\RoleAccessService')) {
+            if (\grupo_donato_gestao\Services\RoleAccessService::is_full_access_role($user)) {
+                return true;
+            }
+            if (\grupo_donato_gestao\Services\RoleAccessService::is_professor($user)) {
+                return false;
+            }
+        }
+
         $permissions = is_array($user->permissions ?? null) ? $user->permissions : [];
         if (!empty($permissions[$key])) {
             return true;

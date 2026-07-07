@@ -46,7 +46,7 @@
 <script type="text/javascript">
     window.initBombeirosCustosTable = function () {
         if (!$("#bombeiros-custos-table").length || !$.fn.DataTable || !$.fn.appTable) {
-            return;
+            return false;
         }
 
         if (!$.fn.DataTable.isDataTable("#bombeiros-custos-table")) {
@@ -109,13 +109,17 @@
                 printColumns: [0, 1, 2, 3, 4, 5, 6, 7],
                 xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7]
             });
+            return true;
         } else {
             $("#bombeiros-custos-table").DataTable().columns.adjust();
+            return false;
         }
     };
 
     $(document).ready(function () {
-        window.initBombeirosCustosTable();
+        if (!$(".gd-operacional-page").length) {
+            window.initBombeirosCustosTable();
+        }
 
         var applyBombeirosCustosMobileFilters = function () {
             var settings = window.InstanceCollection ? window.InstanceCollection["bombeiros-custos-table"] : null;

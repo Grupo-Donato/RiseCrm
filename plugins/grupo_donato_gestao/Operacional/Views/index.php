@@ -31,7 +31,7 @@ for ($ano = (int) date("Y") - 3; $ano <= (int) date("Y") + 2; $ano++) {
 }
 $dashboard_ano_options[$dashboard_ano] = $dashboard_ano;
 ksort($dashboard_ano_options);
-$gd_tab_targets = [
+$gd_all_tab_targets = [
     "dashboard" => "#bombeiros-tab-dashboard",
     "alunos" => "#bombeiros-tab-alunos",
     "cancelados" => "#bombeiros-tab-cancelados",
@@ -46,7 +46,7 @@ $gd_tab_targets = [
     "mensagens" => "#bombeiros-tab-mensagens",
     "unidades" => "#bombeiros-tab-unidades"
 ];
-$gd_section_labels = [
+$gd_all_section_labels = [
     "dashboard" => "Dashboard",
     "alunos" => "Alunos",
     "cancelados" => "Cancelados",
@@ -61,14 +61,28 @@ $gd_section_labels = [
     "mensagens" => "Mensagens",
     "unidades" => "Unidades"
 ];
+$gd_allowed_sections = isset($gd_allowed_sections) && is_array($gd_allowed_sections) ? $gd_allowed_sections : array_keys($gd_all_tab_targets);
+$gd_allowed_lookup = array_flip($gd_allowed_sections);
+$gd_can_access_section = function ($section) use ($gd_allowed_lookup) {
+    return isset($gd_allowed_lookup[$section]);
+};
+$gd_tab_targets = array_intersect_key($gd_all_tab_targets, $gd_allowed_lookup);
+$gd_section_labels = array_intersect_key($gd_all_section_labels, $gd_allowed_lookup);
 $gd_active_tab = $gd_active_tab ?? "dashboard";
 if (!isset($gd_tab_targets[$gd_active_tab])) {
-    $gd_active_tab = "dashboard";
+    $gd_active_tab = array_key_first($gd_tab_targets) ?: "alunos";
 }
-$gd_active_tab_target = $gd_tab_targets[$gd_active_tab];
+$gd_active_tab_target = $gd_tab_targets[$gd_active_tab] ?? "#bombeiros-tab-alunos";
+$gd_can_render_tab = function ($tab) use ($gd_tab_targets) {
+    return isset($gd_tab_targets[$tab]);
+};
 $gd_pane_class = function ($tab) use ($gd_active_tab) {
     return "tab-pane fade" . ($tab === $gd_active_tab ? " show active" : "");
 };
+$dashboard_resumo = $dashboard_resumo ?? [];
+$qualidade_resumo = $qualidade_resumo ?? [];
+$financeiro_resumo = $financeiro_resumo ?? [];
+$mensagens_contexto = $mensagens_contexto ?? [];
 $dashboard_resultado = (float) ($dashboard_resumo["resultado_operacional"] ?? 0);
 $dashboard_resultado_class = $dashboard_resultado > 0 ? "bg-success" : ($dashboard_resultado < 0 ? "bg-danger" : "bg-info");
 $dashboard_resultado_icon = $dashboard_resultado >= 0 ? "trending-up" : "trending-down";
@@ -330,10 +344,16 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             <h1>Grupo Donato — Operacional</h1>
             <div class="title-button-group skip-dropdown-migration">
                 <?php
-                echo modal_anchor(get_uri("grupo_donato/operacional/importar_modal_form"), "<i data-feather='upload' class='icon-16'></i> Importar", ["class" => "btn btn-default", "title" => "Importar planilha"]);
-                echo modal_anchor(get_uri("grupo_donato/operacional/unidade_modal_form"), "<i data-feather='map-pin' class='icon-16'></i> Nova unidade", ["class" => "btn btn-default", "title" => "Nova unidade"]);
-                echo modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Novo aluno", ["class" => "btn btn-default", "title" => "Novo aluno"]);
-                echo anchor(get_uri("matricula-online/" . $unidade_atual_slug), "<i data-feather='link' class='icon-16'></i> Link telemarketing", ["id" => "gd-link-matricula-publica", "class" => "btn btn-default", "target" => "_blank", "rel" => "noopener", "title" => "Abrir link público de matrícula"]);
+                if ($gd_can_access_section("importar")) {
+                    echo modal_anchor(get_uri("grupo_donato/operacional/importar_modal_form"), "<i data-feather='upload' class='icon-16'></i> Importar", ["class" => "btn btn-default", "title" => "Importar planilha"]);
+                }
+                if ($gd_can_access_section("unidades")) {
+                    echo modal_anchor(get_uri("grupo_donato/operacional/unidade_modal_form"), "<i data-feather='map-pin' class='icon-16'></i> Nova unidade", ["class" => "btn btn-default", "title" => "Nova unidade"]);
+                }
+                if ($gd_can_access_section("alunos")) {
+                    echo modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Novo aluno", ["class" => "btn btn-default", "title" => "Novo aluno"]);
+                    echo anchor(get_uri("matricula-online/" . $unidade_atual_slug), "<i data-feather='link' class='icon-16'></i> Link telemarketing", ["id" => "gd-link-matricula-publica", "class" => "btn btn-default", "target" => "_blank", "rel" => "noopener", "title" => "Abrir link público de matrícula"]);
+                }
                 ?>
             </div>
         </div>
@@ -366,6 +386,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         </div>
 
         <div class="tab-content">
+            <?php if ($gd_can_render_tab("dashboard")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("dashboard"); ?>" id="bombeiros-tab-dashboard">
                 <div class="p20">
                     <div class="row align-items-end mb15">
@@ -621,25 +642,35 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("alunos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("alunos"); ?>" id="bombeiros-tab-alunos">
                 <div class="table-responsive">
                     <table id="bombeiros-alunos-table" class="display" cellspacing="0" width="100%"></table>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("cancelados")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("cancelados"); ?>" id="bombeiros-tab-cancelados">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_cancelados'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("concluidos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("concluidos"); ?>" id="bombeiros-tab-concluidos">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_concluidos'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("responsaveis")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("responsaveis"); ?>" id="bombeiros-tab-responsaveis">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_responsaveis'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("presenca")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("presenca"); ?>" id="bombeiros-tab-presenca">
                 <div class="p20">
                     <div class="row">
@@ -680,29 +711,41 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("pagamentos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("pagamentos"); ?>" id="bombeiros-tab-pagamentos">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_pagamentos'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("financeiro")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("financeiro"); ?>" id="bombeiros-tab-financeiro">
                 <div id="bombeiros-financeiro-pane">
                     <?php echo view('grupo_donato_gestao\Operacional\Views\financeiro_resumo', $financeiro_resumo); ?>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("custos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("custos"); ?>" id="bombeiros-tab-custos">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_custos'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("materiais")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("materiais"); ?>" id="bombeiros-tab-materiais">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_materiais'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("leads")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("leads"); ?>" id="bombeiros-tab-leads">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_leads_palestra'); ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("mensagens")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("mensagens"); ?>" id="bombeiros-tab-mensagens">
                 <div class="p20">
                     <div class="row">
@@ -718,10 +761,13 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <?php if ($gd_can_render_tab("unidades")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("unidades"); ?>" id="bombeiros-tab-unidades">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\unidades'); ?>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -796,10 +842,13 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                 window.reloadBombeirosTable("#bombeiros-unidades-table");
             }
             if (tabTarget === "#bombeiros-tab-custos") {
+                var custosInitialized = false;
                 if (window.initBombeirosCustosTable) {
-                    window.initBombeirosCustosTable();
+                    custosInitialized = window.initBombeirosCustosTable();
                 }
-                window.reloadBombeirosTable("#bombeiros-custos-table");
+                if (!custosInitialized) {
+                    window.reloadBombeirosTable("#bombeiros-custos-table");
+                }
             }
             if (tabTarget === "#bombeiros-tab-pagamentos") {
                 if (window.initBombeirosPagamentosTable) {
@@ -813,8 +862,8 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         };
 
         var activateGdPane = function (tabTarget) {
-            if (!tabTarget || !$(tabTarget).length) {
-                tabTarget = "#bombeiros-tab-dashboard";
+            if (!tabTarget || gdTabTargets.indexOf(tabTarget) === -1 || !$(tabTarget).length) {
+                tabTarget = gdDefaultTabTarget;
             }
 
             $(gdTabTargets.join(",")).removeClass("show active");
@@ -831,7 +880,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         });
 
         var restoreGdActiveTab = function () {
-            var tabTarget = gdDefaultTabTarget || "#bombeiros-tab-dashboard";
+            var tabTarget = gdDefaultTabTarget;
             var storedTabTarget = "";
             try {
                 storedTabTarget = sessionStorage.getItem("gdGerencialActiveTab") || "";
@@ -859,7 +908,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
             window.gdHardReloadPending = true;
             var activePaneId = $(".tab-content > .tab-pane.active").attr("id");
-            var activeTab = activePaneId ? "#" + activePaneId : "#bombeiros-tab-dashboard";
+            var activeTab = activePaneId ? "#" + activePaneId : gdDefaultTabTarget;
             try {
                 sessionStorage.setItem("gdGerencialActiveTab", activeTab);
             } catch (e) {
@@ -1021,7 +1070,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             });
         };
 
-        if (!$.fn.DataTable.isDataTable("#bombeiros-alunos-table")) {
+        if ($("#bombeiros-alunos-table").length && !$.fn.DataTable.isDataTable("#bombeiros-alunos-table")) {
             $("#bombeiros-alunos-table").appTable({
                 source: "<?php echo_uri("grupo_donato/operacional/alunos_list_data"); ?>",
                 order: [[1, "asc"]],
@@ -1105,10 +1154,13 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                 window.reloadBombeirosTable("#bombeiros-unidades-table");
             }
             if ($(event.target).attr("href") === "#bombeiros-tab-custos") {
+                var custosInitialized = false;
                 if (window.initBombeirosCustosTable) {
-                    window.initBombeirosCustosTable();
+                    custosInitialized = window.initBombeirosCustosTable();
                 }
-                window.reloadBombeirosTable("#bombeiros-custos-table");
+                if (!custosInitialized) {
+                    window.reloadBombeirosTable("#bombeiros-custos-table");
+                }
             }
             recalcGdResponsiveTables();
             feather.replace();

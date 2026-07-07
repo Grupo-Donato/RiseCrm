@@ -18,6 +18,7 @@ use grupo_donato_gestao\Database\Seeds\FoundationSeeder;
 use grupo_donato_gestao\Database\Seeds\PermissionsRegistrar;
 use grupo_donato_gestao\Services\AccessService;
 use grupo_donato_gestao\Services\AuditService;
+use grupo_donato_gestao\Services\RoleAccessService;
 
 // evita execução dupla no mesmo request
 if (defined('GD_PLUGIN_LOADED')) {
@@ -72,6 +73,14 @@ if (!function_exists('gd_current_login_user')) {
     function gd_cobranca_can_view($user): bool
     {
         if (!$user) {
+            return false;
+        }
+
+        if (RoleAccessService::has_full_plugin_access($user)) {
+            return true;
+        }
+
+        if (RoleAccessService::is_professor($user)) {
             return false;
         }
 
@@ -189,9 +198,8 @@ if (!function_exists('gd_current_login_user')) {
         if (!$user) {
             return $settings_menu;
         }
-        $is_admin = !empty($user->is_admin);
-        $perms = is_array($user->permissions ?? null) ? $user->permissions : [];
-        if (!($is_admin || get_array_value($perms, 'gd_settings_view') || get_array_value($perms, 'gd_settings_manage'))) {
+        $access = new AccessService($user);
+        if (!$access->can('gd_settings_view') && !$access->can('gd_settings_manage')) {
             return $settings_menu;
         }
 

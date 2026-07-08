@@ -89,4 +89,27 @@ class Bombeiros_custos_model extends Crud_model
 
         return $this->db->query($sql)->getRow();
     }
+
+    public function get_resumo($unit_id = 0)
+    {
+        $custos_table = $this->db->prefixTable("grupo_donato_custos_unidade");
+        $where = "WHERE $custos_table.deleted=0";
+
+        if ($unit_id) {
+            $where .= " AND $custos_table.unit_id=" . (int) $unit_id;
+        }
+
+        $sql = "SELECT
+                SUM(CASE WHEN $custos_table.status IS NULL OR $custos_table.status!='Cancelado' THEN 1 ELSE 0 END) AS qtd_lancados,
+                SUM(CASE WHEN $custos_table.status='Pago' THEN 1 ELSE 0 END) AS qtd_pagos,
+                SUM(CASE WHEN $custos_table.status='Previsto' THEN 1 ELSE 0 END) AS qtd_previstos,
+                SUM(CASE WHEN $custos_table.status='Cancelado' THEN 1 ELSE 0 END) AS qtd_cancelados,
+                SUM(CASE WHEN $custos_table.status='Pago' THEN $custos_table.valor ELSE 0 END) AS total_pago,
+                SUM(CASE WHEN $custos_table.status='Previsto' THEN $custos_table.valor ELSE 0 END) AS total_previsto,
+                SUM(CASE WHEN $custos_table.status IS NULL OR $custos_table.status!='Cancelado' THEN $custos_table.valor ELSE 0 END) AS total_geral
+            FROM $custos_table
+            $where";
+
+        return $this->db->query($sql)->getRow();
+    }
 }

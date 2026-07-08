@@ -429,6 +429,19 @@ class Bombeiros extends Security_Controller
         echo json_encode(["data" => $result]);
     }
 
+    public function custos_resumo()
+    {
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_view_finance")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para visualizar custos nesta unidade."]);
+            return;
+        }
+
+        echo json_encode([
+            "success" => true,
+            "data" => $this->_custos_resumo_data()
+        ]);
+    }
+
     public function aluno_modal_form()
     {
         $this->validate_submitted_data(["id" => "numeric"]);
@@ -2842,6 +2855,21 @@ class Bombeiros extends Security_Controller
             "total_recebido_formatado" => "R$ " . number_format((float) ($resumo->total_recebido ?? 0), 2, ",", "."),
             "total_a_receber_formatado" => "R$ " . number_format((float) ($resumo->total_a_receber ?? 0), 2, ",", "."),
             "valor_previsto_formatado" => "R$ " . number_format((float) ($resumo->valor_previsto ?? 0), 2, ",", ".")
+        ];
+    }
+
+    private function _custos_resumo_data()
+    {
+        $resumo = $this->Bombeiros_custos_model->get_resumo($this->_active_unit_id());
+
+        return [
+            "total_lancados" => (int) ($resumo->qtd_lancados ?? 0),
+            "total_pagos" => (int) ($resumo->qtd_pagos ?? 0),
+            "total_previstos" => (int) ($resumo->qtd_previstos ?? 0),
+            "total_cancelados" => (int) ($resumo->qtd_cancelados ?? 0),
+            "total_pago_formatado" => "R$ " . number_format((float) ($resumo->total_pago ?? 0), 2, ",", "."),
+            "total_previsto_formatado" => "R$ " . number_format((float) ($resumo->total_previsto ?? 0), 2, ",", "."),
+            "total_geral_formatado" => "R$ " . number_format((float) ($resumo->total_geral ?? 0), 2, ",", ".")
         ];
     }
 

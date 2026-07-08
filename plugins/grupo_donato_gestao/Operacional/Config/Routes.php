@@ -49,6 +49,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("pagamentos_mensais_resumo", "Bombeiros::pagamentos_mensais_resumo");
     $routes->post("inadimplencia_list_data", "Bombeiros::inadimplencia_list_data");
     $routes->post("custos_list_data", "Bombeiros::custos_list_data");
+    $routes->post("custos_resumo", "Bombeiros::custos_resumo");
 
     $routes->post("aluno_modal_form", "Bombeiros::aluno_modal_form");
     $routes->post("responsavel_modal_form", "Bombeiros::responsavel_modal_form");

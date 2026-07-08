@@ -39,6 +39,86 @@
     </div>
 </div>
 
+<div class="row" id="bombeiros-custos-resumo">
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-info"><i data-feather="file-text" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_lancados">0</h1>
+                    <span>Lançados</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-success"><i data-feather="check-circle" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_pagos">0</h1>
+                    <span>Pagos</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-warning"><i data-feather="clock" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_previstos">0</h1>
+                    <span>Previstos</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-danger"><i data-feather="x-circle" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_cancelados">0</h1>
+                    <span>Cancelados</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-success"><i data-feather="dollar-sign" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_pago_formatado">R$ 0,00</h1>
+                    <span>Total pago</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-warning"><i data-feather="trending-down" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_previsto_formatado">R$ 0,00</h1>
+                    <span>Total previsto</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card dashboard-icon-widget">
+            <div class="card-body">
+                <div class="widget-icon bg-primary"><i data-feather="bar-chart-2" class="icon"></i></div>
+                <div class="widget-details">
+                    <h1 data-resumo="total_geral_formatado">R$ 0,00</h1>
+                    <span>Total lançado</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="table-responsive">
     <table id="bombeiros-custos-table" class="display" cellspacing="0" width="100%"></table>
 </div>
@@ -69,6 +149,11 @@
                 source: "<?php echo_uri("grupo_donato/operacional/custos_list_data"); ?>",
                 order: [[2, "desc"]],
                 tableRefreshButton: true,
+                onRelaodCallback: function () {
+                    if (window.reloadBombeirosCustosResumo) {
+                        reloadBombeirosCustosResumo();
+                    }
+                },
                 filterDropdown: [
                     {
                         name: "status",
@@ -109,11 +194,34 @@
                 printColumns: [0, 1, 2, 3, 4, 5, 6, 7],
                 xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7]
             });
+            if (window.reloadBombeirosCustosResumo) {
+                reloadBombeirosCustosResumo();
+            }
             return true;
         } else {
             $("#bombeiros-custos-table").DataTable().columns.adjust();
+            if (window.reloadBombeirosCustosResumo) {
+                reloadBombeirosCustosResumo();
+            }
             return false;
         }
+    };
+
+    window.reloadBombeirosCustosResumo = function () {
+        appAjaxRequest({
+            url: "<?php echo_uri("grupo_donato/operacional/custos_resumo"); ?>",
+            type: "POST",
+            dataType: "json",
+            success: function (result) {
+                if (!result.success) {
+                    return;
+                }
+
+                $.each(result.data, function (key, value) {
+                    $("#bombeiros-custos-resumo").find("[data-resumo='" + key + "']").text(value);
+                });
+            }
+        });
     };
 
     $(document).ready(function () {

@@ -17,6 +17,14 @@ $routes->match(["get", "post"], "green_crm", static function () {
     return redirect()->to(site_url("grupo_donato/operacional") . "?gd_tab=dashboard");
 });
 
+$routes->group("grupo_donato/finance/rental-payments", ["namespace" => "grupo_donato_gestao\\Controllers"], function ($routes) {
+    $routes->get("", "Rental_finance::index");
+    $routes->post("data", "Rental_finance::list_data");
+    $routes->post("summary", "Rental_finance::summary");
+    $routes->post("generate", "Rental_finance::generate_month");
+    $routes->post("create-rental-charge", "Rental_finance::create_rental_charge");
+});
+
 $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers", "filter" => "csrf"], function ($routes) {
 
     // Painel

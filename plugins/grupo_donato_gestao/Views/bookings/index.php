@@ -14,6 +14,7 @@ foreach ($resources as $value) { $resource_options[] = ["id" => $value["id"], "t
         "can_court_rentals" => $can_court_rentals ?? false,
         "can_bookings" => true,
         "can_series" => $can_series ?? false,
+        "can_finance" => $can_finance ?? false,
     ]); ?>
     <div class="card">
         <div class="page-title clearfix">

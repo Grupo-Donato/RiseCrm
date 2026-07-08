@@ -52,6 +52,7 @@ if ($active_tab === "series" && !empty($can_series_manage)) {
         "can_court_rentals" => true,
         "can_bookings" => $can_bookings ?? false,
         "can_series" => $can_series ?? false,
+        "can_finance" => $can_finance ?? false,
     ]); ?>
 
     <div class="card">

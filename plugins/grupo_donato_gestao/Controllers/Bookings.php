@@ -20,6 +20,7 @@ class Bookings extends Gd_Controller
             "can_court_rentals"=>false,
             "can_bookings"=>true,
             "can_series"=>$this->access->can("gd_booking_series_view"),
+            "can_finance"=>$this->access->can("gd_finance_view"),
             "types"=>Constants::BOOKING_TYPES,
             "statuses"=>Constants::BOOKING_STATUSES,
             "resources"=>$this->service->bookableResources()

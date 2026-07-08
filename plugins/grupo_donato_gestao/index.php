@@ -169,7 +169,7 @@ if (!function_exists('gd_current_login_user')) {
             $rental_submenu[] = ["name" => "rental_monthly", "language_key" => "gd_menu_rental_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "repeat"];
         }
         if ($can_finance) {
-            $rental_submenu[] = ["name" => "rental_finance", "language_key" => "gd_menu_rental_finance", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/receivables?source_type=court_rental"), "class" => "file-text"];
+            $rental_submenu[] = ["name" => "rental_finance", "language_key" => "gd_menu_rental_finance", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/rental-payments"), "class" => "dollar-sign"];
         }
         if ($can_billing) {
             $rental_submenu[] = ["name" => "rental_charges", "language_key" => "gd_menu_rental_charges", "is_custom_menu_item" => true, "url" => get_uri("cobranca/charges"), "class" => "credit-card"];

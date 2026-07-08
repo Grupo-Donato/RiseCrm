@@ -57,6 +57,7 @@ class Court_rentals extends Gd_Controller
             "can_bookings_manage" => $this->access->can("gd_bookings_manage"),
             "can_series" => $can_series,
             "can_series_manage" => $this->access->can("gd_booking_series_manage"),
+            "can_finance" => $this->access->can("gd_finance_view"),
             "statuses" => Constants::COURT_RENTAL_STATUSES,
             "types" => Constants::COURT_RENTAL_TYPES,
             "booking_types" => Constants::BOOKING_TYPES,
@@ -74,6 +75,7 @@ class Court_rentals extends Gd_Controller
             "can_court_rentals" => true,
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
+            "can_finance" => $this->access->can("gd_finance_view"),
             "statuses" => Constants::COURT_RENTAL_STATUSES,
             "resources" => $this->bookings->bookableResources(),
             "timezone" => $this->time->timezoneName(),
@@ -121,6 +123,7 @@ class Court_rentals extends Gd_Controller
             "can_court_rentals" => true,
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
+            "can_finance" => $this->access->can("gd_finance_view"),
         ]);
     }
 

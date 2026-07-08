@@ -41,6 +41,7 @@ class Booking_series extends Gd_Controller
             "can_court_rentals" => false,
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => true,
+            "can_finance" => $this->access->can("gd_finance_view"),
             "statuses" => Constants::BOOKING_SERIES_STATUSES,
             "resources" => $this->bookings->bookableResources(),
         ]);

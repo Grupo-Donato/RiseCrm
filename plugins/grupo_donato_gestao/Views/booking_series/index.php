@@ -12,6 +12,7 @@ foreach ($statuses as $status) { $status_options[] = ["id" => $status, "text" =>
         "can_court_rentals" => $can_court_rentals ?? false,
         "can_bookings" => $can_bookings ?? false,
         "can_series" => true,
+        "can_finance" => $can_finance ?? false,
     ]); ?>
     <div class="card">
         <div class="page-title clearfix">

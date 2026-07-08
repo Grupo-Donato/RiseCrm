@@ -28,6 +28,7 @@ if (!empty($can_court_rentals_view)) {
         "can_court_rentals" => $can_court_rentals_view ?? false,
         "can_bookings" => $can_bookings_view ?? false,
         "can_series" => $can_series_view ?? false,
+        "can_finance" => $can_finance ?? false,
     ]); ?>
 
     <div class="card gd-calendar-card">

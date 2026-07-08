@@ -62,6 +62,12 @@
 .gd-rentals-shell .gd-actions-stack{display:flex;flex-wrap:wrap;gap:8px}
 .gd-rentals-shell .gd-empty-inline{padding:20px;text-align:center}
 .gd-rentals-shell .gd-mobile-only{display:none}
+/* Tabelas estáticas (.table) herdam a superfície do card. O tema escuro do Rise
+   só estiliza .dataTable, então uma .table comum ficava com as cores padrão do
+   Bootstrap (fundo claro/texto escuro). Cores neutras funcionam no claro e no escuro. */
+.gd-rentals-shell .table{--bs-table-bg:transparent;--bs-table-accent-bg:transparent;--bs-table-striped-bg:rgba(127,127,127,.06);--bs-table-hover-bg:rgba(127,127,127,.12);--bs-table-border-color:rgba(127,127,127,.22);color:inherit;border-color:rgba(127,127,127,.22)}
+.gd-rentals-shell .table>:not(caption)>*>*{background-color:transparent;color:inherit;border-color:rgba(127,127,127,.18)}
+.gd-rentals-shell .table>thead>tr>th{border-bottom-color:rgba(127,127,127,.28)}
 @media (max-width:767.98px){
   .gd-rentals-shell .page-title h4{float:none;margin-bottom:10px}
   .gd-rentals-shell .page-title .title-button-group{float:none;display:flex;flex-wrap:wrap;gap:8px}

@@ -22,6 +22,7 @@ class Calendar extends Gd_Controller
         "can_series_manage"=>$this->access->can("gd_booking_series_manage"),
         "can_court_rentals_view"=>$this->access->can("gd_court_rentals_view"),
         "can_court_rentals_manage"=>$this->access->can("gd_court_rentals_manage"),
+        "can_finance"=>$this->access->can("gd_finance_view"),
         "booking_statuses"=>Constants::BOOKING_STATUSES,
     ]);}
     public function events(){try{$resources=$this->csv((string)$this->request->getGet("resources"));$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}

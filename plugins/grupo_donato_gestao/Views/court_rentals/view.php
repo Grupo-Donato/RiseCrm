@@ -29,6 +29,7 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
         "can_court_rentals" => true,
         "can_bookings" => $can_bookings ?? false,
         "can_series" => $can_series ?? false,
+        "can_finance" => $can_finance ?? false,
     ]); ?>
 
     <div class="page-title clearfix">

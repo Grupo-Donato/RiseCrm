@@ -25,6 +25,12 @@ $routes->group("grupo_donato/finance/rental-payments", ["namespace" => "grupo_do
     $routes->post("create-rental-charge", "Rental_finance::create_rental_charge");
 });
 
+// Resumo (KPIs) da aba de despesas/custos — fora do grupo CSRF, igual ao summary de
+// rental-payments, pois é chamado via appAjaxRequest (POST cru, sem token CSRF).
+$routes->group("grupo_donato/finance/expenses", ["namespace" => "grupo_donato_gestao\\Controllers"], function ($routes) {
+    $routes->post("summary", "Finance::expenses_summary");
+});
+
 $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers", "filter" => "csrf"], function ($routes) {
 
     // Painel

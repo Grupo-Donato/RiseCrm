@@ -108,6 +108,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
 
     $routes->post("buscar_dados_comprovante", "Bombeiros::buscar_dados_comprovante");
     $routes->post("gerar_comprovante", "Bombeiros::gerar_comprovante");
+    $routes->get("foto_aluno/(:num)", "Bombeiros::foto_aluno/$1");
     $routes->get("baixar_exame_medico/(:num)", "Bombeiros::baixar_exame_medico/$1");
     $routes->get("baixar_comprovante/(:num)", "Bombeiros::baixar_comprovante/$1");
     $routes->get("baixar_comprovante_pdf/(:num)", "Bombeiros::baixar_comprovante_pdf/$1");

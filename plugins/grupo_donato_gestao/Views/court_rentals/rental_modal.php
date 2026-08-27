@@ -1,6 +1,9 @@
 <?php
 $e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 $initial_mode = in_array(($initial_mode ?? "single"), ["single", "recurring", "special"], true) ? $initial_mode : "single";
+$edit_data = is_array($edit_data ?? null) ? $edit_data : null;
+$is_edit = !empty($edit_data["id"]);
+$edit_duration = (int) ($edit_data["duration_minutes"] ?? 0);
 $messages = [
     "resource_required" => app_lang("gd_select_at_least_one_court"),
     "date_required" => app_lang("gd_rental_date_required"),
@@ -19,6 +22,10 @@ $messages = [
     "closed" => app_lang("gd_booking_closed_friendly"),
     "outside_hours" => app_lang("gd_booking_outside_hours_friendly"),
     "resource_problem" => app_lang("gd_booking_resource_problem_friendly"),
+    "available_label" => app_lang("gd_available"),
+    "unavailable_label" => app_lang("gd_unavailable"),
+    "available_courts_help" => app_lang("gd_available_courts_help"),
+    "no_courts" => app_lang("gd_no_courts_available_for_time"),
 ];
 $time_options = [];
 for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
@@ -30,7 +37,12 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
     ];
 }
 ?>
-<?php echo form_open(get_uri("grupo_donato/court-rentals/save-rental"), ["id" => "gd-rental-form", "class" => "general-form", "role" => "form"]); ?>
+<?php echo form_open(get_uri($is_edit ? "grupo_donato/court-rentals/update-monthly" : "grupo_donato/court-rentals/save-rental"), ["id" => "gd-rental-form", "class" => "general-form", "role" => "form"]); ?>
+<?php if ($is_edit) { ?>
+<input type="hidden" name="id" value="<?php echo (int) $edit_data["id"]; ?>">
+<input type="hidden" name="lock_version" value="<?php echo (int) $edit_data["lock_version"]; ?>">
+<input type="hidden" name="series_lock_version" value="<?php echo (int) $edit_data["series_lock_version"]; ?>">
+<?php } ?>
 <input type="hidden" name="rental_mode" id="gd-rental-mode" value="<?php echo $e($initial_mode); ?>">
 <input type="hidden" name="rental_type" id="gd-rental-type" value="single">
 <input type="hidden" name="title" id="gd-rental-title" value="">
@@ -55,10 +67,10 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
 
 <div class="modal-body clearfix">
     <div class="container-fluid">
-        <div class="mb20">
+        <div class="mb20"<?php echo $is_edit ? ' style="display:none"' : ""; ?>>
             <h5 class="mb15"><?php echo app_lang("gd_rental_type_choice"); ?></h5>
             <div class="form-group mb0">
-                <select name="rental_mode_choice" id="gd-rental-mode-choice" class="form-control">
+                <select name="rental_mode_choice" id="gd-rental-mode-choice" class="form-control"<?php echo $is_edit ? " disabled" : ""; ?>>
                     <option value="single"<?php echo $initial_mode === "single" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_single"); ?></option>
                     <option value="recurring"<?php echo $initial_mode === "recurring" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_recurring"); ?></option>
                     <option value="special"<?php echo $initial_mode === "special" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_special"); ?></option>
@@ -73,17 +85,17 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                     <h5 class="mb15"><?php echo app_lang("gd_booking_form_customer"); ?></h5>
                     <div class="form-group">
                         <label for="gd-rental-customer"><?php echo app_lang("gd_customer"); ?> <span class="text-danger">*</span></label>
-                        <input type="hidden" name="customer_account_id" id="gd-rental-customer-id">
-                        <input type="text" id="gd-rental-customer" class="form-control" maxlength="190" autocomplete="off" required data-rule-required="true" placeholder="<?php echo $e(app_lang("gd_customer_name_placeholder")); ?>">
+                        <input type="hidden" name="customer_account_id" id="gd-rental-customer-id" value="<?php echo $is_edit ? (int) $edit_data["customer_account_id"] : ""; ?>">
+                        <input type="text" name="customer_name" id="gd-rental-customer" class="form-control" maxlength="190" autocomplete="off" required data-rule-required="true" value="<?php echo $e($edit_data["customer_name"] ?? ""); ?>" placeholder="<?php echo $e(app_lang("gd_customer_name_placeholder")); ?>">
                     </div>
                     <div class="form-group">
                         <label for="gd-rental-contact"><?php echo app_lang("gd_contact"); ?></label>
-                        <input type="hidden" name="contact_person_id" id="gd-rental-contact-id">
-                        <input type="text" id="gd-rental-contact" class="form-control" maxlength="190" autocomplete="off" placeholder="<?php echo $e(app_lang("gd_contact_name_placeholder")); ?>">
+                        <input type="hidden" name="contact_person_id" id="gd-rental-contact-id" value="<?php echo $is_edit ? (int) $edit_data["contact_person_id"] : ""; ?>">
+                        <input type="text" name="contact_name" id="gd-rental-contact" class="form-control" maxlength="190" autocomplete="off" value="<?php echo $e($edit_data["contact_name"] ?? ""); ?>" placeholder="<?php echo $e(app_lang("gd_contact_name_placeholder")); ?>">
                     </div>
                     <div class="form-group mb0">
                         <label for="gd-rental-phone"><?php echo app_lang("phone"); ?></label>
-                        <input id="gd-rental-phone" name="contact_phone" class="form-control" inputmode="tel" maxlength="15" autocomplete="off" placeholder="(00) 00000-0000">
+                        <input id="gd-rental-phone" name="contact_phone" class="form-control" inputmode="tel" maxlength="15" autocomplete="off" value="<?php echo $e($edit_data["contact_phone"] ?? ""); ?>" placeholder="(00) 00000-0000">
                         <small class="text-muted"><?php echo app_lang("gd_contact_optional_help"); ?></small>
                     </div>
                 </div>
@@ -96,7 +108,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label for="gd-rental-date"><span class="gd-date-label"><?php echo app_lang("gd_rental_date"); ?></span> <span class="text-danger">*</span></label>
-                                <input type="date" id="gd-rental-date" class="form-control" required>
+                                <input type="date" id="gd-rental-date" class="form-control" value="<?php echo $e($edit_data["starts_on"] ?? ""); ?>" required>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -105,7 +117,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                                 <select id="gd-rental-start-time" class="form-control" required>
                                     <option value=""></option>
                                     <?php foreach ($time_options as $time_option) { ?>
-                                        <option value="<?php echo $e($time_option["value"]); ?>"><?php echo $e($time_option["label"]); ?></option>
+                                        <option value="<?php echo $e($time_option["value"]); ?>"<?php echo ($edit_data["local_start_time"] ?? "") === $time_option["value"] ? " selected" : ""; ?>><?php echo $e($time_option["label"]); ?></option>
                                     <?php } ?>
                                 </select>
                             </div>
@@ -116,8 +128,11 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         <div class="form-group">
                             <label for="gd-rental-duration"><?php echo app_lang("gd_rental_duration"); ?> <span class="text-danger">*</span></label>
                             <select name="duration_minutes" id="gd-rental-duration" class="form-control">
-                                <option value="90">1h30</option>
-                                <option value="120">2h</option>
+                                <?php if ($is_edit && $edit_duration > 0 && !in_array($edit_duration, [90, 120], true)) { ?>
+                                    <option value="<?php echo $edit_duration; ?>" selected><?php echo $edit_duration . " min"; ?></option>
+                                <?php } ?>
+                                <option value="90"<?php echo $edit_duration === 90 ? " selected" : ""; ?>>1h30</option>
+                                <option value="120"<?php echo $edit_duration === 120 ? " selected" : ""; ?>>2h</option>
                             </select>
                         </div>
                     </div>
@@ -149,7 +164,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                             <div class="col-md-6">
                                 <div class="form-group">
                                     <label for="gd-rental-due-day"><?php echo app_lang("gd_preferred_due_day"); ?> <span class="text-danger">*</span></label>
-                                    <input type="number" min="1" max="31" name="preferred_due_day" id="gd-rental-due-day" class="form-control" placeholder="1 a 31">
+                                    <input type="number" min="1" max="31" name="preferred_due_day" id="gd-rental-due-day" class="form-control" value="<?php echo $e($edit_data["preferred_due_day"] ?? ""); ?>" placeholder="1 a 31">
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -170,6 +185,17 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
             </div>
         </div>
 
+        <?php if (!$is_edit) { ?>
+        <div id="gd-rental-available-courts" class="card bg-light mb20" style="display:none">
+            <div class="card-body">
+                <h5 class="mb5"><?php echo app_lang("gd_available_times"); ?></h5>
+                <div id="gd-rental-available-period" class="fw-bold mb5"></div>
+                <div class="text-muted mb10"><small><?php echo app_lang("gd_available_courts_help"); ?></small></div>
+                <div id="gd-rental-available-courts-results" class="gd-available-courts-grid"></div>
+            </div>
+        </div>
+        <?php } ?>
+
         <div class="mb20">
             <h5 class="mb15"><?php echo app_lang("gd_select_court"); ?></h5>
             <?php if ($resources) { ?>
@@ -177,7 +203,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                     <select name="selected_resource_id" id="gd-rental-court" class="form-control">
                         <option value=""></option>
                         <?php foreach ($resources as $resource) { ?>
-                            <option value="<?php echo (int) $resource["id"]; ?>" data-court-code="<?php echo $e($resource["code"]); ?>">
+                            <option value="<?php echo (int) $resource["id"]; ?>" data-court-code="<?php echo $e($resource["code"]); ?>"<?php echo (int) ($edit_data["resource_id"] ?? 0) === (int) $resource["id"] ? " selected" : ""; ?>>
                                 <?php echo $e($resource["code"] . " — " . $resource["name"]); ?>
                             </option>
                         <?php } ?>
@@ -192,8 +218,9 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
         <div class="mb0">
             <h5 class="mb15"><?php echo app_lang("gd_commercial_notes"); ?></h5>
             <div class="form-group">
-                <textarea name="commercial_notes" class="form-control" rows="3" maxlength="5000" placeholder="<?php echo $e(app_lang("gd_simple_rental_notes_placeholder")); ?>"></textarea>
+                <textarea name="commercial_notes" class="form-control" rows="3" maxlength="5000" placeholder="<?php echo $e(app_lang("gd_simple_rental_notes_placeholder")); ?>"><?php echo $e($edit_data["commercial_notes"] ?? ""); ?></textarea>
             </div>
+            <?php if (!$is_edit) { ?>
             <div class="form-group mb0">
                 <label class="d-flex align-items-start mb0">
                     <input type="checkbox" name="activate" value="1" checked class="mt5 me-2">
@@ -203,20 +230,28 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                     </span>
                 </label>
             </div>
+            <?php } ?>
         </div>
     </div>
 </div>
 
 <div class="modal-footer">
-    <button type="button" id="gd-rental-check" class="btn btn-info">
+    <?php if (!$is_edit) { ?><button type="button" id="gd-rental-check" class="btn btn-info">
         <i data-feather="check-circle" class="icon-16"></i> <?php echo app_lang("gd_check_availability"); ?>
-    </button>
+    </button><?php } ?>
     <button type="button" class="btn btn-default" data-bs-dismiss="modal"><?php echo app_lang("close"); ?></button>
     <button type="submit" class="btn btn-primary" id="gd-rental-submit">
-        <i data-feather="save" class="icon-16"></i> <span><?php echo app_lang("gd_create_single_rental"); ?></span>
+        <i data-feather="save" class="icon-16"></i> <span><?php echo $is_edit ? app_lang("save") : app_lang("gd_create_single_rental"); ?></span>
     </button>
 </div>
 <?php echo form_close(); ?>
+
+<style>
+.gd-available-courts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.gd-available-court{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 12px;text-align:left;border:1px solid #d7dde4;border-radius:7px;background:#fff}
+.gd-available-court:not(:disabled):hover,.gd-available-court.is-selected{border-color:#198754;box-shadow:0 0 0 1px #198754}
+.gd-available-court:disabled{cursor:not-allowed;opacity:.62;background:#f3f4f6}
+</style>
 
 <script>
 $(document).ready(function(){
@@ -234,11 +269,16 @@ $(document).ready(function(){
         contact = $("#gd-rental-contact"),
         phone = $("#gd-rental-phone"),
         availability = $("#gd-rental-availability"),
+        availableCourts = $("#gd-rental-available-courts"),
+        availableCourtsResults = $("#gd-rental-available-courts-results"),
+        availablePeriod = $("#gd-rental-available-period"),
         checkButton = $("#gd-rental-check"),
         submitButton = $("#gd-rental-submit"),
         activateInput = form.find("input[name='activate']"),
         messages = <?php echo json_encode($messages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
         initialMode = <?php echo json_encode($initial_mode); ?>,
+        editData = <?php echo json_encode($edit_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
+        isEdit = !!(<?php echo $is_edit ? "true" : "false"; ?>),
         prices = <?php echo json_encode($pricing_presets ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
         modeHelp = {
             single: <?php echo json_encode(app_lang("gd_rental_mode_single_help")); ?>,
@@ -246,6 +286,8 @@ $(document).ready(function(){
             special: <?php echo json_encode(app_lang("gd_rental_mode_special_help")); ?>
         },
         checkTimer = null,
+        availableCourtsTimer = null,
+        availableCourtsXhr = null,
         availabilityOk = false;
 
     form.closest(".modal-dialog").addClass("modal-lg");
@@ -329,6 +371,9 @@ $(document).ready(function(){
     function currentAmount() {
         if (mode() === "special") { return normalizeMoney(specialAmount.val()); }
         var duration = selectedDuration();
+        if (isEdit && mode() === "recurring" && duration === parseInt(editData.duration_minutes || "0", 10) && editData.amount !== null && editData.amount !== "") {
+            return String(editData.amount);
+        }
         return prices[mode()] ? String(prices[mode()][duration] || "") : "";
     }
     function scheduleValues() {
@@ -362,8 +407,13 @@ $(document).ready(function(){
         var activeStatus = activateInput.is(":checked") ? "confirmed" : "pending_confirmation";
         $("#gd-rental-booking-status").val(activeStatus);
         $("#gd-rental-default-booking-status").val(activeStatus);
-        $("#gd-rental-customer-id").val($.trim(customer.val()) ? "new:" + $.trim(customer.val()) : "");
-        $("#gd-rental-contact-id").val($.trim(contact.val()) ? "new:" + $.trim(contact.val()) : "");
+        if (isEdit) {
+            $("#gd-rental-customer-id").val($.trim(customer.val()) ? String(editData.customer_account_id || "") : "");
+            $("#gd-rental-contact-id").val($.trim(contact.val()) ? String(editData.contact_person_id || "") : "");
+        } else {
+            $("#gd-rental-customer-id").val($.trim(customer.val()) ? "new:" + $.trim(customer.val()) : "");
+            $("#gd-rental-contact-id").val($.trim(contact.val()) ? "new:" + $.trim(contact.val()) : "");
+        }
         $("#gd-rental-list-amount, #gd-rental-negotiated-amount").val(amount);
         $("#gd-rental-effective-from").val(dateInput.val() || "");
         $("#gd-rental-effective-until").val(currentMode === "recurring" ? "" : (schedule ? schedule.endDate : ""));
@@ -402,12 +452,13 @@ $(document).ready(function(){
         specialAmount.prop("required", currentMode === "special");
         dueDay.prop("required", currentMode === "recurring");
         $(".gd-date-label").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_first_date")); ?> : <?php echo json_encode(app_lang("gd_rental_date")); ?>);
-        submitButton.find("span").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_create_recurring_rental")); ?> : (currentMode === "special" ? <?php echo json_encode(app_lang("gd_create_special_rental")); ?> : <?php echo json_encode(app_lang("gd_create_single_rental")); ?>));
+        submitButton.find("span").text(isEdit ? <?php echo json_encode(app_lang("save")); ?> : (currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_create_recurring_rental")); ?> : (currentMode === "special" ? <?php echo json_encode(app_lang("gd_create_special_rental")); ?> : <?php echo json_encode(app_lang("gd_create_single_rental")); ?>)));
 
         durationInput.find("option[value='90']").text(currentMode === "recurring" ? "1h30 — R$ 900,00/mês" : "1h30 — R$ 380,00");
         durationInput.find("option[value='120']").text(currentMode === "recurring" ? "2h — R$ 1.050,00/mês" : "2h — R$ 460,00");
         clearAvailability();
         updateSummary();
+        scheduleAvailableCourts();
     }
     function updateSummary() {
         syncDerivedFields();
@@ -425,6 +476,60 @@ $(document).ready(function(){
     function clearAvailability() {
         availabilityOk = false;
         availability.empty();
+    }
+    function hideAvailableCourts() {
+        clearTimeout(availableCourtsTimer);
+        if (availableCourtsXhr) { availableCourtsXhr.abort(); availableCourtsXhr = null; }
+        availableCourts.hide();
+        availablePeriod.empty();
+        availableCourtsResults.empty();
+    }
+    function renderAvailableCourts(rows) {
+        var html = "", availableCount = 0, selectedId = String(selectedCourt().id || "");
+        $.each(rows || [], function(_, row){
+            var isAvailable = row && row.available === true,
+                id = String((row && row.id) || ""),
+                label = escapeHtml(((row && row.code) || "") + " — " + ((row && row.name) || ""));
+            if (isAvailable) { availableCount++; }
+            html += '<button type="button" class="gd-available-court' + (id === selectedId ? ' is-selected' : '') + '" data-resource-id="' + escapeHtml(id) + '"' + (isAvailable ? '' : ' disabled') + '>' +
+                '<span>' + label + '</span><span class="badge bg-' + (isAvailable ? 'success' : 'secondary') + '">' +
+                escapeHtml(isAvailable ? messages.available_label : messages.unavailable_label) + '</span></button>';
+        });
+        if (!availableCount) {
+            html = '<div class="alert alert-warning mb0">' + escapeHtml(messages.no_courts) + '</div>' + html;
+        }
+        availableCourtsResults.html(html);
+        if (typeof feather !== "undefined") { feather.replace(); }
+    }
+    function loadAvailableCourts() {
+        var schedule = scheduleValues();
+        if (isEdit || !dateInput.val() || !startTime.val() || !schedule) { hideAvailableCourts(); return; }
+        availableCourts.show();
+        availablePeriod.text(formatDate(schedule.startDate) + " · " + schedule.startTime + " às " + schedule.endTime);
+        availableCourtsResults.html('<div class="text-muted"><i data-feather="loader" class="icon-16"></i> ' + escapeHtml(messages.checking) + '</div>');
+        if (typeof feather !== "undefined") { feather.replace(); }
+        var data = form.serializeArray();
+        setPostValue(data, "starts_at_local", schedule.startsAt);
+        setPostValue(data, "ends_at_local", schedule.endsAt);
+        if (availableCourtsXhr) { availableCourtsXhr.abort(); }
+        availableCourtsXhr = $.ajax({
+            url: '<?php echo_uri("grupo_donato/court-rentals/availability-options"); ?>',
+            type: "POST",
+            data: $.param(data),
+            dataType: "json"
+        }).done(function(response){
+            if (response && response.success) { renderAvailableCourts(response.data || []); }
+            else { availableCourtsResults.html('<div class="alert alert-danger mb0">' + escapeHtml((response && response.message) || messages.error) + '</div>'); }
+        }).fail(function(xhr, status){
+            if (status === "abort") { return; }
+            var body = xhr && xhr.responseJSON ? xhr.responseJSON : null;
+            availableCourtsResults.html('<div class="alert alert-danger mb0">' + escapeHtml((body && body.message) || messages.error) + '</div>');
+        }).always(function(){ availableCourtsXhr = null; });
+    }
+    function scheduleAvailableCourts() {
+        clearTimeout(availableCourtsTimer);
+        if (isEdit || !dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableCourts(); return; }
+        availableCourtsTimer = setTimeout(loadAvailableCourts, 250);
     }
     function unavailableMessage(response) {
         var data = response && response.data ? response.data : {};
@@ -455,7 +560,7 @@ $(document).ready(function(){
         if (mode() === "special") {
             if (!specialEnd.val()) { return messages.special_end_required; }
             if (!currentAmount() || Number(currentAmount()) <= 0) { return messages.special_amount_required; }
-        } else if ([90, 120].indexOf(selectedDuration()) === -1) { return messages.duration_required; }
+        } else if ([90, 120].indexOf(selectedDuration()) === -1 && !(isEdit && selectedDuration() === parseInt(editData.duration_minutes || "0", 10))) { return messages.duration_required; }
         if (!scheduleValues()) { return messages.time_required; }
         return "";
     }
@@ -514,6 +619,7 @@ $(document).ready(function(){
         clearTimeout(checkTimer);
         clearAvailability();
         updateSummary();
+        if (isEdit) { return; }
         if (validationMessage()) { return; }
         checkTimer = setTimeout(checkAvailability, 550);
     }
@@ -521,12 +627,19 @@ $(document).ready(function(){
     form.on("input", "#gd-rental-phone", function(){ this.value = maskPhone(this.value); });
     form.on("input", "#gd-rental-special-amount", function(){ this.value = maskMoney(this.value); });
     form.on("change", "#gd-rental-mode-choice", syncMode);
-    form.on("change", "#gd-rental-duration, #gd-rental-court", scheduleAutoCheck);
-    form.on("change input", "#gd-rental-date, #gd-rental-start-time, #gd-rental-special-end, #gd-rental-due-day", scheduleAutoCheck);
+    form.on("change", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
+    form.on("change", "#gd-rental-court", scheduleAutoCheck);
+    form.on("change input", "#gd-rental-date, #gd-rental-start-time, #gd-rental-special-end", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
+    form.on("change input", "#gd-rental-due-day", scheduleAutoCheck);
     form.on("input", "#gd-rental-customer, #gd-rental-contact, #gd-rental-phone, #gd-rental-special-amount", updateSummary);
     activateInput.on("change", function(){ syncDerivedFields(); });
     customer.on("blur", scheduleAutoCheck);
     checkButton.on("click", checkAvailability);
+    availableCourtsResults.on("click", ".gd-available-court:not(:disabled)", function(){
+        courtInput.val(String($(this).data("resource-id"))).trigger("change");
+        availableCourtsResults.find(".gd-available-court").removeClass("is-selected");
+        $(this).addClass("is-selected");
+    });
 
     form.on("submit.gdSimpleRental", function(event){
         var error = validationMessage();
@@ -548,11 +661,22 @@ $(document).ready(function(){
             return true;
         },
         onSuccess: function(response){
-            location.href = '<?php echo_uri("grupo_donato/court-rentals/view/"); ?>' + response.id;
+            if (isEdit) { location.reload(); }
+            else { location.href = '<?php echo_uri("grupo_donato/court-rentals/view/"); ?>' + response.id; }
         }
     });
 
     modeChoice.val(initialMode);
+    if (isEdit) {
+        customer.val(editData.customer_name || "");
+        contact.val(editData.contact_name || "");
+        phone.val(maskPhone(editData.contact_phone || ""));
+        dateInput.val(editData.starts_on || "");
+        startTime.val(editData.local_start_time || "");
+        durationInput.val(String(editData.duration_minutes || ""));
+        courtInput.val(String(editData.resource_id || ""));
+        dueDay.val(editData.preferred_due_day || "");
+    }
     syncMode();
     updateSummary();
     if (typeof feather !== "undefined") { feather.replace(); }

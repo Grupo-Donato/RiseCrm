@@ -15,6 +15,7 @@
 return [
     // App / menu
     "gd_app_title" => "Grupo Donato",
+    "gd_menu_dashboard" => "Dashboard",
     "gd_menu_overview" => "Visão geral",
     "gd_menu_settings" => "Configurações",
     "gd_dashboard_title" => "Painel — Grupo Donato",
@@ -952,6 +953,11 @@ return [
     "gd_rental_payments_status_open" => "Em aberto",
     "gd_rental_payments_status_overdue" => "Vencido",
     "gd_rental_payments_settle" => "Baixar pagamento",
+    "gd_rental_payments_undo" => "Desfazer baixa",
+    "gd_rental_payments_undo_confirm" => "Deseja desfazer esta baixa? O pagamento inteiro e todas as alocações vinculadas serão estornados.",
+    "gd_rental_payments_undo_reason" => "Informe o motivo do estorno:",
+    "gd_rental_payments_undo_default_reason" => "Baixa realizada por engano",
+    "gd_rental_payments_undo_success" => "Baixa desfeita com sucesso.",
     "gd_rental_payments_generation_result" => "Geração concluída: %d geradas, %d já existentes, %d com erro.",
 
     /* ---- Fase 6: importação assistida ---- */
@@ -1114,8 +1120,10 @@ return [
     "gd_recurrences_help" => "Exibe os padrões recorrentes que geram ocupações futuras. Esta é uma visão operacional avançada.",
 
     "gd_agenda_title" => "Agenda de quadras",
-    "gd_agenda_help" => "Consulte horários ocupados, bloqueios e fechamentos. Clique em uma reserva para abrir os detalhes.",
+    "gd_agenda_help" => "Selecione uma ou mais quadras para comparar os horários ocupados e livres. Clique em um horário livre para iniciar a locação.",
     "gd_courts" => "Quadras",
+    "gd_all_courts" => "Todas as quadras",
+    "gd_calendar_court_filter_help" => "As quadras selecionadas são exibidas juntas na agenda.",
     "gd_booking_status_filter" => "Status das reservas",
     "gd_calendar_content" => "Conteúdo da agenda",
     "gd_calendar_content_bookings" => "Reservas e usos",
@@ -1123,6 +1131,10 @@ return [
     "gd_calendar_content_closures" => "Fechamentos",
     "gd_calendar_content_openings" => "Aberturas excepcionais",
     "gd_calendar_content_availability" => "Disponibilidade padrão",
+    "gd_calendar_content_free_slots" => "Horários livres",
+    "gd_calendar_select_court_for_free_slots" => "Selecione ao menos uma quadra para visualizar os horários ocupados e livres.",
+    "gd_free_slot_duration" => "Duração desejada",
+    "gd_calendar_free_slot" => "Livre",
     "gd_clear_filters" => "Limpar filtros",
     "gd_recurring_indicator" => "Horário recorrente",
     "gd_list" => "Lista",
@@ -1175,6 +1187,10 @@ return [
     "gd_first_date" => "Primeira data",
     "gd_rental_duration" => "Duração",
     "gd_choose_date_and_time" => "Escolha a data e o horário para ver o período.",
+    "gd_available_times" => "Horários disponíveis",
+    "gd_available_courts_for_time" => "Quadras disponíveis neste horário",
+    "gd_available_courts_help" => "Clique em uma quadra disponível para selecioná-la.",
+    "gd_no_courts_available_for_time" => "Nenhuma quadra está disponível neste horário.",
     "gd_special_end_time" => "Horário de término",
     "gd_special_amount" => "Valor especial acordado",
     "gd_special_package_explanation" => "Use esta opção somente quando a locação incluir quadra e churrasqueira.",

@@ -71,6 +71,11 @@ if (!function_exists('gdc_current_login_user')) {
             return $menu;
         }
         if (isset($menu['locacoes'])) {
+            if (isset($menu['settings'])) {
+                $settings_menu = $menu['settings'];
+                unset($menu['settings']);
+                $menu['settings'] = $settings_menu;
+            }
             return $menu;
         }
         $menu['cobranca'] = [
@@ -81,6 +86,12 @@ if (!function_exists('gdc_current_login_user')) {
             'is_custom_menu_item' => true,
             'position' => 13,
         ];
+
+        if (isset($menu['settings'])) {
+            $settings_menu = $menu['settings'];
+            unset($menu['settings']);
+            $menu['settings'] = $settings_menu;
+        }
         return $menu;
     }
 

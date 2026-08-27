@@ -4,6 +4,7 @@ namespace grupo_donato_gestao\Operacional\Controllers;
 
 use App\Controllers\Security_Controller;
 use grupo_donato_gestao\Services\RoleAccessService;
+use grupo_donato_gestao\Services\StudentPhotoService;
 
 class Bombeiros extends Security_Controller
 {
@@ -13,6 +14,8 @@ class Bombeiros extends Security_Controller
     private const EXAME_IMAGE_MAX_UPLOAD_BYTES = 26214400; // 25 MB antes da compactação.
     private const EXAME_IMAGE_MAX_DIMENSION = 1800;
     private const EXAME_IMAGE_JPEG_QUALITY = 78;
+
+    private StudentPhotoService $studentPhotoService;
 
     public $General_files_model;
     public $Bombeiros_unidades_model;
@@ -50,6 +53,7 @@ class Bombeiros extends Security_Controller
         $this->Bombeiros_person_unit_access_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_person_unit_access_model");
         $this->Bombeiros_leads_palestra_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_leads_palestra_model");
         $this->Bombeiros_custos_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_custos_model");
+        $this->studentPhotoService = new StudentPhotoService();
 
         if (!$public_matricula_request) {
             $this->_enforce_operational_route_access();
@@ -71,6 +75,7 @@ class Bombeiros extends Security_Controller
         $view_data["dashboard_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_dashboard_resumo_data($dashboard_periodo["mes"], $dashboard_periodo["ano"]) : [];
         $view_data["qualidade_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_qualidade_resumo_data() : [];
         $view_data["financeiro_resumo"] = $this->_gd_can_access_section("financeiro") ? $this->_financeiro_resumo_data() : [];
+        $view_data["custos_resumo"] = $this->_gd_can_access_section("custos") ? $this->_custos_resumo_data() : [];
         $view_data["mensagens_contexto"] = $this->_gd_can_access_section("mensagens") ? $this->_mensagens_contexto_data() : [];
         return $this->template->render('grupo_donato_gestao\Operacional\Views\index', $view_data);
     }
@@ -164,7 +169,9 @@ class Bombeiros extends Security_Controller
 
     public function custos()
     {
-        return $this->template->view('grupo_donato_gestao\Operacional\Views\lista_custos');
+        return $this->template->view('grupo_donato_gestao\Operacional\Views\lista_custos', [
+            "custos_resumo" => $this->_custos_resumo_data()
+        ]);
     }
 
     public function unidades()
@@ -438,7 +445,12 @@ class Bombeiros extends Security_Controller
 
         echo json_encode([
             "success" => true,
-            "data" => $this->_custos_resumo_data()
+            "data" => $this->_custos_resumo_data([
+                "status" => $this->request->getPost("status"),
+                "categoria" => $this->request->getPost("categoria"),
+                "mes_referencia" => $this->request->getPost("mes_referencia"),
+                "ano_referencia" => $this->request->getPost("ano_referencia")
+            ])
         ]);
     }
 
@@ -446,11 +458,17 @@ class Bombeiros extends Security_Controller
     {
         $this->validate_submitted_data(["id" => "numeric"]);
 
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_view_students")) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Você não tem permissão para visualizar alunos nesta unidade.</div></div>";
+            return;
+        }
+
         $id = $this->request->getPost("id");
         $model_info = $id ? $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow() : $this->_empty_aluno();
 
         $view_data["model_info"] = $model_info ?: $this->_empty_aluno();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown();
+        $view_data["can_manage_student_photo"] = $this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students");
         return $this->template->view('grupo_donato_gestao\Operacional\Views\modal_aluno', $view_data);
     }
 
@@ -542,6 +560,10 @@ class Bombeiros extends Security_Controller
         $public_matricula = (bool) $public_matricula;
         $novo_exame_relativo = null;
         $arquivo_anterior_exame = null;
+        $nova_foto_relativa = null;
+        $foto_anterior = null;
+        $foto_alterada = false;
+        $transacao_concluida = false;
 
         try {
             if (!$public_matricula && !$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students")) {
@@ -563,6 +585,10 @@ class Bombeiros extends Security_Controller
             $id = $public_matricula ? 0 : (int) $this->request->getPost("id");
             $unidade_id = $public_matricula ? (int) $public_unidade_id : (int) ($this->request->getPost("unidade_id") ?: $this->_active_unit_id());
             $responsavel_id = $public_matricula ? 0 : (int) $this->request->getPost("responsavel_id");
+            if (!$public_matricula && !$this->_usuario_tem_acesso_unidade($unidade_id, "can_manage_students")) {
+                echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar alunos na unidade selecionada."]);
+                return;
+            }
             $whats_limpo = $this->_digits($this->request->getPost("responsavel_whats"));
             $aluno_atual = null;
             if ($id) {
@@ -623,6 +649,17 @@ class Bombeiros extends Security_Controller
                 $exame_file = null;
             }
             $arquivo_anterior_exame = $aluno_atual ? ($aluno_atual->exame_medico ?? null) : null;
+
+            // Foto de perfil opcional. A validação ocorre antes de qualquer
+            // escrita; o arquivo final só é criado quando já existe o id.
+            $foto_file = $public_matricula ? null : $this->request->getFile("student_photo");
+            if ($this->studentPhotoService->hasUpload($foto_file)) {
+                $this->studentPhotoService->validate($foto_file);
+            } else {
+                $foto_file = null;
+            }
+            $remover_foto = !$public_matricula && $this->_bool_value($this->request->getPost("remove_photo"));
+            $foto_anterior = $aluno_atual ? ($aluno_atual->photo_path ?? null) : null;
 
             $dados_resp = [
                 "nome" => trim($this->request->getPost("responsavel_nome")),
@@ -715,6 +752,21 @@ class Bombeiros extends Security_Controller
 
             $db->transStart();
 
+            if ($id && ($foto_file || $remover_foto)) {
+                // Serializa apenas mutações da foto. Assim uma edição
+                // concorrente sempre enxerga e remove exatamente a versão
+                // que substituiu, sem deixar a intermediária órfã.
+                $alunos_table = $db->prefixTable("grupo_donato_alunos");
+                $foto_atual_bloqueada = $db->query(
+                    "SELECT `photo_path` FROM `{$alunos_table}` WHERE `id` = ? AND `unidade_id` = ? AND `deleted` = 0 FOR UPDATE",
+                    [$id, $this->_active_unit_id()]
+                )->getRow();
+                if (!$foto_atual_bloqueada) {
+                    throw new \RuntimeException("Aluno não encontrado na unidade ativa.");
+                }
+                $foto_anterior = $foto_atual_bloqueada->photo_path ?: null;
+            }
+
             $responsavel_id = $this->Bombeiros_responsaveis_model->ci_save($dados_resp, $responsavel_id);
             if (!$responsavel_id) {
                 throw new \RuntimeException("Não foi possível salvar o responsável.");
@@ -752,19 +804,38 @@ class Bombeiros extends Security_Controller
                 $this->Bombeiros_alunos_model->ci_save($dados_exame, $save_id);
             }
 
+            if ($foto_file) {
+                $nova_foto_relativa = $this->studentPhotoService->store($foto_file, (int) $save_id);
+                $dados_foto = ["photo_path" => $nova_foto_relativa];
+                if (!$this->Bombeiros_alunos_model->ci_save($dados_foto, $save_id)) {
+                    throw new \RuntimeException("Não foi possível vincular a foto ao aluno.");
+                }
+                $foto_alterada = true;
+            } elseif ($remover_foto && $foto_anterior) {
+                $dados_foto = ["photo_path" => null];
+                if (!$this->Bombeiros_alunos_model->ci_save($dados_foto, $save_id)) {
+                    throw new \RuntimeException("Não foi possível remover a foto do aluno.");
+                }
+                $foto_alterada = true;
+            }
+
             $db->transComplete();
+            $transacao_concluida = $db->transStatus() !== false;
 
             if ($matricula_lock_acquired) {
                 $this->_liberar_trava_matricula($db);
                 $matricula_lock_acquired = false;
             }
 
-            if ($db->transStatus() === false) {
+            if (!$transacao_concluida) {
                 throw new \RuntimeException(app_lang("error_occurred"));
             }
 
             if ($novo_exame_relativo && $arquivo_anterior_exame) {
                 $this->_remover_exame_medico_arquivo($arquivo_anterior_exame);
+            }
+            if ($foto_alterada && $foto_anterior) {
+                $this->studentPhotoService->remove($foto_anterior, (int) $save_id);
             }
 
             if (($dados_aluno["status"] ?? "") === "Ativo") {
@@ -781,6 +852,9 @@ class Bombeiros extends Security_Controller
             }
             if ($novo_exame_relativo) {
                 $this->_remover_exame_medico_arquivo($novo_exame_relativo);
+            }
+            if ($nova_foto_relativa && !$transacao_concluida) {
+                $this->studentPhotoService->remove($nova_foto_relativa, (int) ($save_id ?? 0));
             }
             log_message("error", "Erro ao salvar aluno Bombeiros: " . $e->getMessage());
             echo json_encode(["success" => false, "message" => "Erro: " . $e->getMessage()]);
@@ -880,6 +954,11 @@ class Bombeiros extends Security_Controller
     {
         $this->validate_submitted_data(["id" => "required|numeric"]);
 
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para excluir alunos nesta unidade."]);
+            return;
+        }
+
         $id = (int) $this->request->getPost("id");
         $aluno = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
         if (!$aluno) {
@@ -887,6 +966,8 @@ class Bombeiros extends Security_Controller
             return;
         }
 
+        // Crud_model::delete() faz soft delete. A foto é preservada para
+        // auditoria e eventual reativação; só a remoção explícita apaga o arquivo.
         if ($this->Bombeiros_alunos_model->delete($id)) {
             echo json_encode(["success" => true, "message" => app_lang("record_deleted")]);
         } else {
@@ -2046,6 +2127,47 @@ class Bombeiros extends Security_Controller
         return view('grupo_donato_gestao\Operacional\Views\comprovante_template', $this->_comprovante_view_data($comprovante));
     }
 
+    /** Entrega a foto privada somente no escopo da unidade ativa. */
+    public function foto_aluno($aluno_id)
+    {
+        $aluno_id = (int) $aluno_id;
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_view_students")) {
+            return $this->response->setStatusCode(403)->setBody("");
+        }
+
+        $aluno = $this->Bombeiros_alunos_model->get_details([
+            "id" => $aluno_id,
+            "unidade_id" => $this->_active_unit_id()
+        ])->getRow();
+        if (!$aluno || empty($aluno->photo_path)) {
+            return $this->response->setStatusCode(404)->setBody("");
+        }
+
+        $arquivo = $this->studentPhotoService->absolutePath($aluno->photo_path, $aluno_id);
+        if (!$arquivo) {
+            return $this->response->setStatusCode(404)->setBody("");
+        }
+
+        $etag = '"' . hash("sha256", (string) $aluno->photo_path) . '"';
+        if ($this->request->getHeaderLine("If-None-Match") === $etag) {
+            return $this->response->setStatusCode(304)->setHeader("ETag", $etag)->setBody("");
+        }
+
+        $conteudo = @file_get_contents($arquivo);
+        if ($conteudo === false) {
+            return $this->response->setStatusCode(404)->setBody("");
+        }
+
+        return $this->response
+            ->setHeader("Content-Type", "image/webp")
+            ->setHeader("Content-Length", (string) strlen($conteudo))
+            ->setHeader("Content-Disposition", "inline")
+            ->setHeader("Cache-Control", "private, no-cache, max-age=0, must-revalidate")
+            ->setHeader("ETag", $etag)
+            ->setHeader("X-Content-Type-Options", "nosniff")
+            ->setBody($conteudo);
+    }
+
     public function baixar_exame_medico($aluno_id)
     {
         $aluno = $this->Bombeiros_alunos_model->get_details(["id" => (int) $aluno_id, "unidade_id" => $this->_active_unit_id()])->getRow();
@@ -2491,18 +2613,24 @@ class Bombeiros extends Security_Controller
 
     private function _custo_row($data)
     {
-        $options = modal_anchor(get_uri("grupo_donato/operacional/custo_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
-            "class" => "edit",
-            "title" => "Editar custo",
-            "data-post-id" => $data->id
-        ]);
-        $options .= js_anchor("<i data-feather='x' class='icon-16'></i>", [
-            "class" => "delete",
-            "title" => app_lang("delete"),
-            "data-id" => $data->id,
-            "data-action-url" => get_uri("grupo_donato/operacional/delete_custo"),
-            "data-action" => "delete-confirmation"
-        ]);
+        if (($data->source_type ?? "operacional") === "financeiro") {
+            $options = anchor(get_uri("grupo_donato/finance/expenses"), "<i data-feather='external-link' class='icon-16'></i>", [
+                "title" => "Ver no financeiro"
+            ]);
+        } else {
+            $options = modal_anchor(get_uri("grupo_donato/operacional/custo_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
+                "class" => "edit",
+                "title" => "Editar custo",
+                "data-post-id" => $data->id
+            ]);
+            $options .= js_anchor("<i data-feather='x' class='icon-16'></i>", [
+                "class" => "delete",
+                "title" => app_lang("delete"),
+                "data-id" => $data->id,
+                "data-action-url" => get_uri("grupo_donato/operacional/delete_custo"),
+                "data-action" => "delete-confirmation"
+            ]);
+        }
 
         return [
             esc($data->descricao ?: "-"),
@@ -2858,9 +2986,9 @@ class Bombeiros extends Security_Controller
         ];
     }
 
-    private function _custos_resumo_data()
+    private function _custos_resumo_data($options = [])
     {
-        $resumo = $this->Bombeiros_custos_model->get_resumo($this->_active_unit_id());
+        $resumo = $this->Bombeiros_custos_model->get_resumo($this->_active_unit_id(), $options);
 
         return [
             "total_lancados" => (int) ($resumo->qtd_lancados ?? 0),
@@ -3501,7 +3629,7 @@ class Bombeiros extends Security_Controller
     private function _empty_aluno()
     {
         $fields = [
-            "id", "responsavel_id", "unidade_id", "nome_aluno", "nascimento_aluno", "rg_aluno", "cpf_aluno",
+            "id", "responsavel_id", "unidade_id", "nome_aluno", "nascimento_aluno", "rg_aluno", "cpf_aluno", "photo_path",
             "matricula",
             "turma", "curso_nome", "num_parcelas", "valor_mensalidade", "valor_inscricao", "data_inscricao",
             "valor_mensal", "data_primeira_parcela", "data_inicio", "tamanho_camisa", "matricula_efetuada",

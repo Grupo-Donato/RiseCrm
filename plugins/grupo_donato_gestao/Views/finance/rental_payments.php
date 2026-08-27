@@ -468,5 +468,48 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
 
             return false;
         });
+
+        $("body").off("click", ".gd-rental-reverse-payment").on("click", ".gd-rental-reverse-payment", function () {
+            var $link = $(this),
+                reason;
+
+            if (!window.confirm(<?php echo json_encode(app_lang("gd_rental_payments_undo_confirm"), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>)) {
+                return false;
+            }
+
+            reason = window.prompt(
+                <?php echo json_encode(app_lang("gd_rental_payments_undo_reason"), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
+                <?php echo json_encode(app_lang("gd_rental_payments_undo_default_reason"), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>
+            );
+            if (!reason || !reason.trim()) {
+                return false;
+            }
+
+            $link.addClass("disabled");
+            appAjaxRequest({
+                url: "<?php echo_uri("grupo_donato/finance/payments/reverse"); ?>",
+                type: "POST",
+                dataType: "json",
+                data: {
+                    id: $link.data("payment-id"),
+                    reason: reason.trim()
+                },
+                success: function (result) {
+                    if (result.success) {
+                        appAlert.success(result.message);
+                        reloadPagamentos();
+                    } else {
+                        $link.removeClass("disabled");
+                        appAlert.error(result.message);
+                    }
+                },
+                error: function () {
+                    $link.removeClass("disabled");
+                    appAlert.error(AppLanugage.somethingWentWrong);
+                }
+            });
+
+            return false;
+        });
     });
 </script>

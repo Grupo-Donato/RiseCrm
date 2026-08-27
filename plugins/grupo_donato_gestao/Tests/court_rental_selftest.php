@@ -71,6 +71,22 @@ gd_assert("mensalista usa dia de vencimento 1 e vincula a série", (int) $monthl
 $monthly31 = $rentalService->createWithSeries(array_replace($monthlyBase, ["preferred_due_day" => "31", "title" => "Mensalista 31", "weekdays" => [2], "starts_on" => "2099-12-08"]));
 gd_assert("mensalista aceita dia de vencimento 31", (int) $rentalService->get($monthly31["id"])->preferred_due_day === 31);
 
+// ---- Edição completa do mensalista preserva histórico e troca só o futuro ----
+$seriesService = new \grupo_donato_gestao\Services\BookingSeriesService($unit_id);
+$monthly31Before = $rentalService->get($monthly31["id"]);
+$monthly31SeriesBefore = $seriesService->get($monthly31["series_id"]);
+$monthly31Edit = $rentalService->updateMonthly($monthly31["id"], array_replace($monthlyBase, [
+    "title" => "Mensalista 31 editado", "preferred_due_day" => "15", "commercial_notes" => "Observação editada",
+    "negotiated_amount" => "550.00", "weekdays" => [3], "starts_on" => "2099-12-09", "local_start_time" => "09:00", "local_end_time" => "10:30",
+    "lock_version" => (int) $monthly31Before->lock_version, "series_lock_version" => (int) $monthly31SeriesBefore->lock_version,
+]));
+$monthly31Edited = $rentalService->get($monthly31["id"]);
+$monthly31SeriesEdited = $seriesService->get($monthly31["series_id"]);
+gd_assert("edição de mensalista atualiza contrato, vencimento e observações", $monthly31Edit["lock_version"] === 2 && (int) $monthly31Edited->preferred_due_day === 15 && $monthly31Edited->commercial_notes === "Observação editada" && $monthly31Edited->negotiated_amount === "550.00");
+gd_assert("edição de mensalista atualiza série e recria três ocorrências futuras", json_decode((string) $monthly31SeriesEdited->weekdays, true) === [3] && substr((string) $monthly31SeriesEdited->local_start_time, 0, 5) === "09:00" && ($monthly31Edit["generation"]["created"] ?? 0) === 3 && count($monthly31Edit["replaced_booking_ids"]) === 3);
+gd_assert("edição de mensalista preserva snapshot anterior", count($monthly31Edited->price_items) === 1 && $monthly31Edited->price_items[0]->unit_amount === "550.00" && $db->table($prefix . "gd_court_rental_price_items")->where("rental_id", $monthly31["id"])->where("deleted", 1)->countAllResults() === 1);
+gd_assert("edição de mensalista rejeita lock_version obsoleto", gd_throws(fn() => $rentalService->updateMonthly($monthly31["id"], array_replace($monthlyBase, ["lock_version" => 1, "series_lock_version" => (int) $monthly31SeriesEdited->lock_version])), "gd_court_rental_edit_conflict"));
+
 // ---- Vínculos a reservas/séries existentes ----
 $freeBooking = (new \grupo_donato_gestao\Services\BookingService($unit_id))->save(["booking_type" => "customer_rental", "title" => "Reserva livre", "customer_account_id" => $family["id"], "contact_person_id" => $person_two["id"], "starts_at_local" => "2099-12-15T10:00", "ends_at_local" => "2099-12-15T11:00", "status" => "pending_confirmation", "resources" => [["resource_id" => $bookA, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]]]);
 $linkDraft = $rentalService->createDraft(["rental_type" => "single", "title" => "Para vínculo", "customer_account_id" => $family["id"]], "single");
@@ -128,7 +144,7 @@ gd_assert("manage de locação implica as leituras necessárias", $crManage->can
 gd_assert("manage de locação não concede gestão de cadastros", !$crManage->can("gd_bookings_manage") && !$crManage->can("gd_resources_manage") && !$crManage->can("gd_customer_accounts_manage"));
 gd_assert("status de locação vê a locação sem gerir cadastros", $crStatus->can("gd_court_rentals_view") && !$crStatus->can("gd_court_rentals_manage") && !$crStatus->can("gd_resources_manage"));
 gd_assert("override de preço implica ver a locação", $crOverride->can("gd_court_rentals_view"));
-gd_assert("rotas de locação separam leitura GET e escrita POST", isset($get_routes["grupo_donato/court-rentals"]) && (bool) array_filter(array_keys($get_routes), static fn($route) => str_starts_with((string) $route, "grupo_donato/court-rentals/view/")) && isset($post_routes["grupo_donato/court-rentals/save-single"], $post_routes["grupo_donato/court-rentals/save-monthly"], $post_routes["grupo_donato/court-rentals/reprice"]) && !isset($get_routes["grupo_donato/court-rentals/save-single"]));
+gd_assert("rotas de locação separam leitura GET e escrita POST", isset($get_routes["grupo_donato/court-rentals"]) && (bool) array_filter(array_keys($get_routes), static fn($route) => str_starts_with((string) $route, "grupo_donato/court-rentals/view/")) && isset($post_routes["grupo_donato/court-rentals/save-single"], $post_routes["grupo_donato/court-rentals/save-monthly"], $post_routes["grupo_donato/court-rentals/update-monthly"], $post_routes["grupo_donato/court-rentals/availability-options"], $post_routes["grupo_donato/court-rentals/reprice"]) && !isset($get_routes["grupo_donato/court-rentals/save-single"]));
 gd_assert("CSRF protege escrita de locação", in_array("csrf", (array) get_array_value($routes->getRoutesOptions("grupo_donato/court-rentals/save-single", "POST"), "filter"), true));
 gd_assert("idioma da Fase 3C resolve", app_lang("gd_menu_court_rentals") === "Locações de quadras" && app_lang("gd_court_rental_status_active") !== "gd_court_rental_status_active");
 $crDynamicKeys = [];
@@ -175,3 +191,12 @@ $calEvents = $calSvc->events($calStart, $calEnd, [$bookA], ["booking"], []);
 $calMatch = array_values(array_filter($calEvents, static fn($e) => (int) ($e["extendedProps"]["booking_id"] ?? 0) === (int) $single["booking_id"]));
 gd_assert("calendário inclui court_rental_id, booking_type e resource_ids no evento vinculado", $calMatch && (int) ($calMatch[0]["extendedProps"]["court_rental_id"] ?? 0) === (int) $single["id"] && ($calMatch[0]["extendedProps"]["booking_type"] ?? "") === "customer_rental" && isset($calMatch[0]["extendedProps"]["resource_ids"]));
 gd_assert("calendário sem tipos solicitados não devolve disponibilidade padrão", !array_filter($calSvc->events($calStart, $calEnd, [$bookA], [], []), static fn($e) => ($e["extendedProps"]["event_type"] ?? "") === "weekly_rule"));
+$freeSlots = $calSvc->events($calStart, $calEnd, [$bookA], ["free_slot"], [], 90);
+$freeStarts = array_map(static fn($event) => (string) ($event["extendedProps"]["local_start_time"] ?? ""), $freeSlots);
+gd_assert("calendário projeta horários livres na quadra e duração escolhidas", in_array("08:00", $freeStarts, true) && in_array("11:00", $freeStarts, true) && !in_array("10:00", $freeStarts, true) && !array_filter($freeSlots, static fn($event) => ($event["extendedProps"]["event_type"] ?? "") !== "free_slot" || (int) ($event["extendedProps"]["duration_minutes"] ?? 0) !== 90));
+$multiCourtFreeSlots = $calSvc->events($calStart, $calEnd, [$bookA, $bookB], ["free_slot"], [], 90);
+$multiCourtResourceIds = array_values(array_unique(array_map(static fn($event) => (int) ($event["extendedProps"]["resource_id"] ?? 0), $multiCourtFreeSlots)));
+sort($multiCourtResourceIds);
+$expectedMultiCourtResourceIds = [$bookA, $bookB];
+sort($expectedMultiCourtResourceIds);
+gd_assert("horários livres aceitam uma ou mais quadras", $multiCourtResourceIds === $expectedMultiCourtResourceIds);

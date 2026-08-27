@@ -7,6 +7,7 @@ namespace grupo_donato_gestao\Controllers;
 use grupo_donato_gestao\Config\Constants;
 use grupo_donato_gestao\Services\AccountPersonService;
 use grupo_donato_gestao\Services\BookingService;
+use grupo_donato_gestao\Services\BookingSeriesService;
 use grupo_donato_gestao\Services\ContactMethodService;
 use grupo_donato_gestao\Services\CourtRentalLifecycleService;
 use grupo_donato_gestao\Services\CourtRentalService;
@@ -141,11 +142,69 @@ class Court_rentals extends Gd_Controller
             if (!in_array($initial_mode, ["single", "recurring", "special"], true)) {
                 $initial_mode = "single";
             }
+            $resources = $this->bookings->bookableResources();
+            $edit_data = null;
+            $id = (int) ($this->request->getPost("id") ?: $this->request->getGet("id"));
+            if ($id <= 0) {
+                $prefill_date = trim((string) $this->request->getPost("prefill_date"));
+                $prefill_time = trim((string) $this->request->getPost("prefill_start_time"));
+                $prefill_duration = (int) $this->request->getPost("prefill_duration_minutes");
+                $prefill_resource = (int) $this->request->getPost("prefill_resource_id");
+                $resource_ids = array_map("intval", array_column($resources, "id"));
+                if ($this->validYmd($prefill_date) && $this->validHm($prefill_time)
+                    && in_array($prefill_duration, [90, 120], true)
+                    && in_array($prefill_resource, $resource_ids, true)) {
+                    $edit_data = [
+                        "starts_on" => $prefill_date,
+                        "local_start_time" => $prefill_time,
+                        "duration_minutes" => $prefill_duration,
+                        "resource_id" => $prefill_resource,
+                    ];
+                    $initial_mode = "single";
+                }
+            }
+            if ($id > 0) {
+                $rental = $this->service->get($id);
+                if (!$rental || (string) $rental->rental_type !== "recurring" || in_array((string) $rental->status, ["cancelled", "completed", "archived"], true)) {
+                    throw new \DomainException("gd_court_rental_not_editable");
+                }
+                $series_id = 0;
+                foreach ($rental->links as $link) {
+                    if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_series_id ?? 0) > 0) {
+                        $series_id = (int) $link->booking_series_id;
+                        break;
+                    }
+                }
+                $series = $series_id > 0 ? (new BookingSeriesService($this->unit_id, $this->user_id(), $this->login_user))->get($series_id) : null;
+                if (!$series) { throw new \DomainException("gd_court_rental_series_not_found"); }
+                if (!in_array((string) $series->status, ["active", "paused"], true)) { throw new \DomainException("gd_court_rental_not_editable"); }
+                $duration = $this->seriesDurationMinutes($series);
+                $edit_data = [
+                    "id" => (int) $rental->id,
+                    "lock_version" => (int) $rental->lock_version,
+                    "series_id" => (int) $series->id,
+                    "series_lock_version" => (int) $series->lock_version,
+                    "customer_account_id" => (int) $rental->customer_account_id,
+                    "customer_name" => (string) ($rental->customer_name ?? ""),
+                    "contact_person_id" => (int) ($rental->contact_person_id ?? 0),
+                    "contact_name" => (string) ($rental->contact_name ?? ""),
+                    "contact_phone" => $this->monthlyEditPhone($rental),
+                    "starts_on" => (string) $series->starts_on,
+                    "local_start_time" => substr((string) $series->local_start_time, 0, 5),
+                    "duration_minutes" => $duration,
+                    "resource_id" => (int) (($series->resources[0]->resource_id ?? 0)),
+                    "preferred_due_day" => (int) ($rental->preferred_due_day ?? 0),
+                    "commercial_notes" => (string) ($rental->commercial_notes ?? ""),
+                    "amount" => (string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""),
+                ];
+                $initial_mode = "recurring";
+            }
             return $this->gd_view("court_rentals/rental_modal", [
-                "resources" => $this->bookings->bookableResources(),
+                "resources" => $resources,
                 "timezone" => $this->time->timezoneName(),
                 "initial_mode" => $initial_mode,
                 "pricing_presets" => Constants::COURT_RENTAL_PRICE_PRESETS,
+                "edit_data" => $edit_data,
             ]);
         } catch (\Throwable $e) { $this->gd_fail($e); }
     }
@@ -213,6 +272,50 @@ class Court_rentals extends Gd_Controller
             $this->json_success("", ["data" => $this->bookings->checkAvailability($input)]);
         }
         catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    /** Disponibilidade de todas as quadras para o intervalo escolhido no formulário. */
+    public function availability_options()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $starts = trim((string) $this->request->getPost("starts_at_local"));
+            $ends = trim((string) $this->request->getPost("ends_at_local"));
+            if (!$this->validLocalDateTime($starts) || !$this->validLocalDateTime($ends)) {
+                throw new \DomainException("gd_invalid_local_datetime");
+            }
+
+            $resources = $this->bookings->bookableResources();
+            if (!$resources) { $this->json_success("", ["data" => []]); return; }
+            $input = [
+                "starts_at_local" => $starts,
+                "ends_at_local" => $ends,
+                "resources" => array_map(static fn(array $resource): array => [
+                    "resource_id" => (int) $resource["id"],
+                    "buffer_before_minutes" => 0,
+                    "buffer_after_minutes" => 0,
+                ], $resources),
+            ];
+            $result = $this->bookings->checkAvailability($input);
+            $conflicts = [];
+            foreach (($result["conflicts"] ?? []) as $conflict) {
+                $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
+            }
+            $rows = [];
+            foreach ($resources as $resource) {
+                $id = (int) $resource["id"];
+                $physical = $result["resources"][$id] ?? [];
+                $has_conflict = isset($conflicts[$id]);
+                $rows[] = [
+                    "id" => $id,
+                    "code" => (string) $resource["code"],
+                    "name" => (string) $resource["name"],
+                    "available" => !$has_conflict && (($physical["available"] ?? false) === true),
+                    "reason_code" => $has_conflict ? "booking_conflict" : (string) ($physical["reason_code"] ?? "resource_unavailable"),
+                ];
+            }
+            $this->json_success("", ["data" => $rows]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
     }
 
     public function preview()
@@ -307,6 +410,42 @@ class Court_rentals extends Gd_Controller
             $this->maybeActivate($result, (int) $result["id"], (int) $result["lock_version"]);
             $this->json_success(app_lang("record_saved"), $result);
         } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function update_monthly()
+    {
+        $db = db_connect();
+        $in_tx = false;
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $id = (int) $this->request->getPost("id");
+            $rental = $this->service->get($id);
+            if (!$rental || (string) $rental->rental_type !== "recurring") { throw new \DomainException("gd_court_rental_not_found"); }
+            $existing_series = null;
+            foreach ($rental->links as $link) {
+                if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_series_id ?? 0) > 0) {
+                    $existing_series = (new BookingSeriesService($this->unit_id, $this->user_id(), $this->login_user))->get((int) $link->booking_series_id);
+                    break;
+                }
+            }
+            if (!$existing_series) { throw new \DomainException("gd_court_rental_series_not_found"); }
+
+            $input = $this->commercialInput() + $this->seriesInput();
+            $input = $this->applyRentalPreset($input, "recurring", $rental, $this->seriesDurationMinutes($existing_series));
+            if ($db->transBegin() === false) { throw new \RuntimeException("monthly identity update transaction"); }
+            $in_tx = true;
+            $input = $this->resolveMonthlyIdentity($input, $rental);
+            $input["title"] = $this->rentalTitle($input, "recurring");
+            $input["lock_version"] = $this->request->getPost("lock_version");
+            $input["series_lock_version"] = $this->request->getPost("series_lock_version");
+            $result = $this->service->updateMonthly($id, $input);
+            if ($db->transCommit() === false) { throw new \RuntimeException("monthly identity update commit"); }
+            $in_tx = false;
+            $this->json_success(app_lang("record_saved"), $result);
+        } catch (\Throwable $e) {
+            if ($in_tx) { $db->transRollback(); }
+            $this->gd_fail($e);
+        }
     }
 
     public function link_existing()
@@ -436,18 +575,18 @@ class Court_rentals extends Gd_Controller
     }
 
     /** Aplica duração e preço oficial da operação do Grupo Donato. */
-    private function applyRentalPreset(array $input, string $mode): array
+    private function applyRentalPreset(array $input, string $mode, ?object $existing_rental = null, int $existing_duration = 0): array
     {
         $duration = (int) $this->request->getPost("duration_minutes");
         $resource_id = (int) $this->request->getPost("selected_resource_id");
         if ($resource_id <= 0) { throw new \DomainException("gd_select_at_least_one_court"); }
 
-        $input["currency"] = Constants::DEFAULT_CURRENCY;
-        $input["discount_amount"] = null;
-        $input["discount_reason"] = null;
-        $input["product_id"] = null;
-        $input["price_list_id"] = null;
-        $input["price_id"] = null;
+        $input["currency"] = $existing_rental ? (string) $existing_rental->currency : Constants::DEFAULT_CURRENCY;
+        $input["discount_amount"] = $existing_rental ? $existing_rental->discount_amount : null;
+        $input["discount_reason"] = $existing_rental ? $existing_rental->discount_reason : null;
+        $input["product_id"] = $existing_rental ? $existing_rental->product_id : null;
+        $input["price_list_id"] = $existing_rental ? $existing_rental->price_list_id : null;
+        $input["price_id"] = $existing_rental ? $existing_rental->price_id : null;
         $input["resources"] = [["resource_id" => $resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]];
 
         if ($mode === "special") {
@@ -470,15 +609,26 @@ class Court_rentals extends Gd_Controller
             return $input;
         }
 
-        if (!in_array($duration, [90, 120], true)) {
+        $keeps_existing_duration = $existing_rental && $existing_duration > 0 && $duration === $existing_duration;
+        if (!in_array($duration, [90, 120], true) && !$keeps_existing_duration) {
             throw new \DomainException("gd_invalid_rental_duration");
         }
 
-        $amounts = Constants::COURT_RENTAL_PRICE_PRESETS[$mode] ?? [];
-        $amount = $amounts[$duration] ?? null;
-        if ($amount === null) { throw new \DomainException("gd_invalid_rental_duration"); }
-        $input["list_amount"] = $amount;
-        $input["negotiated_amount"] = $amount;
+        if ($keeps_existing_duration) {
+            $input["list_amount"] = $existing_rental->list_amount;
+            $input["negotiated_amount"] = $existing_rental->negotiated_amount;
+        } else {
+            $amounts = Constants::COURT_RENTAL_PRICE_PRESETS[$mode] ?? [];
+            $amount = $amounts[$duration] ?? null;
+            if ($amount === null) { throw new \DomainException("gd_invalid_rental_duration"); }
+            $input["list_amount"] = $amount;
+            $input["negotiated_amount"] = $amount;
+            $input["discount_amount"] = null;
+            $input["discount_reason"] = null;
+            $input["product_id"] = null;
+            $input["price_list_id"] = null;
+            $input["price_id"] = null;
+        }
         $input["metadata"] = json_encode([
             "rental_mode" => $mode,
             "duration_minutes" => $duration,
@@ -838,6 +988,110 @@ class Court_rentals extends Gd_Controller
         return $digits;
     }
 
+    private function seriesDurationMinutes(object $series): int
+    {
+        $start = trim(substr((string) ($series->local_start_time ?? ""), 0, 5));
+        $end = trim(substr((string) ($series->local_end_time ?? ""), 0, 5));
+        if (!$this->validHm($start) || !$this->validHm($end)) { return 0; }
+        $start_at = new \DateTimeImmutable("2000-01-01 " . $start);
+        $end_at = new \DateTimeImmutable("2000-01-01 " . $end);
+        if ($end_at <= $start_at) { $end_at = $end_at->modify("+1 day"); }
+        return (int) (($end_at->getTimestamp() - $start_at->getTimestamp()) / 60);
+    }
+
+    private function monthlyEditPhone(object $rental): string
+    {
+        $db = db_connect();
+        $person_id = (int) ($rental->contact_person_id ?? 0);
+        if ($person_id > 0) {
+            $contact = $db->table($db->prefixTable("gd_contact_methods"))
+                ->select("value")
+                ->where("unit_id", $this->unit_id)->where("person_id", $person_id)
+                ->where("contact_type", "phone")->where("status", "active")->where("deleted", 0)
+                ->orderBy("is_primary", "DESC")->orderBy("id", "ASC")->get(1)->getRow();
+            if ($contact) { return (string) $contact->value; }
+        }
+        $account = $db->table($db->prefixTable("gd_customer_accounts"))
+            ->select("phone")->where("unit_id", $this->unit_id)
+            ->where("id", (int) ($rental->customer_account_id ?? 0))->where("deleted", 0)->get(1)->getRow();
+        return (string) ($account->phone ?? "");
+    }
+
+    /** Atualiza os dados cadastrais digitados sem trocar silenciosamente os IDs globais. */
+    private function resolveMonthlyIdentity(array $input, object $rental): array
+    {
+        $customer_name = DataNormalizationService::text(strip_tags((string) $this->request->getPost("customer_name")));
+        if ($customer_name === "") { throw new \DomainException("gd_court_rental_customer_required"); }
+        $contact_name = DataNormalizationService::text(strip_tags((string) $this->request->getPost("contact_name")));
+        $phone = $this->normalizedBrazilianPhone((string) ($input["contact_phone"] ?? ""));
+        $customer_id = (int) $rental->customer_account_id;
+
+        $accounts = new CustomerAccountService($this->unit_id, $this->user_id(), $this->login_user);
+        $account = $accounts->get($customer_id);
+        if (!$account) { throw new \DomainException("gd_court_rental_invalid_customer"); }
+        $accounts->save([
+            "account_type" => $account->account_type,
+            "display_name" => $customer_name,
+            "legal_name" => $account->legal_name,
+            "trade_name" => $account->trade_name,
+            "document_type" => $account->document_type,
+            "document_number" => $account->document_number,
+            "email" => $account->email,
+            "phone" => $contact_name === "" ? $this->formatBrazilianPhone($phone) : $account->phone,
+            "whatsapp" => $account->whatsapp,
+            "status" => $account->status,
+            "rise_client_id" => $account->rise_client_id,
+            "notes" => $account->notes,
+        ], $customer_id, true);
+
+        $contact_id = 0;
+        $existing_contact_id = (int) ($rental->contact_person_id ?? 0);
+        if ($contact_name !== "" && $existing_contact_id > 0) {
+            $people = new PersonService($this->unit_id, $this->user_id(), $this->login_user);
+            $person = $people->get($existing_contact_id);
+            if (!$person || !$this->personBelongsToCustomer($customer_id, $existing_contact_id)) { throw new \DomainException("gd_court_rental_invalid_contact"); }
+            $people->save([
+                "first_name" => $person->first_name,
+                "last_name" => $person->last_name,
+                "full_name" => $contact_name,
+                "preferred_name" => $person->preferred_name,
+                "birth_date" => $person->birth_date,
+                "status" => $person->status,
+                "rise_user_id" => $person->rise_user_id,
+                "rise_contact_id" => $person->rise_contact_id,
+                "notes" => $person->notes,
+            ], $existing_contact_id, true);
+            $this->updatePersonPhone($existing_contact_id, $phone);
+            $contact_id = $existing_contact_id;
+        } elseif ($contact_name !== "") {
+            $contact_id = $this->resolveEditableContactId($customer_id, "new:" . $contact_name, $phone);
+        }
+
+        $input["customer_account_id"] = $customer_id;
+        $input["contact_person_id"] = $contact_id ?: null;
+        return $input;
+    }
+
+    private function updatePersonPhone(int $person_id, string $phone): void
+    {
+        $db = db_connect();
+        $row = $db->table($db->prefixTable("gd_contact_methods"))
+            ->where("unit_id", $this->unit_id)->where("person_id", $person_id)
+            ->where("contact_type", "phone")->where("deleted", 0)
+            ->orderBy("status", "ASC")->orderBy("is_primary", "DESC")->orderBy("id", "ASC")->get(1)->getRow();
+        if (!$row && $phone === "") { return; }
+        $service = new ContactMethodService($this->unit_id, $this->user_id(), $this->login_user);
+        $service->save([
+            "person_id" => $person_id,
+            "contact_type" => "phone",
+            "label" => $row->label ?? null,
+            "value" => $phone !== "" ? $this->formatBrazilianPhone($phone) : (string) $row->value,
+            "is_primary" => $phone !== "" ? 1 : 0,
+            "receives_notifications" => $phone !== "" ? (int) ($row->receives_notifications ?? 1) : 0,
+            "status" => $phone !== "" ? "active" : "inactive",
+        ], (int) ($row->id ?? 0));
+    }
+
     /* ---------------- row rendering ---------------- */
 
     private function row(object $row): array
@@ -926,6 +1180,9 @@ class Court_rentals extends Gd_Controller
     {
         $id = (int) $row->id; $lock = (int) ($row->lock_version ?? 0); $status = (string) $row->status;
         $html = anchor(get_uri("grupo_donato/court-rentals/view/" . $id), "<i data-feather='eye' class='icon-16'></i>", ["title" => app_lang("gd_view_details"), "class" => "me-2"]);
+        if ($this->access->can("gd_court_rentals_manage") && !in_array($status, ["cancelled", "completed", "archived"], true)) {
+            $html .= modal_anchor(get_uri("grupo_donato/court-rentals/monthly-modal"), "<i data-feather='edit' class='icon-16'></i>", ["title" => app_lang("edit") . " mensalista", "class" => "edit me-2", "data-post-id" => $id]);
+        }
         if ($this->access->can("gd_court_rentals_status_manage")) {
             if ($status === "active") { $html .= '<a href="#" class="gd-cr-act me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="suspend" title="' . app_lang("gd_suspend") . '"><i data-feather="pause-circle" class="icon-16"></i></a>'; }
             if ($status === "suspended") { $html .= '<a href="#" class="gd-cr-act me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="resume" title="' . app_lang("gd_resume") . '"><i data-feather="play-circle" class="icon-16"></i></a>'; }

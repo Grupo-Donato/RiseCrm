@@ -19,8 +19,8 @@ $singleCharge=(new \grupo_donato_gestao\Services\ReceivableGenerationService($un
 gd_assert('gera cobrança avulsa integrada',!empty($singleCharge['created']));
 $duplicate=$fin->createReceivable(['source_type'=>'enrollment','source_id'=>$enrollmentId,'reference_month'=>'2098-02','description'=>'Duplicada','issue_date'=>'2098-02-01','due_date'=>'2098-02-10','original_amount'=>'100.00','unit_amount'=>'100.00','quantity'=>'1']);
 gd_assert('impede cobrança mensal duplicada',empty($duplicate['created'])&&!empty($duplicate['duplicate']));
-$pay1=$fin->registerPayment(['amount'=>'100.00','payment_date'=>$today,'payment_method'=>'pix','financial_account_id'=>$account->id,'allocations'=>[$r1['id']=>'100.00']]);
-gd_assert('pagamento total quita cobrança',$pay1['id']>0&&$fin->getReceivable($r1['id'])->status==='paid');
+$pay1=$fin->registerPayment(['amount'=>'100.00','payment_date'=>$today,'payment_method'=>'pix','financial_account_id'=>$account->id,'allocations'=>[$r1['id']=>'100.00',$r2['id']=>'']]);
+gd_assert('pagamento ignora linhas de alocação vazias e quita cobrança',$pay1['id']>0&&$fin->getReceivable($r1['id'])->status==='paid'&&count($fin->getPayment($pay1['id'])->allocations)===1);
 $pay2=$fin->registerPayment(['amount'=>'50.00','payment_date'=>$today,'payment_method'=>'cash','financial_account_id'=>$account->id,'allocations'=>[$r2['id']=>'50.00']]);
 $r2partial=$fin->getReceivable($r2['id']);
 gd_assert('pagamento parcial atualiza saldo',$r2partial->status==='partial'&&$r2partial->paid_amount==='50.00'&&$r2partial->balance_amount==='100.00');

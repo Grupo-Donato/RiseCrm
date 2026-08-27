@@ -249,6 +249,92 @@ class CourtRentalService extends CatalogDataService
         return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "series_id" => (int) ($series["id"] ?? 0), "series_number" => (string) ($series["series_number"] ?? ""), "generation" => $series["generation"] ?? null];
     }
 
+    /**
+     * Edita um mensalista e a série semanal vinculada como uma única operação.
+     * Reservas passadas permanecem no histórico; o serviço canônico de séries
+     * substitui apenas as ocorrências futuras.
+     */
+    public function updateMonthly(int $rental_id, array $input): array
+    {
+        $commercial = $this->normalizeCommercial($input, "recurring");
+        $series_input = $this->seriesInputFrom($input, $commercial);
+        $lock = new CourtRentalLockService();
+        $in_tx = false;
+        try {
+            $lock->acquire($this->unit_id, (string) $rental_id);
+            $before = $this->rentals->get_scoped($rental_id, $this->unit_id);
+            if (!$before) { throw new \DomainException("gd_court_rental_not_found"); }
+            if ((string) $before->rental_type !== "recurring" || in_array((string) $before->status, ["cancelled", "completed", "archived"], true)) {
+                throw new \DomainException("gd_court_rental_not_editable");
+            }
+            $expected = (int) ($input["lock_version"] ?? 0);
+            if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
+
+            $series_id = 0;
+            foreach ($this->links->for_rental($rental_id, $this->unit_id) as $link) {
+                if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_series_id ?? 0) > 0) {
+                    $series_id = (int) $link->booking_series_id;
+                    break;
+                }
+            }
+            if ($series_id <= 0) { throw new \DomainException("gd_court_rental_series_not_found"); }
+
+            $series_service = new BookingSeriesService($this->unit_id, $this->actor_id, $this->login_user);
+            $series_before = $series_service->get($series_id);
+            if (!$series_before) { throw new \DomainException("gd_court_rental_series_not_found"); }
+            $series_input["lock_version"] = (int) ($input["series_lock_version"] ?? 0);
+
+            $old_resource_ids = array_map(static fn($r): int => (int) $r->resource_id, $series_before->resources ?? []);
+            sort($old_resource_ids);
+            $new_resource_ids = array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $series_input["resources"] ?? []);
+            sort($new_resource_ids);
+            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency"];
+            $price_changed = $old_resource_ids !== $new_resource_ids;
+            foreach ($price_fields as $field) {
+                if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
+            }
+
+            if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental monthly update transaction"); }
+            $in_tx = true;
+            $series_result = $series_service->updateEntire($series_id, $series_input);
+            if (!$this->rentals->optimistic_update($rental_id, $this->unit_id, $expected, $this->stamp($commercial, false))) {
+                throw new \DomainException("gd_court_rental_edit_conflict");
+            }
+            if ($price_changed) {
+                $this->db->table($this->db->prefixTable("gd_court_rental_price_items"))
+                    ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
+                $this->writeSnapshotIfPriced($rental_id, $commercial, (int) ($new_resource_ids[0] ?? 0));
+            }
+            (new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
+                $rental_id,
+                "commercial_terms_changed",
+                (string) $before->status,
+                (string) $before->status,
+                null,
+                ["scope" => "monthly_full_edit", "series_id" => $series_id]
+            );
+            $this->audit_change("court_rental_updated", "court_rental", $rental_id, $this->commercialArray($before), $commercial, ["scope" => "monthly_full_edit", "series_id" => $series_id]);
+            if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental monthly update commit"); }
+            $in_tx = false;
+        } catch (\Throwable $e) {
+            if ($in_tx) { $this->db->transRollback(); }
+            throw $e;
+        } finally {
+            $lock->release();
+        }
+
+        $fresh = $this->rentals->get_scoped($rental_id, $this->unit_id);
+        return [
+            "id" => $rental_id,
+            "lock_version" => (int) $fresh->lock_version,
+            "series_id" => $series_id,
+            "series_lock_version" => (int) ($series_result["lock_version"] ?? 0),
+            "replaced_booking_ids" => $series_result["replaced_booking_ids"] ?? [],
+            "generation" => $series_result["generation"] ?? null,
+        ];
+    }
+
     /** Vincula uma reserva ou série existente a uma locação. */
     public function linkExisting(int $rental_id, array $input): array
     {

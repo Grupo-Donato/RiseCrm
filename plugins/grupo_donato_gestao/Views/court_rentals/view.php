@@ -23,16 +23,7 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
-    <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_nav", [
-        "active" => "reservations",
-        "can_calendar" => $can_calendar ?? false,
-        "can_court_rentals" => true,
-        "can_bookings" => $can_bookings ?? false,
-        "can_series" => $can_series ?? false,
-        "can_finance" => $can_finance ?? false,
-    ]); ?>
-
-    <div class="page-title clearfix">
+    <div class="page-title clearfix gd-page-header">
         <div>
             <h4>
                 <?php echo $e($rental->rental_number . " — " . $rental->title); ?>

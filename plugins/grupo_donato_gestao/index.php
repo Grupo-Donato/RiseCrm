@@ -6,7 +6,7 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 Plugin Name: Grupo Donato — Gestão
 Plugin URL: https://grupodonato.local
 Description: Gestão integrada de cadastro, agenda, locações, escola, personal e financeiro básico (até a Fase 5).
-Version: 0.9.6
+Version: 0.9.7
 Requires at least: 3.9.6
 Author: Grupo Donato
 */
@@ -129,18 +129,15 @@ if (!function_exists('gd_current_login_user')) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
-        // Protótipo: menu principal enxuto, preservando escola/caixa fora das locações.
+        // A escola moderna continua no menu Grupo Donato; o caixa e as
+        // despesas ficam no grupo operacional "Administrativos".
         $submenu = [];
         if ($can_school) {
             $submenu[] = ["name" => "customers_students", "language_key" => "gd_menu_customers_students", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/students"), "class" => "users"];
             $submenu[] = ["name" => "classes_personal", "language_key" => "gd_menu_classes_personal", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/classes"), "class" => "layers"];
         }
-        if ($can_finance) {
-            $submenu[] = ["name" => "cash_expenses", "language_key" => "gd_menu_cash_expenses", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/cash"), "class" => "book"];
-        }
-
         if ($submenu) {
-            $landing_uri = $can_school ? "grupo_donato/school/students" : "grupo_donato/finance/cash";
+            $landing_uri = "grupo_donato/school/students";
             $sidebar_menu['grupo_donato'] = [
                 "name" => "Grupo Donato",
                 "language_key" => "gd_app_title",
@@ -186,6 +183,14 @@ if (!function_exists('gd_current_login_user')) {
                 "submenu" => $rental_submenu,
             ];
             unset($sidebar_menu['cobranca']);
+        }
+
+        // A configuração do Rise é sempre o último item, inclusive quando o
+        // menu-base tem poucos itens e os plugins inserem atalhos posicionados.
+        if (isset($sidebar_menu['settings'])) {
+            $settings_menu = $sidebar_menu['settings'];
+            unset($sidebar_menu['settings']);
+            $sidebar_menu['settings'] = $settings_menu;
         }
 
         return $sidebar_menu;

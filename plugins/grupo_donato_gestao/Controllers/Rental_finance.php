@@ -355,25 +355,36 @@ class Rental_finance extends Gd_Controller
         $phoneDigits = $this->digits($data->contact_phone_normalized ?: $data->contact_phone ?: $data->account_whatsapp_normalized ?: $data->account_whatsapp ?: $data->account_phone_normalized ?: $data->account_phone);
         $whatsapp = $phoneDigits !== "" ? anchor("https://wa.me/55" . $phoneDigits, $this->escape($this->formatPhone($phoneDigits)), ["target" => "_blank", "title" => "Abrir WhatsApp"]) : "-";
         $canPay = $hasReceivable && $this->access->can("gd_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
-        $options = "";
+        $lastPaymentId = (int) ($data->last_payment_id ?? 0);
+        $options = [];
         if ($canPay) {
-            $options = modal_anchor(get_uri("grupo_donato/finance/payment-modal"), "<i data-feather='check-circle' class='icon-16'></i> " . app_lang("gd_rental_payments_settle"), [
+            $options[] = modal_anchor(get_uri("grupo_donato/finance/payment-modal"), "<i data-feather='check-circle' class='icon-16'></i> " . app_lang("gd_rental_payments_settle"), [
                 "class" => "btn btn-primary btn-sm",
                 "title" => app_lang("gd_rental_payments_settle"),
                 "data-post-receivable_id" => (int) $data->receivable_id,
                 "data-post-balance" => (string) $data->balance_amount,
                 "data-post-reload_target" => "bombeiros-pagamentos-table",
+                "data-modal-class" => "gd-payment-modal",
             ]);
-        } elseif (!$hasReceivable && $this->access->can("gd_receivables_manage")) {
-            $options = js_anchor("<i data-feather='plus-circle' class='icon-16'></i> Criar cobrança", [
+        }
+        if (!$hasReceivable && $this->access->can("gd_receivables_manage")) {
+            $options[] = js_anchor("<i data-feather='plus-circle' class='icon-16'></i> Criar cobrança", [
                 "class" => "btn btn-default btn-sm gd-rental-create-charge",
                 "title" => "Criar cobrança deste mês",
                 "data-rental-id" => (int) $data->rental_id,
                 "data-mes" => $month,
                 "data-ano" => $year,
             ]);
-        } elseif ($hasReceivable && (int) ($data->last_payment_id ?? 0) > 0) {
-            $options = anchor(get_uri("grupo_donato/finance/payments/receipt/" . (int) $data->last_payment_id), "<i data-feather='file-text' class='icon-16'></i>", ["class" => "btn btn-default btn-sm", "title" => app_lang("gd_finance_receipt"), "target" => "_blank"]);
+        }
+        if ($hasReceivable && $lastPaymentId > 0) {
+            $options[] = anchor(get_uri("grupo_donato/finance/payments/receipt/" . $lastPaymentId), "<i data-feather='file-text' class='icon-16'></i>", ["class" => "btn btn-default btn-sm", "title" => app_lang("gd_finance_receipt"), "target" => "_blank"]);
+            if ($this->access->can("gd_payments_manage")) {
+                $options[] = js_anchor("<i data-feather='rotate-ccw' class='icon-16'></i> " . app_lang("gd_rental_payments_undo"), [
+                    "class" => "btn btn-danger btn-sm gd-rental-reverse-payment",
+                    "title" => app_lang("gd_rental_payments_undo"),
+                    "data-payment-id" => $lastPaymentId,
+                ]);
+            }
         }
 
         return [
@@ -390,7 +401,7 @@ class Rental_finance extends Gd_Controller
             $hasReceivable && $data->last_payment_date ? $this->dateBr((string) $data->last_payment_date) : "-",
             $hasReceivable && $data->last_payment_method ? $this->escape(app_lang("gd_finance_method_" . $data->last_payment_method)) : "-",
             $hasReceivable ? $this->escape($data->notes ?: "-") : "-",
-            $options ?: "-",
+            $options ? implode(" ", $options) : "-",
         ];
     }
 

@@ -8,16 +8,8 @@ foreach ($resources as $value) { $resource_options[] = ["id" => $value["id"], "t
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
-    <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_nav", [
-        "active" => "reservations",
-        "can_calendar" => $can_calendar ?? false,
-        "can_court_rentals" => $can_court_rentals ?? false,
-        "can_bookings" => true,
-        "can_series" => $can_series ?? false,
-        "can_finance" => $can_finance ?? false,
-    ]); ?>
     <div class="card">
-        <div class="page-title clearfix">
+        <div class="page-title clearfix gd-page-header">
             <div><h4><?php echo app_lang("gd_menu_bookings"); ?></h4><div class="text-muted"><?php echo app_lang("gd_schedule_occupancies_help"); ?></div></div>
             <?php if ($can_manage) { ?><div class="title-button-group"><?php echo modal_anchor(get_uri("grupo_donato/bookings/modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_add_booking"), ["class" => "btn btn-primary", "title" => app_lang("gd_add_booking")]); ?></div><?php } ?>
         </div>

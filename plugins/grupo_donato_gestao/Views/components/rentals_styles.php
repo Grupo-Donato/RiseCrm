@@ -1,11 +1,24 @@
 <style>
 .gd-rentals-shell .gd-rentals-subtitle{max-width:820px;line-height:1.45}
+.gd-rentals-shell .gd-page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:68px;padding:12px 16px}
+.gd-rentals-shell .gd-page-header>div:first-child{min-width:0}
+.gd-rentals-shell .gd-page-header h1,.gd-rentals-shell .gd-page-header h4{float:none;margin:0;padding:0}
+.gd-rentals-shell .gd-page-header .title-button-group{float:none;margin:0 0 0 auto;flex:0 0 auto}
 .gd-rentals-shell .gd-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .gd-rentals-shell .gd-toolbar .btn{margin:0}
 .gd-rentals-shell .gd-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:end}
 .gd-rentals-shell .gd-filter-grid .form-group{margin-bottom:0;min-width:0}
 .gd-rentals-shell .gd-filter-grid .select2-container{display:block;width:100%!important;max-width:100%}
 .gd-rentals-shell .gd-filter-grid .select2-container .select2-choice{width:100%;min-height:34px;box-sizing:border-box}
+.gd-rentals-shell .gd-calendar-court-filter{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--gd-border,rgba(0,0,0,.12))}
+.gd-rentals-shell .gd-calendar-court-filter-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.gd-rentals-shell .gd-calendar-court-filter-heading label{display:block;margin:0 0 2px;font-weight:600}
+.gd-rentals-shell .gd-calendar-court-options{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.gd-rentals-shell .gd-calendar-court-option{position:relative;margin:0;cursor:pointer}
+.gd-rentals-shell .gd-calendar-court-option input{position:absolute;opacity:0;pointer-events:none}
+.gd-rentals-shell .gd-calendar-court-option span{display:inline-flex;align-items:center;justify-content:center;min-width:64px;min-height:36px;padding:7px 14px;border:1px solid var(--gd-border,rgba(0,0,0,.16));border-radius:18px;background:var(--gd-surface-2,#f8f9fa);color:var(--gd-text,#212529);font-weight:600;transition:background-color .15s,border-color .15s,color .15s}
+.gd-rentals-shell .gd-calendar-court-option input:checked+span{background:#315b8a;border-color:#315b8a;color:#fff}
+.gd-rentals-shell .gd-calendar-court-option input:focus-visible+span{outline:2px solid #6f8fff;outline-offset:2px}
 .gd-rentals-shell .gd-filter-actions{display:flex;flex-wrap:wrap;gap:8px}
 .gd-rentals-shell .w200,.gd-rentals-shell .w180,.gd-rentals-shell .w120{width:auto!important;max-width:100%}
 .gd-rentals-shell .w200{min-width:210px}
@@ -69,10 +82,15 @@
 .gd-rentals-shell .table>:not(caption)>*>*{background-color:transparent;color:inherit;border-color:rgba(127,127,127,.18)}
 .gd-rentals-shell .table>thead>tr>th{border-bottom-color:rgba(127,127,127,.28)}
 @media (max-width:767.98px){
+  .gd-rentals-shell .gd-page-header{align-items:stretch;flex-direction:column;padding:14px;min-height:0}
+  .gd-rentals-shell .gd-page-header .title-button-group{margin:0;width:100%}
   .gd-rentals-shell .page-title h4{float:none;margin-bottom:10px}
   .gd-rentals-shell .page-title .title-button-group{float:none;display:flex;flex-wrap:wrap;gap:8px}
   .gd-rentals-shell .page-title .title-button-group .btn{margin:0;flex:1 1 160px;text-align:center}
   .gd-rentals-shell .gd-filter-grid{grid-template-columns:1fr}
+  .gd-rentals-shell .gd-calendar-court-filter-heading{align-items:flex-start}
+  .gd-rentals-shell .gd-calendar-court-option{flex:1 1 64px}
+  .gd-rentals-shell .gd-calendar-court-option span{width:100%}
   .gd-rentals-shell .w200,.gd-rentals-shell .w180,.gd-rentals-shell .w120{width:100%!important;min-width:0!important}
   .gd-rentals-shell .gd-desktop-only{display:none!important}
   .gd-rentals-shell .gd-mobile-only{display:block}

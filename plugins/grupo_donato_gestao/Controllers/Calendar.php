@@ -25,6 +25,6 @@ class Calendar extends Gd_Controller
         "can_finance"=>$this->access->can("gd_finance_view"),
         "booking_statuses"=>Constants::BOOKING_STATUSES,
     ]);}
-    public function events(){try{$resources=$this->csv((string)$this->request->getGet("resources"));$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}
+    public function events(){try{$resources=$this->csv((string)$this->request->getGet("resources"));$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));$duration=(int)$this->request->getGet("duration_minutes");return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses,$duration));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}
     private function csv(string $value):array{return array_values(array_filter(array_map("intval",explode(",",$value)),static fn($v)=>$v>0));}
 }

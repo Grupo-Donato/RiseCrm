@@ -10,6 +10,13 @@ if ($exame_medico_tamanho > 0) {
         ? number_format($exame_medico_tamanho / 1048576, 1, ",", ".") . " MB"
         : number_format($exame_medico_tamanho / 1024, 0, ",", ".") . " KB";
 }
+$student_photo_default_url = get_avatar();
+$student_photo_has_current = !empty($model_info->id) && !empty($model_info->photo_path);
+$student_photo_current_url = $student_photo_has_current
+    ? get_uri("grupo_donato/operacional/foto_aluno/" . (int) $model_info->id)
+        . "?v=" . rawurlencode(pathinfo((string) $model_info->photo_path, PATHINFO_FILENAME))
+    : $student_photo_default_url;
+$can_manage_student_photo = !empty($can_manage_student_photo);
 ?>
 
 <style>
@@ -30,6 +37,14 @@ if ($exame_medico_tamanho > 0) {
     #bombeiros-aluno-form .gd-file-input:hover::-webkit-file-upload-button {
         background-color: #e8eef7 !important;
         color: #17365f !important;
+    }
+
+    #bombeiros-aluno-form .gd-student-photo-preview {
+        width: 125px;
+        height: 125px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #eef1f5;
     }
 </style>
 
@@ -139,6 +154,46 @@ if ($exame_medico_tamanho > 0) {
         </div>
 
         <h5 class="mb15 mt20">Aluno</h5>
+
+        <div class="form-group">
+            <div class="row align-items-center">
+                <label for="bombeiros-aluno-foto" class="col-md-3">Foto de perfil</label>
+                <div class="col-md-3 text-center">
+                    <span class="avatar avatar-lg">
+                        <img
+                            id="bombeiros-aluno-foto-preview"
+                            class="gd-student-photo-preview"
+                            src="<?php echo esc($student_photo_current_url); ?>"
+                            alt="Foto de <?php echo esc($model_info->nome_aluno ?: "aluno"); ?>"
+                            loading="lazy"
+                            onerror="this.onerror=null;this.src='<?php echo esc($student_photo_default_url); ?>';"
+                        />
+                    </span>
+                </div>
+                <div class="col-md-6">
+                    <?php if ($can_manage_student_photo) { ?>
+                        <input
+                            type="file"
+                            name="student_photo"
+                            id="bombeiros-aluno-foto"
+                            class="form-control gd-file-input"
+                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                        />
+                        <div class="text-off mt5">JPG, JPEG, PNG ou WebP. Tamanho máximo: 10 MB. A foto será otimizada para até 500 × 500 px.</div>
+                        <input type="hidden" name="remove_photo" value="0" />
+                        <?php if ($student_photo_has_current) { ?>
+                            <label class="mt10">
+                                <input type="checkbox" name="remove_photo" id="bombeiros-aluno-remover-foto" value="1" />
+                                Remover a foto atual
+                            </label>
+                            <div class="text-off">Selecione uma nova imagem para substituir a foto atual.</div>
+                        <?php } ?>
+                    <?php } else { ?>
+                        <div class="text-off">Você possui acesso de visualização. A alteração da foto exige permissão para gerenciar alunos.</div>
+                    <?php } ?>
+                </div>
+            </div>
+        </div>
 
         <div class="form-group">
             <div class="row">
@@ -394,6 +449,57 @@ if ($exame_medico_tamanho > 0) {
 
 <script type="text/javascript">
     $(document).ready(function () {
+        var photoInput = document.getElementById("bombeiros-aluno-foto");
+        var photoPreview = document.getElementById("bombeiros-aluno-foto-preview");
+        var removePhoto = document.getElementById("bombeiros-aluno-remover-foto");
+        var currentPhotoUrl = <?php echo json_encode($student_photo_current_url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+        var defaultPhotoUrl = <?php echo json_encode($student_photo_default_url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+        var previewObjectUrl = null;
+
+        function clearPreviewObjectUrl() {
+            if (previewObjectUrl) {
+                URL.revokeObjectURL(previewObjectUrl);
+                previewObjectUrl = null;
+            }
+        }
+
+        if (photoInput && photoPreview) {
+            photoInput.addEventListener("change", function () {
+                clearPreviewObjectUrl();
+                var file = this.files && this.files[0] ? this.files[0] : null;
+                if (!file) {
+                    photoPreview.src = removePhoto && removePhoto.checked ? defaultPhotoUrl : currentPhotoUrl;
+                    return;
+                }
+
+                var allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+                if ((file.type && allowedTypes.indexOf(file.type) === -1) || file.size > 10 * 1024 * 1024) {
+                    this.value = "";
+                    photoPreview.src = currentPhotoUrl;
+                    appAlert.error(file.size > 10 * 1024 * 1024
+                        ? "A foto deve ter no máximo 10 MB."
+                        : "Selecione uma imagem JPG, PNG ou WebP.");
+                    return;
+                }
+
+                if (removePhoto) {
+                    removePhoto.checked = false;
+                }
+                previewObjectUrl = URL.createObjectURL(file);
+                photoPreview.src = previewObjectUrl;
+            });
+        }
+
+        if (removePhoto && photoPreview) {
+            removePhoto.addEventListener("change", function () {
+                clearPreviewObjectUrl();
+                if (this.checked && photoInput) {
+                    photoInput.value = "";
+                }
+                photoPreview.src = this.checked ? defaultPhotoUrl : currentPhotoUrl;
+            });
+        }
+
         $("#bombeiros-aluno-form").appForm({
             onSuccess: function (result) {
                 if (window.reloadGdOperationalTables) {

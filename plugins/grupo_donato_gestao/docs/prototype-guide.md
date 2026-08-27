@@ -1,13 +1,22 @@
 # Guia de demonstração — Grupo Donato (≤ 15 minutos)
 
 Este guia conduz uma demonstração completa do protótipo ao cliente usando apenas a
-interface. Tudo é acessível pelo submenu **Grupo Donato** (9 itens) e por botões/abas
-dentro das telas. Não é preciso usar URLs técnicas.
+interface. A operação diária fica organizada nos grupos **GD Academy** e
+**Administrativos**; as áreas avançadas continuam acessíveis por botões/abas dentro
+das telas. Não é preciso usar URLs técnicas.
 
 > Pré-requisito: estar logado no Rise como usuário **staff/admin** com as permissões do
 > Grupo Donato. A unidade ativa padrão é **Unidade Principal**.
 
-## Menu do plugin (9 telas)
+## Organização do menu lateral
+
+1. **Dashboard** — aparece em primeiro somente para admin, diretor e gestor.
+2. **GD Academy** — Ativos, Responsáveis, Presença e Pagamentos.
+3. **Administrativos** — Inadimplência, Custos, Materiais, Captação, Unidades, Caixa
+   e Despesas; disponível somente para admin, diretor e gestor.
+4. **Configurações** — permanece como o último item do menu quando disponível.
+
+## Áreas avançadas do plugin (9 telas)
 
 1. **Visão geral** — dashboard operacional + atalhos.
 2. **Clientes e alunos** — abas Alunos / Famílias e clientes / Pessoas.

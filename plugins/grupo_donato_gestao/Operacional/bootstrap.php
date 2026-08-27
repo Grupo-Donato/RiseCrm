@@ -5,11 +5,47 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 /*
 Module: Grupo Donato — Operacional (Bombeiros)
 Description: Painel operacional multiunidade para alunos, pagamentos, presença e captação.
-Version: 1.3.0
+Version: 1.4.0
 Requires at least: 2.8
 */
 
 app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
+    $user = bombeiros_current_login_user();
+
+    // A atualização do plugin normalmente executa esta migração, mas a
+    // sincronização aqui também cobre instalações que receberam os arquivos
+    // sem passar pelo fluxo de atualização do Rise.
+    static $menu_settings_synced = false;
+    if (!$menu_settings_synced && $user && ($user->user_type ?? '') === 'staff' && function_exists('db_connect')) {
+        $menu_settings_synced = true;
+        try {
+            $db = db_connect();
+            bombeiros_sync_left_menu_settings($db, $db->getPrefix());
+        } catch (\Throwable $e) {
+            log_message('error', 'Grupo Donato: falha ao sincronizar o side menu: ' . $e->getMessage());
+        }
+    }
+
+    // O Dashboard operacional substitui o Dashboard genérico do Rise para
+    // os cargos de gestão. Para os demais cargos, ele não deve aparecer no
+    // menu nem ficar disponível como item salvo de menu.
+    if ($user && ($user->user_type ?? '') === 'staff') {
+        if (\grupo_donato_gestao\Services\RoleAccessService::has_administrative_access($user)) {
+            $sidebar_menu['dashboard'] = [
+                // Mantém a chave nativa para funcionar com menus persistidos;
+                // o language_key evita que o Rise traduza o título para "Painel".
+                "name" => "dashboard",
+                "url" => get_uri("grupo_donato/operacional?gd_tab=dashboard"),
+                "class" => "bar-chart-2",
+                "is_custom_menu_item" => true,
+                "language_key" => "gd_menu_dashboard",
+                "custom_class" => "dashboard-menu",
+            ];
+        } else {
+            unset($sidebar_menu['dashboard']);
+        }
+    }
+
     foreach (bombeiros_left_menu_native_items() as $key => $item) {
         $sidebar_menu[$key] = $item;
     }
@@ -141,38 +177,87 @@ if (!function_exists("bombeiros_install_or_update")) {
     function bombeiros_left_menu_native_items()
     {
         $items = [];
-        $position = 3;
-        $active_key = "";
-        $allowed_sections = array_flip(bombeiros_allowed_left_menu_sections());
-        $sections = array_intersect_key(bombeiros_left_menu_sections(), $allowed_sections);
-
-        if (!$sections) {
+        $user = bombeiros_current_login_user();
+        if (!$user || ($user->user_type ?? '') !== 'staff') {
             return [];
         }
 
-        if (function_exists("uri_string") && strpos(uri_string(), "grupo_donato/operacional") === 0) {
-            $tab = "";
-            if (function_exists("service")) {
-                $request = service("request");
-                $tab = $request ? $request->getGet("gd_tab") : "";
-            }
-            $active_tab = $tab && isset($sections[$tab]) ? $tab : array_key_first($sections);
-            $active_key = "grupo_donato_" . $active_tab;
-        }
+        $allowed_sections = array_flip(bombeiros_allowed_left_menu_sections());
+        $section = bombeiros_left_menu_sections();
 
-        foreach ($sections as $key => $item) {
-            $menu_key = "grupo_donato_" . $key;
-            $items[$menu_key] = [
-                "name" => bombeiros_left_menu_native_name($key, $item),
+        $section_item = static function ($key) use ($section, $allowed_sections) {
+            if (!isset($section[$key]) || !isset($allowed_sections[$key])) {
+                return null;
+            }
+
+            return [
+                "name" => $section[$key]["name"],
                 "url" => get_uri("grupo_donato/operacional?gd_tab=" . $key),
                 "is_custom_menu_item" => true,
-                "class" => $item["class"],
-                "position" => $position++
+                "class" => $section[$key]["class"],
+            ];
+        };
+
+        // Academia: as telas de operação da escola ficam sob um único item.
+        $academy_submenu = [];
+        foreach (["alunos", "responsaveis", "presenca", "pagamentos"] as $key) {
+            $item = $section_item($key);
+            if ($item) {
+                $academy_submenu[] = $item;
+            }
+        }
+
+        if ($academy_submenu) {
+            $items["grupo_donato_academy"] = [
+                "name" => "GD Academy",
+                "url" => $academy_submenu[0]["url"],
+                "is_custom_menu_item" => true,
+                "class" => "book-open",
+                "position" => 2,
+                "submenu" => $academy_submenu,
+            ];
+        }
+
+        // Administrativos: somente admin, diretor e gestor chegam a esta
+        // seção. Os links de caixa e despesas usam o financeiro novo do GD.
+        if (\grupo_donato_gestao\Services\RoleAccessService::has_administrative_access($user)) {
+            $administrative_submenu = [];
+            foreach (["financeiro", "custos", "materiais", "leads", "unidades"] as $key) {
+                $item = $section_item($key);
+                if ($item) {
+                    $administrative_submenu[] = $item;
+                }
+            }
+
+            $administrative_submenu[] = [
+                "name" => "Caixa",
+                "url" => get_uri("grupo_donato/finance/cash"),
+                "is_custom_menu_item" => true,
+                "class" => "credit-card",
+            ];
+            $administrative_submenu[] = [
+                "name" => "Despesas",
+                "url" => get_uri("grupo_donato/finance/expenses"),
+                "is_custom_menu_item" => true,
+                "class" => "arrow-right-circle",
             ];
 
-            if ($active_key === $menu_key) {
-                $items[$menu_key]["is_active_menu"] = 1;
-            }
+            $items["grupo_donato_administrativos"] = [
+                "name" => "Administrativos",
+                "url" => $administrative_submenu[0]["url"],
+                "is_custom_menu_item" => true,
+                "class" => "briefcase",
+                "position" => 3,
+                "submenu" => $administrative_submenu,
+            ];
+        }
+
+        // Mensagens não pertence a nenhum dos dois agrupamentos solicitados,
+        // portanto continua como atalho independente.
+        $messages_item = $section_item("mensagens");
+        if ($messages_item) {
+            $messages_item["position"] = 4;
+            $items["grupo_donato_mensagens"] = $messages_item;
         }
 
         return $items;
@@ -185,10 +270,44 @@ if (!function_exists("bombeiros_install_or_update")) {
             return;
         }
 
-        $native_items = [];
-        $native_names = [];
-        $prefixed_native_names = [];
-        $legacy_submenu_names = [];
+        $group_items = [
+            ["name" => "GD Academy"],
+            ["name" => "Ativos", "is_sub_menu" => "1"],
+            ["name" => "Responsáveis", "is_sub_menu" => "1"],
+            ["name" => "Presença", "is_sub_menu" => "1"],
+            ["name" => "Pagamentos", "is_sub_menu" => "1"],
+            ["name" => "Administrativos"],
+            ["name" => "Inadimplência", "is_sub_menu" => "1"],
+            ["name" => "Custos", "is_sub_menu" => "1"],
+            ["name" => "Materiais", "is_sub_menu" => "1"],
+            ["name" => "Captação", "is_sub_menu" => "1"],
+            ["name" => "Unidades", "is_sub_menu" => "1"],
+            ["name" => "Caixa", "is_sub_menu" => "1"],
+            ["name" => "Despesas", "is_sub_menu" => "1"],
+        ];
+        $group_names = array_map(static function ($item) {
+            return $item["name"];
+        }, $group_items);
+
+        // Nomes usados antes da consolidação. Eles só servem para migrar
+        // configurações persistidas; o menu atual nasce em
+        // bombeiros_left_menu_native_items().
+        $legacy_menu_names = [];
+        foreach (bombeiros_left_menu_sections() as $item) {
+            if ($item["name"] !== "Mensagens") {
+                $legacy_menu_names[] = $item["name"];
+                $legacy_menu_names[] = "SIAMESA " . $item["name"];
+            }
+        }
+        $legacy_menu_names = array_merge($legacy_menu_names, [
+            "Grupo Donato — Operacional",
+            "SIAMESA Operacional",
+            "grupo_donato_gestao\\Operacional",
+            "cash_expenses",
+            "Caixa e despesas",
+            "Caixa e Despesas",
+        ]);
+
         $rentals_items = [
             ["name" => "Locações"],
             ["name" => "rental_agenda", "is_sub_menu" => "1"],
@@ -210,20 +329,6 @@ if (!function_exists("bombeiros_install_or_update")) {
             "court_monthly",
             "cobranca",
         ];
-        foreach (bombeiros_left_menu_sections() as $key => $item) {
-            $native_name = bombeiros_left_menu_native_name($key, $item);
-            $native_items[] = ["name" => $native_name];
-            $native_names[] = $native_name;
-            // COMPAT: detecta e remove entradas de menu persistidas com o nome da
-            // marca anterior ("SIAMESA <seção>") em bancos migrados de instalações
-            // legadas. Mantido apenas para limpeza; nenhuma entrada nova usa esse nome.
-            $prefixed_native_names[] = "SIAMESA " . $item["name"];
-            $legacy_submenu_names[] = $item["name"];
-        }
-
-        // COMPAT: nomes-raiz herdados do menu antigo (marca anterior e namespace antigo),
-        // detectados para que sejam removidos de bancos migrados de instalações legadas.
-        $legacy_root_names = ["Grupo Donato — Operacional", "SIAMESA Operacional", "grupo_donato_gestao\Operacional"];
         $rows = $db->query("SELECT setting_name, setting_value FROM `" . $settings_table . "`
             WHERE deleted=0 AND (setting_name='default_left_menu' OR setting_name LIKE 'user\\_%\\_left_menu')")->getResult();
 
@@ -233,53 +338,102 @@ if (!function_exists("bombeiros_install_or_update")) {
                 continue;
             }
 
-            $changed = false;
-            $inserted_native_items = false;
-            $inserted_rentals_items = false;
+            $original_items = array_values($items);
+            $needs_group_migration = false;
+            $first_legacy_position = null;
+            $has_rentals = false;
             $rebuilt = [];
-            foreach ($items as $item) {
+            $canonical_group_present = false;
+            foreach ($original_items as $item) {
+                if (in_array($item["name"] ?? "", ["GD Academy", "Administrativos"], true)) {
+                    $canonical_group_present = true;
+                    break;
+                }
+            }
+
+            foreach ($original_items as $index => $item) {
+                $name = $item["name"] ?? "";
+                $is_saved_group_item = $canonical_group_present
+                    && in_array($name, $group_names, true)
+                    && ($name === "GD Academy" || $name === "Administrativos" || !empty($item["is_sub_menu"]));
+                if (in_array($name, $legacy_menu_names, true) && !$is_saved_group_item) {
+                    $needs_group_migration = true;
+                    $first_legacy_position = $first_legacy_position === null ? $index : min($first_legacy_position, $index);
+                }
+                if (in_array($name, $rentals_names, true) || in_array($name, $legacy_rental_names, true)) {
+                    $has_rentals = true;
+                }
+            }
+
+            foreach ($original_items as $item) {
                 $name = $item["name"] ?? "";
 
                 if (in_array($name, $rentals_names, true) || in_array($name, $legacy_rental_names, true)) {
-                    $changed = true;
+                    $has_rentals = true;
                     continue;
                 }
 
-                if (in_array($name, $native_names, true) || in_array($name, $prefixed_native_names, true)) {
-                    $changed = true;
+                $is_saved_group_item = $canonical_group_present
+                    && in_array($name, $group_names, true)
+                    && ($name === "GD Academy" || $name === "Administrativos" || !empty($item["is_sub_menu"]));
+                if (in_array($name, $legacy_menu_names, true) && !$is_saved_group_item) {
                     continue;
                 }
 
-                if (!empty($item["is_sub_menu"]) && in_array($name, $legacy_submenu_names, true)) {
-                    $changed = true;
+                if (in_array($name, $group_names, true) && $needs_group_migration) {
+                    // Se houver itens antigos no mesmo menu, reconstrói os
+                    // grupos para não deixar filhos órfãos ou fora de ordem.
                     continue;
                 }
 
-                if (in_array($name, $legacy_root_names, true)) {
-                    foreach ($native_items as $native_item) {
-                        $rebuilt[] = $native_item;
-                    }
-                    $inserted_native_items = true;
-                    $changed = true;
-                    continue;
+                if ($name === "SIAMESA Mensagens") {
+                    $item["name"] = "Mensagens";
                 }
 
                 $rebuilt[] = $item;
             }
 
-            if (!$inserted_rentals_items) {
-                array_splice($rebuilt, 0, 0, $rentals_items);
-                $inserted_rentals_items = true;
-                $changed = true;
+            if ($needs_group_migration) {
+                $insert_at = $first_legacy_position === null ? 0 : min($first_legacy_position, count($rebuilt));
+                array_splice($rebuilt, $insert_at, 0, $group_items);
+                if (!in_array("dashboard", array_column($rebuilt, "name"), true)) {
+                    array_unshift($rebuilt, ["name" => "dashboard"]);
+                }
             }
 
-            if (!$inserted_native_items && $row->setting_name === "default_left_menu") {
-                $native_insert_at = $inserted_rentals_items ? min(count($rentals_items) + 4, count($rebuilt)) : min(4, count($rebuilt));
-                array_splice($rebuilt, $native_insert_at, 0, $native_items);
-                $changed = true;
+            // Locações continua disponível, mas depois do Dashboard e dos
+            // agrupamentos novos.
+            if ($has_rentals || $needs_group_migration) {
+                $last_group_position = -1;
+                foreach ($rebuilt as $index => $item) {
+                    if (in_array($item["name"] ?? "", $group_names, true)) {
+                        $last_group_position = $index;
+                    }
+                }
+                array_splice($rebuilt, $last_group_position + 1, 0, $rentals_items);
             }
 
-            if ($changed) {
+            // Dashboard abre o menu e Configurações fecha o menu. Os demais
+            // itens do Rise mantêm sua presença e ordem relativa.
+            $dashboard_items = [];
+            $settings_items = [];
+            $ordered = [];
+            foreach ($rebuilt as $item) {
+                $name = $item["name"] ?? "";
+                if ($name === "dashboard") {
+                    if (!$dashboard_items) {
+                        $dashboard_items[] = $item;
+                    }
+                } else if ($name === "settings") {
+                    $settings_items[] = $item;
+                } else {
+                    $ordered[] = $item;
+                }
+            }
+
+            $rebuilt = array_merge($dashboard_items, $ordered, $settings_items);
+
+            if (serialize($rebuilt) !== serialize($original_items)) {
                 $db->query("UPDATE `" . $settings_table . "` SET setting_value=" . $db->escape(serialize($rebuilt)) . "
                     WHERE setting_name=" . $db->escape($row->setting_name));
             }
@@ -511,6 +665,7 @@ if (!function_exists("bombeiros_install_or_update")) {
                     `nascimento_aluno` date DEFAULT NULL,
                     `rg_aluno` varchar(50) DEFAULT NULL,
                     `cpf_aluno` varchar(20) DEFAULT NULL,
+                    `photo_path` varchar(255) DEFAULT NULL,
                     `turma` varchar(50) DEFAULT NULL,
                     `curso_nome` varchar(255) DEFAULT NULL,
                     `num_parcelas` int(11) DEFAULT 12,
@@ -559,6 +714,7 @@ if (!function_exists("bombeiros_install_or_update")) {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
             }
             $ensure_column($table_name, "matricula", "varchar(50) DEFAULT NULL AFTER `id`");
+            $ensure_column($table_name, "photo_path", "varchar(255) DEFAULT NULL AFTER `cpf_aluno`");
             $ensure_column($table_name, "curso_nome", "varchar(255) DEFAULT NULL AFTER `turma`");
             $ensure_column($table_name, "num_parcelas", "int(11) DEFAULT 12 AFTER `curso_nome`");
             $ensure_column($table_name, "valor_inscricao", "decimal(10,2) DEFAULT 100.00 AFTER `valor_mensalidade`");

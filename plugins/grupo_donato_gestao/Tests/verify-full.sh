@@ -31,9 +31,9 @@ if [ -d "$LOG_DIR" ]; then
   done
 fi
 
-step "verify-fast" bash "$PLUGIN/Tests/verify-fast.sh"
 step "installation" php "$PLUGIN/Tests/cli.php" install
 step "installation idempotency" php "$PLUGIN/Tests/cli.php" install
+step "verify-fast" bash "$PLUGIN/Tests/verify-fast.sh"
 step "self-test" php "$PLUGIN/Tests/cli.php" selftest
 step "sequence and temporal concurrency" bash "$PLUGIN/Tests/concurrency.sh"
 step "booking concurrency" bash "$PLUGIN/Tests/booking_concurrency.sh"

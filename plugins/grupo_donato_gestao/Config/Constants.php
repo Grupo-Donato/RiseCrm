@@ -19,13 +19,13 @@ final class Constants
     public const ROUTE_PREFIX = "grupo_donato";
 
     /** Versão do plugin (deve bater com o cabeçalho de metadados do index.php). */
-    public const PLUGIN_VERSION = "0.9.6";
+    public const PLUGIN_VERSION = "0.9.7";
 
     /**
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
      * Corresponde ao maior arquivo em Database/Schema/Versions.
      */
-    public const SCHEMA_TARGET = "049";
+    public const SCHEMA_TARGET = "050";
 
     /** Prefixo lógico das tabelas (o Rise antepõe o DBPrefix 'rise_'). */
     public const TABLE_PREFIX = "gd_";

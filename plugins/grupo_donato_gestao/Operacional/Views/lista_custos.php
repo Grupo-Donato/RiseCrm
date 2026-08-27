@@ -1,3 +1,7 @@
+<?php
+$custos_resumo = $custos_resumo ?? [];
+?>
+
 <div class="page-title clearfix">
     <div class="title-button-group skip-dropdown-migration">
         <?php echo modal_anchor(get_uri("grupo_donato/operacional/custo_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Novo custo", ["class" => "btn btn-default", "title" => "Novo custo"]); ?>
@@ -45,7 +49,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-info"><i data-feather="file-text" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_lancados">0</h1>
+                    <h1 data-resumo="total_lancados"><?php echo (int) ($custos_resumo["total_lancados"] ?? 0); ?></h1>
                     <span>Lançados</span>
                 </div>
             </div>
@@ -56,7 +60,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-success"><i data-feather="check-circle" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_pagos">0</h1>
+                    <h1 data-resumo="total_pagos"><?php echo (int) ($custos_resumo["total_pagos"] ?? 0); ?></h1>
                     <span>Pagos</span>
                 </div>
             </div>
@@ -67,7 +71,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-warning"><i data-feather="clock" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_previstos">0</h1>
+                    <h1 data-resumo="total_previstos"><?php echo (int) ($custos_resumo["total_previstos"] ?? 0); ?></h1>
                     <span>Previstos</span>
                 </div>
             </div>
@@ -78,7 +82,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-danger"><i data-feather="x-circle" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_cancelados">0</h1>
+                    <h1 data-resumo="total_cancelados"><?php echo (int) ($custos_resumo["total_cancelados"] ?? 0); ?></h1>
                     <span>Cancelados</span>
                 </div>
             </div>
@@ -89,7 +93,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-success"><i data-feather="dollar-sign" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_pago_formatado">R$ 0,00</h1>
+                    <h1 data-resumo="total_pago_formatado"><?php echo esc($custos_resumo["total_pago_formatado"] ?? "R$ 0,00"); ?></h1>
                     <span>Total pago</span>
                 </div>
             </div>
@@ -100,7 +104,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-warning"><i data-feather="trending-down" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_previsto_formatado">R$ 0,00</h1>
+                    <h1 data-resumo="total_previsto_formatado"><?php echo esc($custos_resumo["total_previsto_formatado"] ?? "R$ 0,00"); ?></h1>
                     <span>Total previsto</span>
                 </div>
             </div>
@@ -111,7 +115,7 @@
             <div class="card-body">
                 <div class="widget-icon bg-primary"><i data-feather="bar-chart-2" class="icon"></i></div>
                 <div class="widget-details">
-                    <h1 data-resumo="total_geral_formatado">R$ 0,00</h1>
+                    <h1 data-resumo="total_geral_formatado"><?php echo esc($custos_resumo["total_geral_formatado"] ?? "R$ 0,00"); ?></h1>
                     <span>Total lançado</span>
                 </div>
             </div>
@@ -207,10 +211,21 @@
         }
     };
 
+    var bombeirosCustosResumoParams = function () {
+        var settings = window.InstanceCollection ? window.InstanceCollection["bombeiros-custos-table"] : null;
+        var filterParams = settings && settings.filterParams ? settings.filterParams : {};
+
+        return {
+            status: filterParams.status || $("#bombeiros-custos-mobile-status").val() || "",
+            categoria: filterParams.categoria || $("#bombeiros-custos-mobile-categoria").val() || ""
+        };
+    };
+
     window.reloadBombeirosCustosResumo = function () {
         appAjaxRequest({
             url: "<?php echo_uri("grupo_donato/operacional/custos_resumo"); ?>",
             type: "POST",
+            data: bombeirosCustosResumoParams(),
             dataType: "json",
             success: function (result) {
                 if (!result.success) {

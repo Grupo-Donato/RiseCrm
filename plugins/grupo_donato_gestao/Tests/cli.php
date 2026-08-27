@@ -7,6 +7,7 @@
  * Uso:
  *   php plugins/grupo_donato_gestao/Tests/cli.php install
  *   php plugins/grupo_donato_gestao/Tests/cli.php selftest
+ *   php plugins/grupo_donato_gestao/Tests/cli.php student-photo-selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php seqgrab 25 [tipo]
  */
 
@@ -89,6 +90,13 @@ function gd_throws(callable $callback, string $message = ""): bool
 function gd_like_literal_prefix(string $prefix): string
 {
     return strtr($prefix, ["!" => "!!", "%" => "!%", "_" => "!_"]) . "%";
+}
+
+if ($task === "student-photo-selftest") {
+    require_once __DIR__ . "/student_photo_selftest.php";
+    gd_student_photo_selftest();
+    echo "\n==== RESULTADO: {$GLOBALS["gd_pass"]} PASS / {$GLOBALS["gd_fail"]} FAIL ====\n";
+    exit($GLOBALS["gd_fail"] ? 1 : 0);
 }
 
 if ($task === "install") {
@@ -350,7 +358,7 @@ if ($task === "selftest") {
         gd_assert("tabela {$prefix}{$t} existe", $db->tableExists($prefix . $t));
     }
     $sv = model("grupo_donato_gestao\\Models\\Gd_schema_versions_model");
-    gd_assert("49 versões completed", $sv->count_by_status("completed") === 49, $sv->count_by_status("completed") . " completed");
+    gd_assert("50 versões completed", $sv->count_by_status("completed") === 50, $sv->count_by_status("completed") . " completed");
     gd_assert("nenhuma falha de schema", !$sv->has_failed());
     gd_assert("versão aplicada == alvo " . Constants::SCHEMA_TARGET, $sv->get_applied_version() === Constants::SCHEMA_TARGET, "aplicada=" . $sv->get_applied_version());
     $physical = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [$gd_table_pattern])->getResult();
@@ -926,6 +934,8 @@ if ($task === "selftest") {
     require __DIR__ . "/court_rental_selftest.php";
     require __DIR__ . "/school_selftest.php";
     require __DIR__ . "/finance_selftest.php";
+    require_once __DIR__ . "/student_photo_selftest.php";
+    gd_student_photo_selftest();
     // Protótipo (Cenário 2): o módulo de importação está oculto e NÃO foi continuado.
     // As tabelas gd_import_* permanecem (validadas acima), porém o importador não
     // integra os 9 fluxos do protótipo, então seu self-test não é executado aqui.

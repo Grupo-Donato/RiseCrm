@@ -16,6 +16,21 @@ use grupo_donato_gestao\Config\Permissions;
  */
 class AccessService
 {
+    /**
+     * Financeiro, caixa, despesas e unidades compõem o menu
+     * "Administrativos". A autorização desses módulos segue os cargos do
+     * Rise, além das permissões específicas do módulo.
+     */
+    private const ADMINISTRATIVE_PERMISSION_KEYS = [
+        "gd_units_view",
+        "gd_units_manage",
+        "gd_finance_view",
+        "gd_receivables_manage",
+        "gd_payments_manage",
+        "gd_expenses_manage",
+        "gd_cash_view",
+    ];
+
     private object $login_user;
 
     public function __construct(object $login_user)
@@ -34,6 +49,11 @@ class AccessService
             return true;
         }
         if (($this->login_user->user_type ?? "") !== "staff") {
+            return false;
+        }
+
+        if (in_array($permission_key, self::ADMINISTRATIVE_PERMISSION_KEYS, true)
+            && !RoleAccessService::has_administrative_access($this->login_user)) {
             return false;
         }
 

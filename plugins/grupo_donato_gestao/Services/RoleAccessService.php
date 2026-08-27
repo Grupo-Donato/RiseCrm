@@ -8,7 +8,18 @@ final class RoleAccessService
 {
     public const OPERATIONAL_ANY_SECTION = "__any__";
 
+    /**
+     * Cargos do Rise que podem administrar o Grupo Donato.
+     *
+     * Os aliases em inglês mantêm compatibilidade com instalações que usam
+     * títulos de cargo traduzidos. Esta lista preserva o comportamento
+     * histórico de acesso amplo ao plugin; o acesso administrativo é
+     * controlado separadamente por ADMINISTRATIVE_ROLE_KEYS.
+     */
     private const FULL_ROLE_KEYS = [
+        "admin" => true,
+        "administrador" => true,
+        "administrator" => true,
         "diretor" => true,
         "director" => true,
         "gestor" => true,
@@ -16,6 +27,17 @@ final class RoleAccessService
         "secretaria" => true,
         "secretario" => true,
         "secretary" => true,
+    ];
+
+    /** Cargos do Rise autorizados no Dashboard e em Administrativos. */
+    private const ADMINISTRATIVE_ROLE_KEYS = [
+        "admin" => true,
+        "administrador" => true,
+        "administrator" => true,
+        "diretor" => true,
+        "director" => true,
+        "gestor" => true,
+        "manager" => true,
     ];
 
     private const PROFESSOR_ROLE_KEYS = [
@@ -107,6 +129,7 @@ final class RoleAccessService
         "baixar_comprovante" => "comprovantes",
         "baixar_comprovante_pdf" => "comprovantes",
         "visualizar_comprovante" => "comprovantes",
+        "foto_aluno" => "alunos",
         "baixar_exame_medico" => "alunos",
     ];
 
@@ -152,6 +175,15 @@ final class RoleAccessService
         return isset(self::FULL_ROLE_KEYS[self::title_key($user)]);
     }
 
+    public static function has_administrative_access(?object $user): bool
+    {
+        if (!$user || ($user->user_type ?? "") !== "staff") {
+            return false;
+        }
+
+        return !empty($user->is_admin) || isset(self::ADMINISTRATIVE_ROLE_KEYS[self::title_key($user)]);
+    }
+
     public static function is_professor(?object $user): bool
     {
         return isset(self::PROFESSOR_ROLE_KEYS[self::title_key($user)]);
@@ -164,8 +196,23 @@ final class RoleAccessService
             return [];
         }
 
-        if (!empty($user->is_admin) || self::is_full_access_role($user)) {
+        if (self::has_administrative_access($user)) {
             return self::OPERATIONAL_FULL_SECTIONS;
+        }
+
+        // Secretaria mantém acesso à operação da Academia, mas não aos itens
+        // que compõem o menu Administrativos.
+        if (self::is_full_access_role($user)) {
+            return [
+                "alunos",
+                "cancelados",
+                "concluidos",
+                "responsaveis",
+                "presenca",
+                "pagamentos",
+                "mensagens",
+                "comprovantes",
+            ];
         }
 
         if (self::is_professor($user)) {

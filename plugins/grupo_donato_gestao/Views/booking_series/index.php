@@ -6,16 +6,8 @@ foreach ($statuses as $status) { $status_options[] = ["id" => $status, "text" =>
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
-    <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_nav", [
-        "active" => "reservations",
-        "can_calendar" => $can_calendar ?? false,
-        "can_court_rentals" => $can_court_rentals ?? false,
-        "can_bookings" => $can_bookings ?? false,
-        "can_series" => true,
-        "can_finance" => $can_finance ?? false,
-    ]); ?>
     <div class="card">
-        <div class="page-title clearfix">
+        <div class="page-title clearfix gd-page-header">
             <div><h4><?php echo app_lang("gd_menu_booking_series"); ?></h4><div class="text-muted"><?php echo app_lang("gd_recurrences_help"); ?></div></div>
             <?php if ($can_manage) { ?><div class="title-button-group"><?php echo modal_anchor(get_uri("grupo_donato/booking-series/modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_booking_series"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_booking_series")]); ?></div><?php } ?>
         </div>

@@ -729,7 +729,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
             <?php if ($gd_can_render_tab("custos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("custos"); ?>" id="bombeiros-tab-custos">
-                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_custos'); ?>
+                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_custos', ["custos_resumo" => $custos_resumo ?? []]); ?>
             </div>
             <?php endif; ?>
 

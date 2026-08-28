@@ -76,7 +76,6 @@ class Bombeiros extends Security_Controller
         $view_data["qualidade_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_qualidade_resumo_data() : [];
         $view_data["financeiro_resumo"] = $this->_gd_can_access_section("financeiro") ? $this->_financeiro_resumo_data() : [];
         $view_data["custos_resumo"] = $this->_gd_can_access_section("custos") ? $this->_custos_resumo_data() : [];
-        $view_data["mensagens_contexto"] = $this->_gd_can_access_section("mensagens") ? $this->_mensagens_contexto_data() : [];
         return $this->template->render('grupo_donato_gestao\Operacional\Views\index', $view_data);
     }
 
@@ -182,39 +181,6 @@ class Bombeiros extends Security_Controller
     public function leads_palestra()
     {
         return $this->template->view('grupo_donato_gestao\Operacional\Views\lista_leads_palestra');
-    }
-
-    public function templates_mensagem()
-    {
-        $view_name = "dbo.templates_mensagem";
-        $disponivel = $this->Bombeiros_iara_adapter_model->tabela_ou_view_existe($view_name);
-        return $this->template->view('grupo_donato_gestao\Operacional\Views\mensagens_status', [
-            "titulo" => "Templates de mensagem",
-            "disponivel" => $disponivel,
-            "rows" => $disponivel ? $this->Bombeiros_iara_adapter_model->listar_view($view_name) : []
-        ]);
-    }
-
-    public function mensagens()
-    {
-        $view_name = "dbo.mensagens";
-        $disponivel = $this->Bombeiros_iara_adapter_model->tabela_ou_view_existe($view_name);
-        return $this->template->view('grupo_donato_gestao\Operacional\Views\mensagens_status', [
-            "titulo" => "Mensagens",
-            "disponivel" => $disponivel,
-            "rows" => $disponivel ? $this->Bombeiros_iara_adapter_model->listar_view($view_name) : []
-        ]);
-    }
-
-    public function historico_mensagens()
-    {
-        $view_name = "dbo.historico_mensagens";
-        $disponivel = $this->Bombeiros_iara_adapter_model->tabela_ou_view_existe($view_name);
-        return $this->template->view('grupo_donato_gestao\Operacional\Views\mensagens_status', [
-            "titulo" => "Histórico de mensagens",
-            "disponivel" => $disponivel,
-            "rows" => $disponivel ? $this->Bombeiros_iara_adapter_model->listar_view($view_name) : []
-        ]);
     }
 
     public function alunos_list_data()
@@ -3697,7 +3663,7 @@ class Bombeiros extends Security_Controller
         $active_tab = strtolower((string) $this->request->getGet("gd_tab"));
         $allowed_tabs = [
             "dashboard", "alunos", "cancelados", "concluidos", "responsaveis", "presenca",
-            "pagamentos", "financeiro", "custos", "materiais", "leads", "mensagens", "unidades"
+            "pagamentos", "financeiro", "custos", "materiais", "leads", "unidades"
         ];
 
         if (!in_array($active_tab, $allowed_tabs, true)) {
@@ -3755,26 +3721,6 @@ class Bombeiros extends Security_Controller
             "leads_nao_matriculados" => (int) ($leads->nao_matriculados ?? 0),
             "taxa_conversao_palestra" => $leads_total ? round(($leads_matriculados / $leads_total) * 100, 1) : 0
         ];
-    }
-
-    private function _mensagens_contexto_data()
-    {
-        $map = [
-            "templates" => "dbo.templates_mensagem",
-            "mensagens" => "dbo.mensagens",
-            "historico" => "dbo.historico_mensagens"
-        ];
-        $data = [];
-
-        foreach ($map as $key => $view_name) {
-            $disponivel = $this->Bombeiros_iara_adapter_model->tabela_ou_view_existe($view_name);
-            $data[$key] = [
-                "disponivel" => $disponivel,
-                "rows" => $disponivel ? $this->Bombeiros_iara_adapter_model->listar_view($view_name, 20) : []
-            ];
-        }
-
-        return $data;
     }
 
     private function _qualidade_resumo_data()

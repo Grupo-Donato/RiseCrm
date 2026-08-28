@@ -102,10 +102,6 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("delete_lead_palestra", "Bombeiros::delete_lead_palestra");
     $routes->post("converter_lead_em_aluno", "Bombeiros::converter_lead_em_aluno");
 
-    $routes->get("templates_mensagem", "Bombeiros::templates_mensagem");
-    $routes->get("mensagens", "Bombeiros::mensagens");
-    $routes->get("historico_mensagens", "Bombeiros::historico_mensagens");
-
     $routes->post("buscar_dados_comprovante", "Bombeiros::buscar_dados_comprovante");
     $routes->post("gerar_comprovante", "Bombeiros::gerar_comprovante");
     $routes->get("foto_aluno/(:num)", "Bombeiros::foto_aluno/$1");

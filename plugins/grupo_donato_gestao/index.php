@@ -114,6 +114,17 @@ if (!function_exists('gd_current_login_user')) {
             return $sidebar_menu;
         }
 
+        // Limpeza visual solicitada para o menu principal do Rise. As rotas
+        // nativas continuam intactas para não afetar dados ou integrações.
+        unset(
+            $sidebar_menu['file_manager'],
+            $sidebar_menu['files'],
+            $sidebar_menu['projects'],
+            $sidebar_menu['notes'],
+            $sidebar_menu['messages'],
+            $sidebar_menu['grupo_donato']
+        );
+
         $access = new AccessService($user);
         $can = static fn($key) => $access->can($key);
 
@@ -129,25 +140,9 @@ if (!function_exists('gd_current_login_user')) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
-        // A escola moderna continua no menu Grupo Donato; as rotinas
-        // administrativas permanecem no agrupamento operacional próprio.
-        $submenu = [];
-        if ($can_school) {
-            $submenu[] = ["name" => "customers_students", "language_key" => "gd_menu_customers_students", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/students"), "class" => "users"];
-            $submenu[] = ["name" => "classes_personal", "language_key" => "gd_menu_classes_personal", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/classes"), "class" => "layers"];
-        }
-        if ($submenu) {
-            $landing_uri = "grupo_donato/school/students";
-            $sidebar_menu['grupo_donato'] = [
-                "name" => "Grupo Donato",
-                "language_key" => "gd_app_title",
-                "class" => "activity",
-                "is_custom_menu_item" => true,
-                "url" => get_uri($landing_uri),
-                "position" => 12,
-                "submenu" => $submenu,
-            ];
-        }
+        // O agrupamento "Grupo Donato" foi retirado da navegação. As telas
+        // modernas de escola continuam disponíveis pelas rotas próprias,
+        // enquanto o menu operacional exibe somente as áreas solicitadas.
 
         // O Rise suporta um nível de submenu. Por isso Locações apresenta os
         // dois domínios (Quadras/Churrasqueiras), e cada domínio usa sua

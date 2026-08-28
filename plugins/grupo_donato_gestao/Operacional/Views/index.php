@@ -43,7 +43,6 @@ $gd_all_tab_targets = [
     "custos" => "#bombeiros-tab-custos",
     "materiais" => "#bombeiros-tab-materiais",
     "leads" => "#bombeiros-tab-leads",
-    "mensagens" => "#bombeiros-tab-mensagens",
     "unidades" => "#bombeiros-tab-unidades"
 ];
 $gd_all_section_labels = [
@@ -58,7 +57,6 @@ $gd_all_section_labels = [
     "custos" => "Custos",
     "materiais" => "Materiais",
     "leads" => "Leads palestra",
-    "mensagens" => "Mensagens",
     "unidades" => "Unidades"
 ];
 $gd_allowed_sections = isset($gd_allowed_sections) && is_array($gd_allowed_sections) ? $gd_allowed_sections : array_keys($gd_all_tab_targets);
@@ -82,7 +80,6 @@ $gd_pane_class = function ($tab) use ($gd_active_tab) {
 $dashboard_resumo = $dashboard_resumo ?? [];
 $qualidade_resumo = $qualidade_resumo ?? [];
 $financeiro_resumo = $financeiro_resumo ?? [];
-$mensagens_contexto = $mensagens_contexto ?? [];
 $dashboard_resultado = (float) ($dashboard_resumo["resultado_operacional"] ?? 0);
 $dashboard_resultado_class = $dashboard_resultado > 0 ? "bg-success" : ($dashboard_resultado < 0 ? "bg-danger" : "bg-info");
 $dashboard_resultado_icon = $dashboard_resultado >= 0 ? "trending-up" : "trending-down";
@@ -742,24 +739,6 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             <?php if ($gd_can_render_tab("leads")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("leads"); ?>" id="bombeiros-tab-leads">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\lista_leads_palestra'); ?>
-            </div>
-            <?php endif; ?>
-
-            <?php if ($gd_can_render_tab("mensagens")): ?>
-            <div role="tabpanel" class="<?php echo $gd_pane_class("mensagens"); ?>" id="bombeiros-tab-mensagens">
-                <div class="p20">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <?php echo view('grupo_donato_gestao\Operacional\Views\mensagens_status', ["titulo" => "Templates", "disponivel" => $mensagens_contexto["templates"]["disponivel"] ?? false, "rows" => $mensagens_contexto["templates"]["rows"] ?? []]); ?>
-                        </div>
-                        <div class="col-md-4">
-                            <?php echo view('grupo_donato_gestao\Operacional\Views\mensagens_status', ["titulo" => "Conversas", "disponivel" => $mensagens_contexto["mensagens"]["disponivel"] ?? false, "rows" => $mensagens_contexto["mensagens"]["rows"] ?? []]); ?>
-                        </div>
-                        <div class="col-md-4">
-                            <?php echo view('grupo_donato_gestao\Operacional\Views\mensagens_status', ["titulo" => "Histórico", "disponivel" => $mensagens_contexto["historico"]["disponivel"] ?? false, "rows" => $mensagens_contexto["historico"]["rows"] ?? []]); ?>
-                        </div>
-                    </div>
-                </div>
             </div>
             <?php endif; ?>
 

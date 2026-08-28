@@ -164,7 +164,6 @@ if (!function_exists("bombeiros_install_or_update")) {
             "custos" => ["name" => "Custos", "class" => "dollar-sign"],
             "materiais" => ["name" => "Materiais", "class" => "package"],
             "leads" => ["name" => "Captação", "class" => "radio"],
-            "mensagens" => ["name" => "Mensagens", "class" => "message-square"],
             "unidades" => ["name" => "Unidades", "class" => "map"]
         ];
     }
@@ -239,14 +238,6 @@ if (!function_exists("bombeiros_install_or_update")) {
             ];
         }
 
-        // Mensagens não pertence a nenhum dos dois agrupamentos solicitados,
-        // portanto continua como atalho independente.
-        $messages_item = $section_item("mensagens");
-        if ($messages_item) {
-            $messages_item["position"] = 4;
-            $items["grupo_donato_mensagens"] = $messages_item;
-        }
-
         return $items;
     }
 
@@ -291,6 +282,18 @@ if (!function_exists("bombeiros_install_or_update")) {
             "Caixa e Despesas",
             "Caixa",
             "Despesas",
+            "Mensagens",
+            "SIAMESA Mensagens",
+            "messages",
+            "grupo_donato",
+            "Grupo Donato",
+            "files",
+            "file_manager",
+            "Arquivos",
+            "projects",
+            "Projetos",
+            "notes",
+            "Notas",
         ]);
 
         $rentals_items = [

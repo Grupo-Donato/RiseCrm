@@ -58,7 +58,6 @@ final class RoleAccessService
         "custos",
         "materiais",
         "leads",
-        "mensagens",
         "unidades",
         "importar",
         "comprovantes",
@@ -78,9 +77,6 @@ final class RoleAccessService
         "custos" => "custos",
         "unidades" => "unidades",
         "leads_palestra" => "leads",
-        "templates_mensagem" => "mensagens",
-        "mensagens" => "mensagens",
-        "historico_mensagens" => "mensagens",
         "alunos_list_data" => "alunos",
         "responsaveis_list_data" => "responsaveis",
         "unidades_list_data" => "unidades",
@@ -210,7 +206,6 @@ final class RoleAccessService
                 "responsaveis",
                 "presenca",
                 "pagamentos",
-                "mensagens",
                 "comprovantes",
             ];
         }

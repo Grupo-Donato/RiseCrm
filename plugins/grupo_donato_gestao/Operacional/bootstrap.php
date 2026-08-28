@@ -219,28 +219,15 @@ if (!function_exists("bombeiros_install_or_update")) {
         }
 
         // Administrativos: somente admin, diretor e gestor chegam a esta
-        // seção. Os links de caixa e despesas usam o financeiro novo do GD.
+        // seção. A navegação fica limitada a inadimplência, custos e unidades.
         if (\grupo_donato_gestao\Services\RoleAccessService::has_administrative_access($user)) {
             $administrative_submenu = [];
-            foreach (["financeiro", "custos", "materiais", "leads", "unidades"] as $key) {
+            foreach (["financeiro", "custos", "unidades"] as $key) {
                 $item = $section_item($key);
                 if ($item) {
                     $administrative_submenu[] = $item;
                 }
             }
-
-            $administrative_submenu[] = [
-                "name" => "Caixa",
-                "url" => get_uri("grupo_donato/finance/cash"),
-                "is_custom_menu_item" => true,
-                "class" => "credit-card",
-            ];
-            $administrative_submenu[] = [
-                "name" => "Despesas",
-                "url" => get_uri("grupo_donato/finance/expenses"),
-                "is_custom_menu_item" => true,
-                "class" => "arrow-right-circle",
-            ];
 
             $items["grupo_donato_administrativos"] = [
                 "name" => "Administrativos",
@@ -279,11 +266,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             ["name" => "Administrativos"],
             ["name" => "Inadimplência", "is_sub_menu" => "1"],
             ["name" => "Custos", "is_sub_menu" => "1"],
-            ["name" => "Materiais", "is_sub_menu" => "1"],
-            ["name" => "Captação", "is_sub_menu" => "1"],
             ["name" => "Unidades", "is_sub_menu" => "1"],
-            ["name" => "Caixa", "is_sub_menu" => "1"],
-            ["name" => "Despesas", "is_sub_menu" => "1"],
         ];
         $group_names = array_map(static function ($item) {
             return $item["name"];
@@ -306,28 +289,41 @@ if (!function_exists("bombeiros_install_or_update")) {
             "cash_expenses",
             "Caixa e despesas",
             "Caixa e Despesas",
+            "Caixa",
+            "Despesas",
         ]);
 
         $rentals_items = [
             ["name" => "Locações"],
-            ["name" => "rental_agenda", "is_sub_menu" => "1"],
-            ["name" => "rental_bookings", "is_sub_menu" => "1"],
-            ["name" => "rental_series", "is_sub_menu" => "1"],
-            ["name" => "rental_single", "is_sub_menu" => "1"],
-            ["name" => "rental_monthly", "is_sub_menu" => "1"],
-            ["name" => "rental_finance", "is_sub_menu" => "1"],
-            ["name" => "rental_charges", "is_sub_menu" => "1"],
+            ["name" => "rental_courts", "is_sub_menu" => "1"],
+            ["name" => "rental_barbecues", "is_sub_menu" => "1"],
         ];
         $rentals_names = array_map(function ($item) {
             return $item["name"];
         }, $rentals_items);
         $legacy_rental_names = [
             "locacoes",
+            "Churrasqueiras",
             "Locações",
             "Cobrança",
             "agenda",
+            "barbecue_agenda",
+            "barbecue_bookings",
+            "barbecue_monthly",
+            "barbecue_finance",
             "court_monthly",
             "cobranca",
+            "rental_charges",
+            "rental_agenda",
+            "rental_bookings",
+            "rental_monthly",
+            "rental_finance",
+            "rental_series",
+            "rental_single",
+            "booking_series",
+            "bookings",
+            "court_rentals",
+            "calendar",
         ];
         $rows = $db->query("SELECT setting_name, setting_value FROM `" . $settings_table . "`
             WHERE deleted=0 AND (setting_name='default_left_menu' OR setting_name LIKE 'user\\_%\\_left_menu')")->getResult();

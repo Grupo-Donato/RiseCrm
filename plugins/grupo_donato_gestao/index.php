@@ -171,6 +171,10 @@ if (!function_exists('gd_current_login_user')) {
                 "class" => "grid",
             ];
         }
+        // O módulo Cobrança não faz parte da navegação de Locações. Os
+        // pagamentos das locações são acessados dentro de cada domínio.
+        unset($sidebar_menu['cobranca']);
+
         if ($rental_submenu) {
             $sidebar_menu['locacoes'] = [
                 "name" => "Locações",
@@ -181,7 +185,6 @@ if (!function_exists('gd_current_login_user')) {
                 "position" => 13,
                 "submenu" => $rental_submenu,
             ];
-            unset($sidebar_menu['cobranca']);
         }
 
         // A configuração do Rise é sempre o último item, inclusive quando o

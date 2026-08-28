@@ -295,9 +295,19 @@ if (!function_exists("bombeiros_install_or_update")) {
 
         $rentals_items = [
             ["name" => "Locações"],
-            ["name" => "rental_courts", "is_sub_menu" => "1"],
-            ["name" => "rental_barbecues", "is_sub_menu" => "1"],
+            ["name" => "rental_agenda", "is_sub_menu" => "1"],
+            ["name" => "rental_reservas", "is_sub_menu" => "1"],
+            ["name" => "rental_monthly", "is_sub_menu" => "1"],
+            ["name" => "rental_payments", "is_sub_menu" => "1"],
+            ["name" => "rental_charges", "is_sub_menu" => "1"],
+            ["name" => "Churrasqueiras"],
+            ["name" => "barbecue_agenda", "is_sub_menu" => "1"],
+            ["name" => "barbecue_reservas", "is_sub_menu" => "1"],
+            ["name" => "barbecue_monthly", "is_sub_menu" => "1"],
+            ["name" => "barbecue_payments", "is_sub_menu" => "1"],
+            ["name" => "barbecue_charges", "is_sub_menu" => "1"],
         ];
+        $rentals_items[0]["name"] = "rental_courts_menu";
         $rentals_names = array_map(function ($item) {
             return $item["name"];
         }, $rentals_items);
@@ -320,6 +330,8 @@ if (!function_exists("bombeiros_install_or_update")) {
             "rental_finance",
             "rental_series",
             "rental_single",
+            "rental_courts",
+            "rental_barbecues",
             "booking_series",
             "bookings",
             "court_rentals",

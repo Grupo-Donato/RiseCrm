@@ -83,7 +83,7 @@ $language = Get-Content -Raw -Encoding UTF8 -LiteralPath $languagePath
 $keys = [regex]::Matches($language, '"(gd_[a-zA-Z0-9_]+)"\s*=>') | ForEach-Object { $_.Groups[1].Value }
 $duplicates = @($keys | Group-Object | Where-Object Count -gt 1)
 Assert-True ($duplicates.Count -eq 0) ("Duplicate language keys: " + (($duplicates.Name) -join ", "))
-foreach ($key in @("gd_app_title", "gd_menu_calendar", "gd_menu_bookings", "gd_booking_conflict", "gd_menu_booking_series", "gd_booking_series_not_found", "gd_school_students", "gd_school_classes", "gd_school_attendance", "gd_finance_overview", "gd_finance_receivables", "gd_finance_cash", "gd_menu_barbecues", "gd_resource_type_barbecue_area")) {
+foreach ($key in @("gd_app_title", "gd_menu_calendar", "gd_menu_bookings", "gd_booking_conflict", "gd_menu_booking_series", "gd_booking_series_not_found", "gd_school_students", "gd_school_classes", "gd_school_attendance", "gd_finance_overview", "gd_finance_receivables", "gd_finance_cash", "gd_menu_barbecues", "gd_menu_rental_reservas", "gd_menu_barbecue_reservas", "gd_menu_barbecue_charges", "gd_resource_type_barbecue_area")) {
     Assert-True ($keys -contains $key) "Required language key missing: $key"
 }
 Write-Host "  PASS $($keys.Count) unique gd_* keys"

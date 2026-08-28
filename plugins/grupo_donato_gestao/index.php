@@ -189,6 +189,110 @@ if (!function_exists('gd_current_login_user')) {
 
         // A configuração do Rise é sempre o último item, inclusive quando o
         // menu-base tem poucos itens e os plugins inserem atalhos posicionados.
+        // Menu operacional final: cada tipo de locação tem seu próprio grupo
+        // expansível. Os nomes técnicos dos filhos são únicos porque o Rise
+        // persiste o side menu por nome.
+        unset($sidebar_menu["locacoes"], $sidebar_menu["churrasqueiras"]);
+
+        $court_rental_submenu = [];
+        if ($can_calendar) {
+            $court_rental_submenu[] = [
+                "name" => "rental_agenda",
+                "language_key" => "gd_menu_rental_agenda",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/calendar"),
+            ];
+        }
+        if ($can_court_rentals) {
+            $court_rental_submenu[] = [
+                "name" => "rental_reservas",
+                "language_key" => "gd_menu_rental_reservas",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/court-rentals"),
+            ];
+            $court_rental_submenu[] = [
+                "name" => "rental_monthly",
+                "language_key" => "gd_menu_rental_monthly",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/court-rentals/monthly"),
+            ];
+        }
+        if ($can_finance) {
+            $court_rental_submenu[] = [
+                "name" => "rental_payments",
+                "language_key" => "gd_menu_rental_finance",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/finance/rental-payments"),
+            ];
+            $court_rental_submenu[] = [
+                "name" => "rental_charges",
+                "language_key" => "gd_menu_rental_charges",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/finance/rental-payments"),
+            ];
+        }
+        if ($court_rental_submenu) {
+            $sidebar_menu["locacoes"] = [
+                "name" => "LocaÃ§Ãµes",
+                "language_key" => "gd_menu_rentals",
+                "class" => "grid",
+                "is_custom_menu_item" => true,
+                "url" => $court_rental_submenu[0]["url"],
+                "position" => 13,
+                "submenu" => $court_rental_submenu,
+            ];
+            $sidebar_menu["locacoes"]["name"] = "rental_courts_menu";
+        }
+
+        $barbecue_rental_submenu = [];
+        if ($can_calendar) {
+            $barbecue_rental_submenu[] = [
+                "name" => "barbecue_agenda",
+                "language_key" => "gd_menu_barbecue_agenda",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/barbecue-calendar"),
+            ];
+        }
+        if ($can_barbecue_rentals) {
+            $barbecue_rental_submenu[] = [
+                "name" => "barbecue_reservas",
+                "language_key" => "gd_menu_barbecue_reservas",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/barbecue-rentals"),
+            ];
+            $barbecue_rental_submenu[] = [
+                "name" => "barbecue_monthly",
+                "language_key" => "gd_menu_barbecue_monthly",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/barbecue-rentals/monthly"),
+            ];
+        }
+        if ($can_finance) {
+            $barbecue_rental_submenu[] = [
+                "name" => "barbecue_payments",
+                "language_key" => "gd_menu_barbecue_finance",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/finance/barbecue-payments"),
+            ];
+            $barbecue_rental_submenu[] = [
+                "name" => "barbecue_charges",
+                "language_key" => "gd_menu_barbecue_charges",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/finance/barbecue-payments"),
+            ];
+        }
+        if ($barbecue_rental_submenu) {
+            $sidebar_menu["churrasqueiras"] = [
+                "name" => "Churrasqueiras",
+                "language_key" => "gd_menu_barbecues",
+                "class" => "grid",
+                "is_custom_menu_item" => true,
+                "url" => $barbecue_rental_submenu[0]["url"],
+                "position" => 14,
+                "submenu" => $barbecue_rental_submenu,
+            ];
+        }
+
         if (isset($sidebar_menu['settings'])) {
             $settings_menu = $sidebar_menu['settings'];
             unset($sidebar_menu['settings']);

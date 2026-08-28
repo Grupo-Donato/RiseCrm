@@ -6,7 +6,7 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 Plugin Name: Grupo Donato — Gestão
 Plugin URL: https://grupodonato.local
 Description: Gestão integrada de cadastro, agenda, locações, escola, personal e financeiro básico (até a Fase 5).
-Version: 0.9.7
+Version: 0.9.8
 Requires at least: 3.9.6
 Author: Grupo Donato
 */
@@ -121,16 +121,16 @@ if (!function_exists('gd_current_login_user')) {
         $can_bookings = $can('gd_bookings_view');
         $can_booking_series = $can('gd_booking_series_view');
         $can_court_rentals = $can('gd_court_rentals_view');
+        $can_barbecue_rentals = $can('gd_barbecue_rentals_view');
         $can_school = $can('gd_school_view');
         $can_finance = $can('gd_finance_view');
-        $can_billing = gd_cobranca_can_view($user);
 
-        if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_school && !$can_finance && !$can_billing) {
+        if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_barbecue_rentals && !$can_school && !$can_finance) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
-        // A escola moderna continua no menu Grupo Donato; o caixa e as
-        // despesas ficam no grupo operacional "Administrativos".
+        // A escola moderna continua no menu Grupo Donato; as rotinas
+        // administrativas permanecem no agrupamento operacional próprio.
         $submenu = [];
         if ($can_school) {
             $submenu[] = ["name" => "customers_students", "language_key" => "gd_menu_customers_students", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/school/students"), "class" => "users"];
@@ -149,29 +149,28 @@ if (!function_exists('gd_current_login_user')) {
             ];
         }
 
-        // A navegação de locações foi consolidada em três pontos de trabalho.
-        // Reservas, ocupações e séries continuam existindo tecnicamente, mas
-        // aparecem como abas da mesma tela para evitar itens duplicados.
+        // O Rise suporta um nível de submenu. Por isso Locações apresenta os
+        // dois domínios (Quadras/Churrasqueiras), e cada domínio usa sua
+        // navegação interna para Agenda, Avulsos, Mensalistas e Pagamentos.
         $rental_submenu = [];
-        if ($can_calendar) {
-            $rental_submenu[] = ["name" => "rental_agenda", "language_key" => "gd_menu_rental_agenda", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/calendar"), "class" => "calendar"];
+        if ($can_court_rentals || $can_calendar) {
+            $rental_submenu[] = [
+                "name" => "rental_courts",
+                "language_key" => "gd_menu_court_rentals",
+                "is_custom_menu_item" => true,
+                "url" => get_uri($can_calendar ? "grupo_donato/calendar" : "grupo_donato/court-rentals"),
+                "class" => "grid",
+            ];
         }
-        if ($can_court_rentals || $can_bookings || $can_booking_series) {
-            $reservations_uri = $can_court_rentals
-                ? "grupo_donato/court-rentals"
-                : ($can_bookings ? "grupo_donato/bookings" : "grupo_donato/booking-series");
-            $rental_submenu[] = ["name" => "rental_bookings", "language_key" => "gd_menu_rental_bookings", "is_custom_menu_item" => true, "url" => get_uri($reservations_uri), "class" => "clipboard"];
+        if ($can_barbecue_rentals) {
+            $rental_submenu[] = [
+                "name" => "rental_barbecues",
+                "language_key" => "gd_menu_barbecues",
+                "is_custom_menu_item" => true,
+                "url" => get_uri($can_calendar ? "grupo_donato/barbecue-calendar" : "grupo_donato/barbecue-rentals"),
+                "class" => "grid",
+            ];
         }
-        if ($can_court_rentals) {
-            $rental_submenu[] = ["name" => "rental_monthly", "language_key" => "gd_menu_rental_monthly", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/court-rentals/monthly"), "class" => "repeat"];
-        }
-        if ($can_finance) {
-            $rental_submenu[] = ["name" => "rental_finance", "language_key" => "gd_menu_rental_finance", "is_custom_menu_item" => true, "url" => get_uri("grupo_donato/finance/rental-payments"), "class" => "dollar-sign"];
-        }
-        if ($can_billing) {
-            $rental_submenu[] = ["name" => "rental_charges", "language_key" => "gd_menu_rental_charges", "is_custom_menu_item" => true, "url" => get_uri("cobranca/charges"), "class" => "credit-card"];
-        }
-
         if ($rental_submenu) {
             $sidebar_menu['locacoes'] = [
                 "name" => "Locações",

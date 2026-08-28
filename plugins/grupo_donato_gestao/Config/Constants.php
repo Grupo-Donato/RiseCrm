@@ -19,13 +19,13 @@ final class Constants
     public const ROUTE_PREFIX = "grupo_donato";
 
     /** Versão do plugin (deve bater com o cabeçalho de metadados do index.php). */
-    public const PLUGIN_VERSION = "0.9.7";
+    public const PLUGIN_VERSION = "0.9.8";
 
     /**
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
      * Corresponde ao maior arquivo em Database/Schema/Versions.
      */
-    public const SCHEMA_TARGET = "050";
+    public const SCHEMA_TARGET = "053";
 
     /** Prefixo lógico das tabelas (o Rise antepõe o DBPrefix 'rise_'). */
     public const TABLE_PREFIX = "gd_";
@@ -74,17 +74,13 @@ final class Constants
     /** Moeda padrão (ISO 4217). */
     public const DEFAULT_CURRENCY = "BRL";
 
-    /** Preços oficiais de locação de quadras do Grupo Donato. */
-    public const COURT_RENTAL_PRICE_PRESETS = [
-        "single" => [90 => "380.00", 120 => "460.00"],
-        "recurring" => [90 => "900.00", 120 => "1050.00"],
-    ];
-
     /** Status de categorias de catálogo. */
     public const PRODUCT_CATEGORY_STATUSES = ["active", "inactive", "archived"];
 
     /** Tipos de recurso físico (persistidos em VARCHAR, validados em PHP). */
-    public const RESOURCE_TYPES = ["court", "event_space", "bar_area", "locker_room", "parking", "equipment", "room", "other"];
+    public const RESOURCE_TYPES = ["court", "barbecue_area", "event_space", "bar_area", "locker_room", "parking", "equipment", "room", "other"];
+    public const COURT_RESOURCE_TYPE = "court";
+    public const BARBECUE_RESOURCE_TYPE = "barbecue_area";
 
     /** Tipos de produto. credit/discount são reservados (não expostos na UI nesta fase). */
     public const PRODUCT_TYPES = ["service", "physical", "rental", "fee", "credit", "discount", "other"];
@@ -141,7 +137,7 @@ final class Constants
 
     /* ---- Fase 3C: operação comercial de locação de quadras ---- */
 
-    /** Tipo da locação e ciclo comercial associado (não gera cobrança nesta fase). */
+    /** Tipo da locação e ciclo comercial associado. */
     public const COURT_RENTAL_TYPES = ["single", "recurring"];
     public const COURT_RENTAL_BILLING_CYCLES = ["one_time", "monthly"];
 
@@ -150,7 +146,7 @@ final class Constants
 
     public const COURT_RENTAL_STATUSES = ["draft", "active", "suspended", "cancelled", "completed", "archived"];
     public const COURT_RENTAL_LINK_KINDS = ["primary", "replacement", "historical"];
-    public const COURT_RENTAL_EVENT_TYPES = ["created", "updated", "activated", "suspended", "resumed", "cancelled", "completed", "schedule_linked", "schedule_replaced", "price_resolved", "price_overridden", "commercial_terms_changed"];
+    public const COURT_RENTAL_EVENT_TYPES = ["created", "updated", "activated", "suspended", "resumed", "cancelled", "completed", "schedule_linked", "schedule_replaced", "price_resolved", "price_overridden", "commercial_terms_changed", "extra_time_added"];
 
     /** Tratamento das ocorrências futuras ao suspender/cancelar (decisão explícita). */
     public const COURT_RENTAL_FUTURE_POLICIES = ["keep", "cancel", "pause_series"];
@@ -169,10 +165,11 @@ final class Constants
     public const SCHOOL_ATTENDANCE_SESSION_STATUSES = ["open", "completed"];
     public const FINANCIAL_ACCOUNT_TYPES = ["cash", "bank", "digital_wallet", "other"];
     public const FINANCIAL_ACCOUNT_STATUSES = ["active", "inactive"];
-    public const RECEIVABLE_SOURCE_TYPES = ["enrollment", "court_rental", "manual", "other"];
+    public const RECEIVABLE_SOURCE_TYPES = ["enrollment", "court_rental", "barbecue_rental", "manual", "other"];
     public const RECEIVABLE_STATUSES = ["open", "partial", "paid", "overdue", "cancelled"];
-    public const PAYMENT_METHODS = ["cash", "pix", "debit_card", "credit_card", "bank_transfer", "other"];
+    public const PAYMENT_METHODS = ["cash", "pix", "debit_card", "credit_card", "bank_transfer", "boleto", "other"];
     public const PAYMENT_STATUSES = ["confirmed", "reversed"];
+    public const PAYMENT_TYPES = ["regular", "deposit"];
     public const EXPENSE_STATUSES = ["pending", "paid", "cancelled"];
 
     /* ---- Fase 6: importação assistida ---- */
@@ -195,7 +192,8 @@ final class Constants
     /** Normalização assistida de método de pagamento (texto livre → chave canônica). */
     public const PAYMENT_METHOD_ALIASES = [
         "dinheiro" => "cash", "especie" => "cash", "espécie" => "cash", "cash" => "cash",
-        "pix" => "pix",
+        "pix" => "pix", "boleto" => "boleto",
+        "cartao_credito" => "credit_card", "cartao_debito" => "debit_card",
         "debito" => "debit_card", "débito" => "debit_card", "cartao debito" => "debit_card", "cartão débito" => "debit_card", "debit" => "debit_card",
         "credito" => "credit_card", "crédito" => "credit_card", "cartao credito" => "credit_card", "cartão crédito" => "credit_card", "cartao" => "credit_card", "cartão" => "credit_card", "credit" => "credit_card",
         "transferencia" => "bank_transfer", "transferência" => "bank_transfer", "ted" => "bank_transfer", "doc" => "bank_transfer", "deposito" => "bank_transfer", "depósito" => "bank_transfer", "transfer" => "bank_transfer",

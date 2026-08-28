@@ -15,8 +15,8 @@ classifica se o recurso poderá participar desse fluxo.
 `is_active`, `sort_order`, `metadata` (JSON), auditoria, `deleted`.
 
 ## Tipos (`resource_type`)
-`court`, `event_space`, `bar_area`, `locker_room`, `parking`, `equipment`,
-`room`, `other`. Persistidos em `VARCHAR`, validados em PHP.
+`court`, `barbecue_area`, `event_space`, `bar_area`, `locker_room`, `parking`,
+`equipment`, `room`, `other`. Persistidos em `VARCHAR`, validados em PHP.
 
 ## Regras (`ResourceService`)
 - `code` e `name` obrigatórios; `code` único por unidade entre não excluídos
@@ -31,7 +31,7 @@ classifica se o recurso poderá participar desse fluxo.
 - `metadata` validada como JSON antes de persistir (TEXT/MEDIUMTEXT).
 - Não exclui logicamente com **preço específico ativo** vinculado.
 
-## Seed real Q2–Q6
+## Seeds reais Q2–Q6 e Churrasqueiras 1–6
 
 `CatalogSeeder` cadastra, de forma **idempotente**, as quadras reais de
 infraestrutura na unidade padrão:
@@ -44,15 +44,14 @@ infraestrutura na unidade padrão:
 | Q5 | Quadra Q5 | court | sim | sim |
 | Q6 | Quadra Q6 | court | sim | sim |
 
-Sem preço, sem capacidade inventada, sem dimensão inventada, sem descrição
-comercial, sem área/centro automáticos. Reexecutar a instalação **não duplica**
-nem sobrescreve edições administrativas posteriores (checagem por `unit_id+code`
-não excluído).
+As churrasqueiras são mantidas de forma idempotente como `CH1` a `CH6`, com nomes
+`Churrasqueira 1` a `Churrasqueira 6`, tipo `barbecue_area`, ativas e reserváveis. Se
+um recurso com o mesmo código ou nome já existir na unidade padrão, ele é
+reaproveitado e classificado para o módulo em vez de ser duplicado.
 
-**Não** são seedados por enquanto: salão, bar, churrasqueira, estacionamento e
-vestiários — existem conceitualmente, mas nomes/configurações ainda precisam de
-validação com o cliente. As quadras Q2–Q6 são **cadastros reais**, não dados de
-demonstração.
+Sem preço, sem capacidade inventada, sem dimensão inventada, sem descrição
+comercial e sem área/centro automáticos. Salão, bar, estacionamento e vestiários
+continuam sem seed comercial específico.
 
 ## Interface
 Lista (server-side) com colunas Código, Nome, Tipo, Área, Centro, Capacidade,

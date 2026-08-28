@@ -25,6 +25,14 @@ $routes->group("grupo_donato/finance/rental-payments", ["namespace" => "grupo_do
     $routes->post("create-rental-charge", "Rental_finance::create_rental_charge");
 });
 
+$routes->group("grupo_donato/finance/barbecue-payments", ["namespace" => "grupo_donato_gestao\\Controllers", "filter" => "csrf"], function ($routes) {
+    $routes->get("", "Barbecue_finance::index");
+    $routes->post("data", "Barbecue_finance::list_data");
+    $routes->post("summary", "Barbecue_finance::summary");
+    $routes->post("generate", "Barbecue_finance::generate_month");
+    $routes->post("create-rental-charge", "Barbecue_finance::create_rental_charge");
+});
+
 $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers", "filter" => "csrf"], function ($routes) {
 
     // Painel
@@ -125,6 +133,8 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     /* ---- Fase 3A: disponibilidade e calendário-base ---- */
     $routes->get("calendar", "Calendar::index");
     $routes->get("calendar/events", "Calendar::events");
+    $routes->get("barbecue-calendar", "Barbecue_calendar::index");
+    $routes->get("barbecue-calendar/events", "Barbecue_calendar::events");
     $routes->get("bookings", "Bookings::index");
     $routes->post("bookings/list-data", "Bookings::list_data");
     $routes->get("bookings/modal", "Bookings::modal");
@@ -166,6 +176,7 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->get("court-rentals", "Court_rentals::index");
     $routes->get("court-rentals/monthly", "Court_rentals::monthly");
     $routes->post("court-rentals/list-data", "Court_rentals::list_data");
+    $routes->post("court-rentals/single-data", "Court_rentals::single_data");
     $routes->post("court-rentals/monthly-data", "Court_rentals::monthly_data");
     $routes->get("court-rentals/view/(:num)", "Court_rentals::view/$1");
     $routes->get("court-rentals/single-modal", "Court_rentals::single_modal");
@@ -185,7 +196,9 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("court-rentals/save-rental", "Court_rentals::save_rental");
     $routes->post("court-rentals/save-single", "Court_rentals::save_single");
     $routes->post("court-rentals/save-monthly", "Court_rentals::save_monthly");
+    $routes->post("court-rentals/update-single", "Court_rentals::update_single");
     $routes->post("court-rentals/update-monthly", "Court_rentals::update_monthly");
+    $routes->post("court-rentals/extra-time", "Court_rentals::register_extra_time");
     $routes->post("court-rentals/link-existing", "Court_rentals::link_existing");
     $routes->post("court-rentals/reprice", "Court_rentals::reprice");
     $routes->post("court-rentals/(:num)/activate", "Court_rentals::activate/$1");
@@ -193,6 +206,42 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("court-rentals/(:num)/resume", "Court_rentals::resume/$1");
     $routes->post("court-rentals/(:num)/cancel", "Court_rentals::cancel/$1");
     $routes->post("court-rentals/(:num)/complete", "Court_rentals::complete/$1");
+
+    /* ---- Churrasqueiras: cópia isolada da operação comercial de locações ---- */
+    $routes->get("barbecue-rentals", "Barbecue_rentals::index");
+    $routes->get("barbecue-rentals/monthly", "Barbecue_rentals::monthly");
+    $routes->post("barbecue-rentals/list-data", "Barbecue_rentals::list_data");
+    $routes->post("barbecue-rentals/single-data", "Barbecue_rentals::single_data");
+    $routes->post("barbecue-rentals/monthly-data", "Barbecue_rentals::monthly_data");
+    $routes->get("barbecue-rentals/view/(:num)", "Barbecue_rentals::view/$1");
+    $routes->get("barbecue-rentals/single-modal", "Barbecue_rentals::single_modal");
+    $routes->post("barbecue-rentals/single-modal", "Barbecue_rentals::single_modal");
+    $routes->get("barbecue-rentals/monthly-modal", "Barbecue_rentals::monthly_modal");
+    $routes->post("barbecue-rentals/monthly-modal", "Barbecue_rentals::monthly_modal");
+    $routes->post("barbecue-rentals/link-modal", "Barbecue_rentals::link_modal");
+    $routes->post("barbecue-rentals/customer-options", "Barbecue_rentals::customer_options");
+    $routes->post("barbecue-rentals/contact-options", "Barbecue_rentals::contact_options");
+    $routes->post("barbecue-rentals/product-options", "Barbecue_rentals::product_options");
+    $routes->post("barbecue-rentals/price-list-options", "Barbecue_rentals::price_list_options");
+    $routes->post("barbecue-rentals/check-availability", "Barbecue_rentals::check_availability");
+    $routes->post("barbecue-rentals/availability-options", "Barbecue_rentals::availability_options");
+    $routes->post("barbecue-rentals/preview", "Barbecue_rentals::preview");
+    $routes->post("barbecue-rentals/resolve-price", "Barbecue_rentals::resolve_price");
+    $routes->post("barbecue-rentals/save-draft", "Barbecue_rentals::save_draft");
+    $routes->post("barbecue-rentals/save-rental", "Barbecue_rentals::save_rental");
+    $routes->post("barbecue-rentals/save-single", "Barbecue_rentals::save_single");
+    $routes->post("barbecue-rentals/save-monthly", "Barbecue_rentals::save_monthly");
+    $routes->post("barbecue-rentals/update-single", "Barbecue_rentals::update_single");
+    $routes->post("barbecue-rentals/update-monthly", "Barbecue_rentals::update_monthly");
+    $routes->post("barbecue-rentals/extra-time", "Barbecue_rentals::register_extra_time");
+    $routes->post("barbecue-rentals/link-existing", "Barbecue_rentals::link_existing");
+    $routes->post("barbecue-rentals/reprice", "Barbecue_rentals::reprice");
+    $routes->post("barbecue-rentals/(:num)/activate", "Barbecue_rentals::activate/$1");
+    $routes->post("barbecue-rentals/(:num)/suspend", "Barbecue_rentals::suspend/$1");
+    $routes->post("barbecue-rentals/(:num)/resume", "Barbecue_rentals::resume/$1");
+    $routes->post("barbecue-rentals/(:num)/cancel", "Barbecue_rentals::cancel/$1");
+    $routes->post("barbecue-rentals/(:num)/complete", "Barbecue_rentals::complete/$1");
+
 
     /* ---- Fase 4: escola e personal ---- */
     $routes->get("school/students", "School_students::index");
@@ -225,10 +274,13 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("finance/generate/preview", "Finance::generation_preview");
     $routes->post("finance/generate/confirm", "Finance::generation_confirm");
     $routes->post("finance/generate-rental", "Finance::generate_rental");
+    $routes->post("finance/generate-barbecue-rental", "Finance::generate_barbecue_rental");
     $routes->get("finance/payments", "Finance::payments");
     $routes->post("finance/payments/data", "Finance::payments_data");
     $routes->post("finance/payment-modal", "Finance::payment_modal");
+    $routes->post("finance/rental-payment-modal", "Finance::rental_payment_modal");
     $routes->post("finance/payments/save", "Finance::save_payment");
+    $routes->post("finance/rental-payments/save", "Finance::save_rental_payment");
     $routes->post("finance/payments/reverse", "Finance::reverse_payment");
     $routes->get("finance/payments/receipt/(:num)", "Finance::receipt/$1");
     $routes->get("finance/expenses", "Finance::expenses");

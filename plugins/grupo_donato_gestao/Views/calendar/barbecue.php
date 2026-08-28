@@ -9,13 +9,13 @@ foreach (($booking_statuses ?? []) as $status) {
 }
 
 $buttons = [];
-if (!empty($can_court_rentals_manage)) {
-    $buttons[] = modal_anchor(get_uri("grupo_donato/court-rentals/single-modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_rental"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_rental")]);
+if (!empty($can_barbecue_rentals_manage)) {
+    $buttons[] = modal_anchor(get_uri("grupo_donato/barbecue-rentals/single-modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_barbecue_rental"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_barbecue_rental")]);
 } elseif (!empty($can_bookings_manage)) {
     $buttons[] = modal_anchor(get_uri("grupo_donato/bookings/modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_add_booking"), ["class" => "btn btn-primary", "title" => app_lang("gd_add_booking")]);
 }
-if (!empty($can_court_rentals_view)) {
-    $buttons[] = anchor(get_uri("grupo_donato/court-rentals"), '<i data-feather="clipboard" class="icon-16"></i> ' . app_lang("gd_menu_rental_bookings"), ["class" => "btn btn-default"]);
+if (!empty($can_barbecue_rentals_view)) {
+    $buttons[] = anchor(get_uri("grupo_donato/barbecue-rentals"), '<i data-feather="clipboard" class="icon-16"></i> ' . app_lang("gd_menu_barbecue_bookings"), ["class" => "btn btn-default"]);
 }
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
@@ -34,12 +34,12 @@ if (!empty($can_court_rentals_view)) {
                     <div class="gd-calendar-court-filter">
                         <div class="gd-calendar-court-filter-heading">
                             <div>
-                                <label><?php echo app_lang("gd_courts"); ?></label>
-                                <div class="text-muted"><?php echo app_lang("gd_calendar_court_filter_help"); ?></div>
+                                <label><?php echo app_lang("gd_barbecues"); ?></label>
+                                <div class="text-muted"><?php echo app_lang("gd_calendar_barbecue_filter_help"); ?></div>
                             </div>
-                            <button type="button" id="gd-calendar-select-all-courts" class="btn btn-default btn-sm"><?php echo app_lang("gd_all_courts"); ?></button>
+                            <button type="button" id="gd-calendar-select-all-courts" class="btn btn-default btn-sm"><?php echo app_lang("gd_all_barbecues"); ?></button>
                         </div>
-                        <div class="gd-calendar-court-options" role="group" aria-label="<?php echo $e(app_lang("gd_courts")); ?>">
+                        <div class="gd-calendar-court-options" role="group" aria-label="<?php echo $e(app_lang("gd_barbecues")); ?>">
                             <?php foreach ($resources as $resource) { ?>
                                 <label class="gd-calendar-court-option">
                                     <input type="checkbox" class="gd-calendar-resource" value="<?php echo (int) $resource["id"]; ?>">
@@ -95,7 +95,7 @@ if (!empty($can_court_rentals_view)) {
             </div>
 
             <div id="gd-calendar-free-warning" class="alert alert-info mb15" style="display:none">
-                <i data-feather="info" class="icon-16"></i> <?php echo app_lang("gd_calendar_select_court_for_free_slots"); ?>
+                <i data-feather="info" class="icon-16"></i> <?php echo app_lang("gd_calendar_select_barbecue_for_free_slots"); ?>
             </div>
 
             <div class="gd-legend mb15">
@@ -108,8 +108,8 @@ if (!empty($can_court_rentals_view)) {
             </div>
 
             <div id="gd-calendar"></div>
-            <?php if (!empty($can_court_rentals_manage)) { ?>
-                <a id="gd-calendar-free-slot-book" class="hide" href="javascript:;" data-act="ajax-modal" data-modal-lg="1" data-title="<?php echo $e(app_lang("gd_new_rental")); ?>" data-action-url="<?php echo get_uri("grupo_donato/court-rentals/single-modal"); ?>"></a>
+            <?php if (!empty($can_barbecue_rentals_manage)) { ?>
+                <a id="gd-calendar-free-slot-book" class="hide" href="javascript:;" data-act="ajax-modal" data-modal-lg="1" data-title="<?php echo $e(app_lang("gd_new_barbecue_rental")); ?>" data-action-url="<?php echo get_uri("grupo_donato/barbecue-rentals/single-modal"); ?>"></a>
             <?php } ?>
         </div>
     </div>
@@ -236,7 +236,7 @@ $(document).ready(function(){
         events: function(info, success, failure) {
             if (!resourceValues()) { success([]); return; }
             $.ajax({
-                url: '<?php echo_uri("grupo_donato/calendar/events"); ?>',
+                url: '<?php echo_uri("grupo_donato/barbecue-calendar/events"); ?>',
                 data: {
                     start: info.startStr,
                     end: info.endStr,
@@ -258,8 +258,8 @@ $(document).ready(function(){
                     .trigger("click");
                 return;
             }
-            if (props.court_rental_id) {
-                window.location.href = '<?php echo_uri("grupo_donato/court-rentals/view/"); ?>' + props.court_rental_id;
+            if (props.barbecue_rental_id) {
+                window.location.href = '<?php echo_uri("grupo_donato/barbecue-rentals/view/"); ?>' + props.barbecue_rental_id;
                 return;
             }
             if (props.event_type === "booking" && props.booking_id) {

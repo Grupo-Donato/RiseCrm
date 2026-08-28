@@ -343,7 +343,7 @@ if ($task === "uninstallcheck") {
     $before = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!' ORDER BY TABLE_NAME", [$gd_table_pattern])->getResultArray();
     gd_uninstall();
     $after = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!' ORDER BY TABLE_NAME", [$gd_table_pattern])->getResultArray();
-    $ok = $before === $after && count($after) === 49;
+    $ok = $before === $after && count($after) === 53;
     echo "before=" . count($before) . " after=" . count($after) . " preserved=" . ($ok ? "yes" : "no") . "\n";
     exit($ok ? 0 : 1);
 }
@@ -354,15 +354,15 @@ if ($task === "selftest") {
     $gd_table_pattern = gd_like_literal_prefix($prefix . "gd_");
 
     echo "# Schema & tabelas\n";
-    foreach (["gd_schema_versions", "gd_units", "gd_business_areas", "gd_cost_centers", "gd_settings", "gd_sequences", "gd_audit_logs", "gd_customer_accounts", "gd_people", "gd_account_people", "gd_contact_methods", "gd_addresses", "gd_product_categories", "gd_resources", "gd_products", "gd_product_variants", "gd_price_lists", "gd_prices", "gd_resource_availability_rules", "gd_resource_availability_exceptions", "gd_resource_blocks", "gd_bookings", "gd_booking_resources", "gd_booking_events", "gd_court_rentals", "gd_court_rental_schedule_links", "gd_court_rental_price_items", "gd_court_rental_events", "gd_school_profiles", "gd_classes", "gd_enrollments", "gd_attendance_sessions", "gd_attendance_records", "gd_financial_accounts", "gd_receivables", "gd_receivable_items", "gd_payments", "gd_payment_allocations", "gd_expenses", "gd_cash_movements", "gd_import_batches", "gd_import_rows", "gd_import_issues", "gd_import_links"] as $t) {
+    foreach (["gd_schema_versions", "gd_units", "gd_business_areas", "gd_cost_centers", "gd_settings", "gd_sequences", "gd_audit_logs", "gd_customer_accounts", "gd_people", "gd_account_people", "gd_contact_methods", "gd_addresses", "gd_product_categories", "gd_resources", "gd_products", "gd_product_variants", "gd_price_lists", "gd_prices", "gd_resource_availability_rules", "gd_resource_availability_exceptions", "gd_resource_blocks", "gd_bookings", "gd_booking_resources", "gd_booking_events", "gd_court_rentals", "gd_court_rental_schedule_links", "gd_court_rental_price_items", "gd_court_rental_events", "gd_barbecue_rentals", "gd_barbecue_rental_schedule_links", "gd_barbecue_rental_price_items", "gd_barbecue_rental_events", "gd_school_profiles", "gd_classes", "gd_enrollments", "gd_attendance_sessions", "gd_attendance_records", "gd_financial_accounts", "gd_receivables", "gd_receivable_items", "gd_payments", "gd_payment_allocations", "gd_expenses", "gd_cash_movements", "gd_import_batches", "gd_import_rows", "gd_import_issues", "gd_import_links"] as $t) {
         gd_assert("tabela {$prefix}{$t} existe", $db->tableExists($prefix . $t));
     }
     $sv = model("grupo_donato_gestao\\Models\\Gd_schema_versions_model");
-    gd_assert("50 versões completed", $sv->count_by_status("completed") === 50, $sv->count_by_status("completed") . " completed");
+    gd_assert("todas as versões do schema completed", $sv->count_by_status("completed") === (int) Constants::SCHEMA_TARGET, $sv->count_by_status("completed") . " completed");
     gd_assert("nenhuma falha de schema", !$sv->has_failed());
     gd_assert("versão aplicada == alvo " . Constants::SCHEMA_TARGET, $sv->get_applied_version() === Constants::SCHEMA_TARGET, "aplicada=" . $sv->get_applied_version());
     $physical = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [$gd_table_pattern])->getResult();
-    gd_assert("49 tabelas do plugin", count($physical) === 49, count($physical) . " tabelas gd_*");
+    gd_assert("53 tabelas do plugin", count($physical) === 53, count($physical) . " tabelas gd_*");
     gd_assert("marker em disco atualizado para " . Constants::SCHEMA_TARGET, trim((string) @file_get_contents(SchemaRunner::marker_path())) === Constants::SCHEMA_TARGET);
 
     echo "# Seeds\n";
@@ -395,6 +395,13 @@ if ($task === "selftest") {
     gd_assert("seed do catálogo idempotente (tabela padrão)", $default_list_count() === 1, $default_list_count() . " tabelas DEFAULT após re-seed");
 
     // Todos os dados de teste abaixo são revertidos ao final.
+    $barbecue_count = static fn() => $db->table($prefix . "gd_resources")->where("unit_id", $def_unit_id)->where("resource_type", Constants::BARBECUE_RESOURCE_TYPE)->where("deleted", 0)->countAllResults();
+    $barbecue_codes = static fn() => array_column($db->table($prefix . "gd_resources")->select("code")->where("unit_id", $def_unit_id)->where("resource_type", Constants::BARBECUE_RESOURCE_TYPE)->where("deleted", 0)->orderBy("code")->get()->getResultArray(), "code");
+    gd_assert("CH1-CH6 cadastradas (6 churrasqueiras)", $barbecue_count() === 6, $barbecue_count() . " churrasqueiras");
+    gd_assert("codigos CH1-CH6 corretos", $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6"], implode(",", $barbecue_codes()));
+    (new \grupo_donato_gestao\Database\Seeds\CatalogSeeder(0))->run();
+    gd_assert("seed de churrasqueiras idempotente", $barbecue_count() === 6 && $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6"]);
+
     $db->transBegin();
 
     $settings = new SettingsService();
@@ -932,6 +939,7 @@ if ($task === "selftest") {
     require __DIR__ . "/booking_selftest.php";
     require __DIR__ . "/series_selftest.php";
     require __DIR__ . "/court_rental_selftest.php";
+    require __DIR__ . "/barbecue_rental_selftest.php";
     require __DIR__ . "/school_selftest.php";
     require __DIR__ . "/finance_selftest.php";
     require_once __DIR__ . "/student_photo_selftest.php";

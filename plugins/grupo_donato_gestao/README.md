@@ -2,7 +2,7 @@
 
 Plugin do Rise CRM para a gestão integrada do Grupo Donato.
 
-**Estado:** Fases 1 a 5 + **locações simplificadas** (versão 0.9.6, schema 001–049, 49 tabelas). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico. O formulário de locação agora trabalha com as regras reais do Grupo Donato: avulso de 1h30 ou 2h, mensalista de 1h30 ou 2h e pacote especial de quadra + churrasqueira, com preço e horário calculados automaticamente.
+**Estado:** Fases 1 a 5 + módulo de locações de quadras (versão 0.9.8, schema 001–053). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico. As modalidades avulso e mensalista aceitam valor livremente editável; ambas integram recebível, sinal opcional, saldo, acréscimo de permanência e histórico ao financeiro existente. O módulo Churrasqueiras replica o fluxo comercial de Locações para os recursos CH1–CH6, com agenda, avulsos, mensalistas e pagamentos próprios. Estacionamento e bar permanecem fora deste módulo.
 
 > **Importação (Cenário 2):** as tabelas `gd_import_*` (046–049) existem mas o módulo está **oculto** e **não foi continuado** no protótipo. `import_selftest` está desligado da suíte.
 >

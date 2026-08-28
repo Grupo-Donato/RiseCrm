@@ -10,7 +10,7 @@ use grupo_donato_gestao\Config\Constants;
  * Seeds do catálogo (Fase 2B) — idempotentes e SEM dados comerciais fictícios.
  *
  * Cria apenas:
- *  - os recursos físicos REAIS Q2–Q6 (quadras), sem preço/capacidade/área;
+ *  - os recursos físicos REAIS Q2–Q6 (quadras) e Churrasqueiras 1–6, sem preço/capacidade/área;
  *  - uma tabela de preço padrão vazia por unidade (DEFAULT), necessária para a
  *    resolução mínima de preço.
  *
@@ -31,6 +31,17 @@ class CatalogSeeder
         "Q6" => "Quadra Q6",
     ];
 
+
+    /** Churrasqueiras reais: code => nome. */
+    private const BARBECUES = [
+        "CH1" => "Churrasqueira 1",
+        "CH2" => "Churrasqueira 2",
+        "CH3" => "Churrasqueira 3",
+        "CH4" => "Churrasqueira 4",
+        "CH5" => "Churrasqueira 5",
+        "CH6" => "Churrasqueira 6",
+    ];
+
     public function __construct(int $actor_id = 0)
     {
         $this->db = db_connect();
@@ -45,6 +56,7 @@ class CatalogSeeder
         $unit_id = (int) $unit->id;
 
         $this->seed_courts($unit_id);
+        $this->seed_barbecues($unit_id);
         $this->seed_default_price_list($unit_id);
     }
 
@@ -77,6 +89,35 @@ class CatalogSeeder
                 "updated_at" => $now,
                 "created_by" => $this->actor_id ?: null,
                 "updated_by" => $this->actor_id ?: null,
+            ]);
+        }
+    }
+
+
+    private function seed_barbecues(int $unit_id): void
+    {
+        $table = $this->db->prefixTable("gd_resources");
+        $now = function_exists("get_current_utc_time") ? get_current_utc_time() : gmdate("Y-m-d H:i:s");
+        foreach (self::BARBECUES as $code => $name) {
+            $existing = $this->db->table($table)
+                ->where("unit_id", $unit_id)->where("deleted", 0)
+                ->groupStart()->where("code", $code)->orWhere("name", $name)->groupEnd()
+                ->get(1)->getRow();
+            if ($existing) {
+                // Reaproveita recursos já cadastrados no cliente, evitando duplicidade.
+                // Apenas garante a classificação necessária ao módulo e a disponibilidade para reserva.
+                $this->db->table($table)->where("id", (int) $existing->id)->where("unit_id", $unit_id)->update([
+                    "resource_type" => Constants::BARBECUE_RESOURCE_TYPE, "is_bookable" => 1, "is_active" => 1,
+                    "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+                ]);
+                continue;
+            }
+            $this->db->table($table)->insert([
+                "unit_id" => $unit_id, "business_area_id" => null, "cost_center_id" => null,
+                "code" => $code, "name" => $name, "resource_type" => Constants::BARBECUE_RESOURCE_TYPE,
+                "description" => null, "capacity" => null, "is_bookable" => 1, "is_active" => 1,
+                "sort_order" => (int) substr($code, 2), "metadata" => null, "deleted" => 0,
+                "created_at" => $now, "updated_at" => $now, "created_by" => $this->actor_id ?: null, "updated_by" => $this->actor_id ?: null,
             ]);
         }
     }

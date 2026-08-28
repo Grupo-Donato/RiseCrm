@@ -30,6 +30,7 @@ final class Permissions
         "gd_bookings_view" => "gd_bookings_manage",
         "gd_booking_series_view" => "gd_booking_series_manage",
         "gd_court_rentals_view" => "gd_court_rentals_manage",
+        "gd_barbecue_rentals_view" => "gd_barbecue_rentals_manage",
         "gd_school_view" => "gd_students_manage",
         "gd_finance_view" => "gd_receivables_manage",
         "gd_imports_view" => "gd_imports_manage",
@@ -45,18 +46,19 @@ final class Permissions
     private const COURT_RENTAL_READERS = ["gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"];
 
     public const ADDITIONAL_VIEW_IMPLICATIONS = [
-        "gd_customer_accounts_view" => ["gd_customer_relations_manage", "gd_addresses_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
-        "gd_people_view" => ["gd_customer_relations_manage", "gd_contacts_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
+        "gd_customer_accounts_view" => ["gd_customer_relations_manage", "gd_addresses_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
+        "gd_people_view" => ["gd_customer_relations_manage", "gd_contacts_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
         // Catálogo: produtos/categorias e (preços) implicam a leitura do catálogo.
-        "gd_catalog_view" => ["gd_products_manage", "gd_product_categories_manage", "gd_prices_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
+        "gd_catalog_view" => ["gd_products_manage", "gd_product_categories_manage", "gd_prices_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
         // Para resolver/gerir preços é preciso ler recursos e tabelas de preço.
-        "gd_resources_view" => ["gd_prices_manage", "gd_resource_availability_manage", "gd_resource_blocks_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
-        "gd_price_lists_view" => ["gd_prices_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
-        "gd_calendar_view" => ["gd_resource_availability_manage", "gd_resource_blocks_manage", "gd_bookings_manage", "gd_booking_status_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
-        "gd_bookings_view" => ["gd_booking_status_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
-        "gd_booking_series_view" => ["gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
+        "gd_resources_view" => ["gd_prices_manage", "gd_resource_availability_manage", "gd_resource_blocks_manage", "gd_bookings_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
+        "gd_price_lists_view" => ["gd_prices_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
+        "gd_calendar_view" => ["gd_resource_availability_manage", "gd_resource_blocks_manage", "gd_bookings_manage", "gd_booking_status_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
+        "gd_bookings_view" => ["gd_booking_status_manage", "gd_booking_series_view", "gd_booking_series_manage", "gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
+        "gd_booking_series_view" => ["gd_booking_series_status_manage", "gd_court_rentals_view", "gd_court_rentals_manage", "gd_court_rentals_status_manage", "gd_court_rentals_price_override", "gd_barbecue_rentals_view", "gd_barbecue_rentals_manage", "gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
         // Override de preço e gestão de status implicam ver a própria locação.
         "gd_court_rentals_view" => ["gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
+        "gd_barbecue_rentals_view" => ["gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
         "gd_school_view" => ["gd_classes_manage", "gd_enrollments_manage", "gd_attendance_manage"],
         "gd_finance_view" => ["gd_payments_manage", "gd_expenses_manage", "gd_cash_view"],
     ];
@@ -101,6 +103,10 @@ final class Permissions
         "gd_court_rentals_manage",
         "gd_court_rentals_status_manage",
         "gd_court_rentals_price_override",
+        "gd_barbecue_rentals_view",
+        "gd_barbecue_rentals_manage",
+        "gd_barbecue_rentals_status_manage",
+        "gd_barbecue_rentals_price_override",
         "gd_school_view",
         "gd_students_manage",
         "gd_classes_manage",
@@ -175,6 +181,13 @@ final class Permissions
                 ["key" => "gd_court_rentals_manage", "label_key" => "gd_perm_court_rentals_manage"],
                 ["key" => "gd_court_rentals_status_manage", "label_key" => "gd_perm_court_rentals_status_manage"],
                 ["key" => "gd_court_rentals_price_override", "label_key" => "gd_perm_court_rentals_price_override"],
+            ],
+
+            "gd_permissions_barbecue_rentals" => [
+                ["key" => "gd_barbecue_rentals_view", "label_key" => "gd_perm_barbecue_rentals_view"],
+                ["key" => "gd_barbecue_rentals_manage", "label_key" => "gd_perm_barbecue_rentals_manage"],
+                ["key" => "gd_barbecue_rentals_status_manage", "label_key" => "gd_perm_barbecue_rentals_status_manage"],
+                ["key" => "gd_barbecue_rentals_price_override", "label_key" => "gd_perm_barbecue_rentals_price_override"],
             ],
             "gd_permissions_school" => [
                 ["key" => "gd_school_view", "label_key" => "gd_perm_school_view"],

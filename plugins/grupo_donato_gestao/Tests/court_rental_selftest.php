@@ -2,8 +2,27 @@
 
 echo "# Fase 3C — operação comercial de locação de quadras\n";
 
+// A camada comercial de quadras exige resource_type=court. Os testes de
+// reservas genéricas usam salas, então aqui selecionamos três quadras reais do
+// catálogo para manter os domínios explicitamente isolados.
+$courtRentalResourceIds = array_column($db->table($prefix . "gd_resources")
+    ->select("id")
+    ->where("unit_id", $unit_id)
+    ->where("resource_type", \grupo_donato_gestao\Config\Constants::COURT_RESOURCE_TYPE)
+    ->where("deleted", 0)
+    ->where("is_active", 1)
+    ->where("is_bookable", 1)
+    ->orderBy("code")
+    ->limit(3)
+    ->get()
+    ->getResultArray(), "id");
+if (count($courtRentalResourceIds) >= 3) {
+    [$bookA, $bookB, $bookC] = array_map("intval", $courtRentalResourceIds);
+}
+
 $rentalTables = ["gd_court_rentals", "gd_court_rental_schedule_links", "gd_court_rental_price_items", "gd_court_rental_events"];
 gd_assert("schema 030–033 aplicado", array_reduce($rentalTables, fn($ok, $table) => $ok && $db->tableExists($prefix . $table), true));
+gd_assert("schema 052 adiciona acréscimo de permanência", in_array("extra_time_minutes", $db->getFieldNames($prefix . "gd_court_rentals"), true) && in_array("extra_time_amount", $db->getFieldNames($prefix . "gd_court_rentals"), true) && in_array("extra_time_notes", $db->getFieldNames($prefix . "gd_court_rentals"), true));
 $rentalEventFields = $db->getFieldNames($prefix . "gd_court_rental_events");
 gd_assert("eventos de locação são append-only no schema", !in_array("deleted", $rentalEventFields, true));
 $linkIndexes = $db->query("SHOW INDEX FROM `{$prefix}gd_court_rental_schedule_links`")->getResult();
@@ -32,6 +51,63 @@ $singleRow = $rentalService->get($single["id"]);
 gd_assert("avulso registra snapshot com total calculado no backend", count($singleRow->price_items) === 1 && $singleRow->price_items[0]->unit_amount === "150.00" && $singleRow->price_items[0]->total_amount === "150.00");
 gd_assert("avulso vincula a reserva como principal", count($singleRow->links) === 1 && (int) $singleRow->links[0]->booking_id === (int) $single["booking_id"] && $singleRow->links[0]->link_kind === "primary");
 gd_assert("avulso nasce como rascunho", $singleRow->status === "draft");
+
+// ---- Avulso com sinal e quitação posterior ----
+$depositAccount = $db->table($prefix . "gd_financial_accounts")->where("unit_id", $unit_id)->where("code", "MAIN-CASH")->where("status", "active")->where("deleted", 0)->get(1)->getRow();
+$depositSingle = $rentalService->createWithBooking(array_replace($singleInput, [
+    "title" => "Locação com sinal",
+    "list_amount" => "1000.00", "negotiated_amount" => "1000.00",
+    "deposit_amount" => "200.00", "deposit_payment_method" => "pix",
+    "financial_account_id" => (int) ($depositAccount->id ?? 0),
+    "effective_from" => "2099-12-10", "starts_at_local" => "2099-12-10T10:00", "ends_at_local" => "2099-12-10T11:00",
+    "resources" => [["resource_id" => $bookC, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]],
+]));
+$depositFinance = new \grupo_donato_gestao\Services\FinanceService($unit_id);
+$depositSummary = $depositFinance->summary(["source_type" => "court_rental", "source_id" => (int) $depositSingle["id"]]);
+gd_assert("avulso aceita valor customizado de R$ 1.000 com sinal", $depositSummary["total"] === "1000.00" && $depositSummary["paid"] === "200.00" && $depositSummary["balance"] === "800.00" && $depositSummary["status"] === "deposit_only");
+gd_assert("sinal gera pagamento individual vinculado", count($depositSummary["payment_history"]) === 1 && $depositSummary["payment_history"][0]->payment_type === "deposit" && $depositSummary["payment_history"][0]->allocated_amount === "200.00");
+$depositPayment = $depositFinance->registerPayment(["amount" => "800.00", "payment_date" => gmdate("Y-m-d"), "payment_method" => "pix", "financial_account_id" => (int) ($depositAccount->id ?? 0), "allocations" => [$depositSummary["receivables"][0]->id => "800.00"]]);
+$depositPaidSummary = $depositFinance->summary(["source_type" => "court_rental", "source_id" => (int) $depositSingle["id"]]);
+
+// ---- Edicao integral da reserva avulsa ----
+$editableSingle = $rentalService->createWithBooking(array_replace($singleInput, ["title" => "Locacao para editar", "starts_at_local" => "2099-12-02T10:00", "ends_at_local" => "2099-12-02T11:00"]));
+$singleBeforeEdit = $rentalService->get($editableSingle["id"]);
+$singleBookingBeforeEdit = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($editableSingle["booking_id"]);
+$singleEdit = $rentalService->updateSingle($editableSingle["id"], array_replace($singleInput, [
+    "title" => "Locacao avulsa editada", "list_amount" => "175.00", "negotiated_amount" => "175.00",
+    "starts_at_local" => "2099-12-01T12:00", "ends_at_local" => "2099-12-01T13:00",
+    "resources" => [["resource_id" => $bookB, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]],
+    "lock_version" => (int) $singleBeforeEdit->lock_version, "booking_lock_version" => (int) $singleBookingBeforeEdit->lock_version,
+]));
+$singleEdited = $rentalService->get($editableSingle["id"]);
+$singleBookingEdited = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($editableSingle["booking_id"]);
+$singleEditFinance = (new \grupo_donato_gestao\Services\FinanceService($unit_id))->summary(["source_type" => "court_rental", "source_id" => (int) $editableSingle["id"]]);
+gd_assert("edicao de avulsa altera horario, quadra e valor", $singleEdit["lock_version"] === 2 && $singleEdited->schedule["starts_at_local"] === "2099-12-01 12:00:00" && $singleEdited->schedule["resource_names"] !== $singleBeforeEdit->schedule["resource_names"] && (int) $singleBookingEdited->resources[0]->resource_id === $bookB && $singleEditFinance["total"] === "175.00" && $singleEditFinance["balance"] === "175.00");
+$singleExtra = $rentalService->registerExtraTime($editableSingle["id"], [
+    "extra_time_minutes" => "30", "extra_time_amount" => "25,00", "extra_time_notes" => "Cliente permaneceu mais 30 minutos.",
+    "lock_version" => (int) $singleEdit["lock_version"],
+]);
+$singleExtraEdited = $rentalService->get($editableSingle["id"]);
+$singleExtraFinance = (new \grupo_donato_gestao\Services\FinanceService($unit_id))->summary(["source_type" => "court_rental", "source_id" => (int) $editableSingle["id"]]);
+gd_assert("acréscimo registra tempo, observação e aumenta a cobrança", $singleExtra["lock_version"] === 3 && (int) $singleExtraEdited->extra_time_minutes === 30 && $singleExtraEdited->extra_time_amount === "25.00" && $singleExtraEdited->extra_time_notes === "Cliente permaneceu mais 30 minutos." && $singleExtraFinance["total"] === "200.00" && $singleExtraFinance["balance"] === "200.00");
+$singleExtraPayment = (new \grupo_donato_gestao\Services\FinanceService($unit_id))->registerPayment(["amount" => "200.00", "payment_date" => gmdate("Y-m-d"), "payment_method" => "pix", "financial_account_id" => (int) ($depositAccount->id ?? 0), "allocations" => [$singleExtraFinance["receivables"][0]->id => "200.00"]]);
+$singleExtraMovement = $db->table($prefix . "gd_cash_movements")->where("unit_id", $unit_id)->where("source_type", "payment")->where("source_id", (int) $singleExtraPayment["id"])->where("movement_type", "in")->where("amount", "200.00")->countAllResults();
+gd_assert("pagamento do acréscimo vira entrada no caixa", $singleExtraPayment["id"] > 0 && $singleExtraMovement === 1 && (new \grupo_donato_gestao\Services\FinanceService($unit_id))->getReceivable((int) $singleExtraFinance["receivables"][0]->id)->status === "paid");
+$belowPaid = gd_throws(function () use ($rentalService, $depositSingle, $unit_id, $bookC) {
+    $rental = $rentalService->get($depositSingle["id"]);
+    $bookingId = (int) $rental->links[0]->booking_id;
+    $booking = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($bookingId);
+    $rentalService->updateSingle($depositSingle["id"], [
+        "title" => "Locacao com sinal", "customer_account_id" => (int) $rental->customer_account_id,
+        "contact_person_id" => (int) $rental->contact_person_id, "list_amount" => "100.00", "negotiated_amount" => "100.00",
+        "starts_at_local" => "2099-12-10T10:00", "ends_at_local" => "2099-12-10T11:00",
+        "resources" => [["resource_id" => $bookC, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]],
+        "lock_version" => (int) $rental->lock_version, "booking_lock_version" => (int) $booking->lock_version,
+    ]);
+}, "gd_finance_amount_below_paid");
+gd_assert("edicao de avulsa preserva pagamentos e bloqueia total menor que o pago", $belowPaid);
+gd_assert("pagamento posterior quita o saldo e preserva histórico", $depositPayment["id"] > 0 && $depositPaidSummary["status"] === "paid" && $depositPaidSummary["balance"] === "0.00" && count($depositPaidSummary["payment_history"]) === 2);
+gd_assert("sinal acima do total é rejeitado no servidor", gd_throws(fn() => $rentalService->createWithBooking(array_replace($singleInput, ["list_amount" => "100.00", "negotiated_amount" => "100.00", "deposit_amount" => "100.01", "deposit_payment_method" => "pix", "starts_at_local" => "2099-12-11T10:00", "ends_at_local" => "2099-12-11T11:00"])), "gd_deposit_exceeds_total"));
 
 // ---- Validações comerciais ----
 gd_assert("conta inexistente é rejeitada", gd_throws(fn() => $rentalService->createDraft(array_replace($singleInput, ["customer_account_id" => 999999]), "single"), "gd_court_rental_invalid_customer"));
@@ -117,7 +193,22 @@ gd_assert("estado terminal rejeita transição", gd_throws(fn() => $rentalLifecy
 // ---- Política de ocorrências futuras (keep mantém; cancel cancela e pausa) ----
 $m31 = $rentalService->get($monthly31["id"]);
 $m31Active = $rentalLifecycle->activate($monthly31["id"], (int) $m31->lock_version, false, "");
-$rentalLifecycle->suspend($monthly31["id"], (int) $m31Active->lock_version, "keep", "Pausa");
+
+// ---- Acréscimo de permanência para mensalista ----
+$monthlyGenerator = new \grupo_donato_gestao\Services\ReceivableGenerationService($unit_id);
+$monthlyPreviewBeforeExtra = array_values(array_filter($monthlyGenerator->preview("2099-12"), static fn($row) => ($row["key"] ?? "") === "court_rental:" . $monthly31["id"]));
+gd_assert("mensalista mantém valor original antes do acréscimo", count($monthlyPreviewBeforeExtra) === 1 && $monthlyPreviewBeforeExtra[0]["amount"] === "550.00");
+$monthlyExtra = $rentalService->registerExtraTime($monthly31["id"], [
+    "extra_time_minutes" => "30", "extra_time_amount" => "25,00", "extra_time_notes" => "Cliente mensalista permaneceu mais 30 minutos.",
+    "lock_version" => (int) $m31Active->lock_version,
+]);
+$monthlyPreviewAfterExtra = array_values(array_filter($monthlyGenerator->preview("2099-12"), static fn($row) => ($row["key"] ?? "") === "court_rental:" . $monthly31["id"]));
+gd_assert("acréscimo do mensalista entra nas próximas competências", $monthlyExtra["lock_version"] === (int) $m31Active->lock_version + 1 && count($monthlyPreviewAfterExtra) === 1 && $monthlyPreviewAfterExtra[0]["amount"] === "575.00" && $monthlyPreviewAfterExtra[0]["notes"] === "Cliente mensalista permaneceu mais 30 minutos.");
+$monthlyGenerator->generateMonth("2099-12");
+$monthlyReceivable = $db->table($prefix . "gd_receivables")->where("unit_id", $unit_id)->where("source_type", "court_rental")->where("source_id", (int) $monthly31["id"])->where("reference_month", "2099-12")->where("deleted", 0)->get(1)->getRow();
+gd_assert("cobrança do mensalista recebe o valor adicional", $monthlyReceivable && $monthlyReceivable->original_amount === "575.00" && $monthlyReceivable->balance_amount === "575.00");
+
+$rentalLifecycle->suspend($monthly31["id"], (int) $monthlyExtra["lock_version"], "keep", "Pausa");
 $m31Occ = $db->table($prefix . "gd_bookings")->where("series_id", $monthly31["series_id"])->where("deleted", 0)->whereNotIn("status", ["cancelled", "completed", "no_show"])->countAllResults();
 gd_assert("política keep preserva ocorrências e pausa a geração", $m31Occ === 3 && $db->table($prefix . "gd_booking_series")->where("id", $monthly31["series_id"])->get(1)->getRow()->status === "paused");
 
@@ -126,9 +217,15 @@ gd_assert("mensalista ativa com valor contratado", $monthlyActivate->status === 
 gd_assert("cancelamento exige motivo", gd_throws(fn() => $rentalLifecycle->cancel($monthly["id"], (int) $monthlyActivate->lock_version, "", "cancel"), "gd_cancellation_reason_required"));
 $cancelled = $rentalLifecycle->cancel($monthly["id"], (int) $monthlyActivate->lock_version, "Cliente desistiu", "cancel");
 $activeMonthlyOcc = $db->table($prefix . "gd_bookings")->where("series_id", $monthly["series_id"])->where("deleted", 0)->whereNotIn("status", ["cancelled", "completed", "no_show"])->countAllResults();
-gd_assert("cancelamento encerra locação, pausa série e cancela futuras", $cancelled->status === "cancelled" && $db->table($prefix . "gd_booking_series")->where("id", $monthly["series_id"])->get(1)->getRow()->status === "paused" && $activeMonthlyOcc === 0);
+gd_assert("cancelamento encerra locação e série, cancelando futuras", $cancelled->status === "cancelled" && $db->table($prefix . "gd_booking_series")->where("id", $monthly["series_id"])->get(1)->getRow()->status === "cancelled" && $activeMonthlyOcc === 0);
+gd_assert("locação cancelada não pode ser retomada", gd_throws(fn() => $rentalLifecycle->resume($monthly["id"], (int) $cancelled->lock_version), "gd_invalid_court_rental_transition"));
+$cancelAudit = $db->table($prefix . "gd_audit_logs")->where("unit_id", $unit_id)->where("entity_type", "court_rental")->where("entity_id", $monthly["id"])->where("action", "court_rental_cancelled")->orderBy("id", "DESC")->get(1)->getRow();
+$cancelMetadata = $cancelAudit ? (json_decode((string) $cancelAudit->metadata, true) ?: []) : [];
+gd_assert("cancelamento registra auditoria operacional", $cancelAudit && ($cancelMetadata["rental_id"] ?? 0) === (int) $monthly["id"] && ($cancelMetadata["new_state"] ?? "") === "cancelled" && ($cancelMetadata["reason"] ?? "") === "Cliente desistiu" && array_key_exists("future_occurrences_count", $cancelMetadata));
+$replacementBooking = (new \grupo_donato_gestao\Services\BookingService($unit_id))->save(["booking_type" => "customer_rental", "title" => "Reserva após cancelamento", "customer_account_id" => $family["id"], "contact_person_id" => $person_two["id"], "starts_at_local" => "2099-12-07T08:00", "ends_at_local" => "2099-12-07T09:00", "status" => "pending_confirmation", "resources" => [["resource_id" => $bookA, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]]]);
+gd_assert("cancelamento libera o horário para nova reserva", $replacementBooking["id"] > 0);
 
-// ---- Sem financeiro, append-only, IDOR ----
+// ---- Escopo financeiro autorizado, append-only, IDOR ----
 $forbiddenTables = ["gd_invoices", "gd_charges", "gd_installments", "gd_cash_sessions"];
 gd_assert("nenhuma tabela financeira fora do escopo autorizado foi criada", !array_filter($forbiddenTables, static fn($t) => $db->tableExists($prefix . $t)));
 gd_assert("apenas as 4 tabelas da Fase 3C foram adicionadas", (int) $db->query("SELECT COUNT(*) c FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ?", [$prefix . "gd_court_rental%"])->getRow()->c === 4);
@@ -144,7 +241,7 @@ gd_assert("manage de locação implica as leituras necessárias", $crManage->can
 gd_assert("manage de locação não concede gestão de cadastros", !$crManage->can("gd_bookings_manage") && !$crManage->can("gd_resources_manage") && !$crManage->can("gd_customer_accounts_manage"));
 gd_assert("status de locação vê a locação sem gerir cadastros", $crStatus->can("gd_court_rentals_view") && !$crStatus->can("gd_court_rentals_manage") && !$crStatus->can("gd_resources_manage"));
 gd_assert("override de preço implica ver a locação", $crOverride->can("gd_court_rentals_view"));
-gd_assert("rotas de locação separam leitura GET e escrita POST", isset($get_routes["grupo_donato/court-rentals"]) && (bool) array_filter(array_keys($get_routes), static fn($route) => str_starts_with((string) $route, "grupo_donato/court-rentals/view/")) && isset($post_routes["grupo_donato/court-rentals/save-single"], $post_routes["grupo_donato/court-rentals/save-monthly"], $post_routes["grupo_donato/court-rentals/update-monthly"], $post_routes["grupo_donato/court-rentals/availability-options"], $post_routes["grupo_donato/court-rentals/reprice"]) && !isset($get_routes["grupo_donato/court-rentals/save-single"]));
+gd_assert("rotas de locação separam leitura GET e escrita POST", isset($get_routes["grupo_donato/court-rentals"]) && (bool) array_filter(array_keys($get_routes), static fn($route) => str_starts_with((string) $route, "grupo_donato/court-rentals/view/")) && isset($post_routes["grupo_donato/court-rentals/save-single"], $post_routes["grupo_donato/court-rentals/save-monthly"], $post_routes["grupo_donato/court-rentals/extra-time"], $post_routes["grupo_donato/court-rentals/availability-options"], $post_routes["grupo_donato/court-rentals/reprice"]) && !isset($get_routes["grupo_donato/court-rentals/save-single"]));
 gd_assert("CSRF protege escrita de locação", in_array("csrf", (array) get_array_value($routes->getRoutesOptions("grupo_donato/court-rentals/save-single", "POST"), "filter"), true));
 gd_assert("idioma da Fase 3C resolve", app_lang("gd_menu_court_rentals") === "Locações de quadras" && app_lang("gd_court_rental_status_active") !== "gd_court_rental_status_active");
 $crDynamicKeys = [];

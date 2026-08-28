@@ -1,0 +1,91 @@
+<?php
+$e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
+
+$resource_options = [["id" => "", "text" => "- " . app_lang("gd_resources") . " -"]];
+foreach ($resources as $resource) {
+    $resource_options[] = ["id" => (string) $resource["id"], "text" => $resource["code"] . " — " . $resource["name"]];
+}
+
+$status_options = [["id" => "", "text" => "- " . app_lang("gd_all_statuses") . " -"]];
+foreach ($statuses as $status) {
+    $status_options[] = ["id" => $status, "text" => app_lang("gd_court_rental_status_" . $status)];
+}
+
+$buttons = [];
+if (!empty($can_calendar)) {
+    $buttons[] = anchor(get_uri("grupo_donato/barbecue-calendar"), '<i data-feather="calendar" class="icon-16"></i> ' . app_lang("gd_open_agenda"), ["class" => "btn btn-default"]);
+}
+$buttons[] = anchor(get_uri("grupo_donato/barbecue-rentals/monthly"), '<i data-feather="repeat" class="icon-16"></i> ' . app_lang("gd_menu_barbecue_monthly"), ["class" => "btn btn-default"]);
+if (!empty($can_manage)) {
+    $buttons[] = modal_anchor(get_uri("grupo_donato/barbecue-rentals/single-modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_barbecue_rental_single"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_barbecue_rental_single")]);
+}
+?>
+<?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
+<div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
+    <div class="card">
+        <div class="page-title clearfix gd-page-header">
+            <div>
+                <h4><?php echo app_lang("gd_menu_barbecue_bookings"); ?></h4>
+            </div>
+            <?php if ($buttons) { ?><div class="title-button-group gd-toolbar"><?php echo implode(" ", $buttons); ?></div><?php } ?>
+        </div>
+
+        <div class="table-responsive">
+            <table id="gd-barbecue-rentals-table" class="display" cellspacing="0" width="100%"></table>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function(){
+    $("#gd-barbecue-rentals-table").appTable({
+        source:'<?php echo_uri("grupo_donato/barbecue-rentals/single-data"); ?>',
+        serverSide:true,
+        order:[[2,"desc"]],
+        filterDropdown:[
+            {name:"status",class:"w180",options:<?php echo json_encode($status_options); ?>},
+            {name:"resource_id",class:"w200",options:<?php echo json_encode($resource_options); ?>}
+        ],
+        rangeDatepicker:[{startDate:{name:"date_from",value:""},endDate:{name:"date_to",value:""},showClearButton:true}],
+        columns:[
+            {title:'<?php echo app_lang("gd_customer"); ?>',class:"all"},
+            {title:'<?php echo app_lang("gd_barbecues"); ?>'},
+            {title:'<?php echo app_lang("gd_day_and_time"); ?>',order_by:"effective_from"},
+            {title:'<?php echo app_lang("gd_contracted_amount"); ?>'},
+            {title:'<?php echo app_lang("gd_status"); ?>',order_by:"status"},
+            {title:'<?php echo app_lang("gd_finance_situation"); ?>'},
+            {title:'<i data-feather="menu" class="icon-16"></i>',class:"text-center option w120"}
+        ]
+    });
+
+    $(document).on("click", ".gd-cr-act", function(event){
+        event.preventDefault();
+        var button = $(this),
+            data = {lock_version: button.data("lock")};
+        if (button.data("action") === "cancel") {
+            if (!window.confirm('<?php echo addslashes(app_lang("gd_cancel_rental_confirm")); ?>')) { return; }
+            var reason = window.prompt('<?php echo addslashes(app_lang("gd_reason")); ?>', "");
+            if (!reason) { return; }
+            data.reason = reason;
+        }
+        $.ajax({
+            url: '<?php echo_uri("grupo_donato/barbecue-rentals/"); ?>' + button.data("id") + "/" + button.data("action"),
+            type: "POST",
+            data: data,
+            dataType: "json"
+        }).done(function(response){
+            if (response.success) {
+                location.reload();
+            } else {
+                appAlert.error(response.message);
+            }
+        }).fail(function(xhr){
+            var body = xhr && xhr.responseJSON ? xhr.responseJSON : null;
+            appAlert.error((body && body.message) || '<?php echo addslashes(app_lang("error_occurred")); ?>');
+            if (xhr && xhr.status === 409) { setTimeout(function(){ location.reload(); }, 1200); }
+        });
+    });
+
+    if (typeof feather !== "undefined") { feather.replace(); }
+});
+</script>

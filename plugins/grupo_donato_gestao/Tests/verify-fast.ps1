@@ -57,15 +57,20 @@ $requiredRoutes = @(
     '$routes->post("bookings/save"',
     '$routes->post("bookings/check-availability"',
     '$routes->post("bookings/(:num)/confirm"',
-    '$routes->get("calendar/events"'
-    '$routes->get("booking-series"'
-    '$routes->post("booking-series/preview"'
-    '$routes->post("booking-series/update-this-and-future"'
-    '$routes->get("school/students"'
-    '$routes->post("school/classes/save"'
-    '$routes->post("school/attendance/save"'
-    '$routes->get("finance"'
-    '$routes->post("finance/payments/save"'
+    '$routes->get("calendar/events"',
+    '$routes->get("barbecue-calendar"',
+    '$routes->get("barbecue-rentals"',
+    '$routes->post("barbecue-rentals/save-single"',
+    '$routes->post("barbecue-rentals/save-monthly"',
+    '$routes->post("barbecue-rentals/extra-time"',
+    '$routes->get("booking-series"',
+    '$routes->post("booking-series/preview"',
+    '$routes->post("booking-series/update-this-and-future"',
+    '$routes->get("school/students"',
+    '$routes->post("school/classes/save"',
+    '$routes->post("school/attendance/save"',
+    '$routes->get("finance"',
+    '$routes->post("finance/payments/save"',
     '$routes->post("finance/expenses/save"'
 )
 foreach ($route in $requiredRoutes) { Assert-True $routes.Contains($route) "Required route missing: $route" }
@@ -78,7 +83,7 @@ $language = Get-Content -Raw -Encoding UTF8 -LiteralPath $languagePath
 $keys = [regex]::Matches($language, '"(gd_[a-zA-Z0-9_]+)"\s*=>') | ForEach-Object { $_.Groups[1].Value }
 $duplicates = @($keys | Group-Object | Where-Object Count -gt 1)
 Assert-True ($duplicates.Count -eq 0) ("Duplicate language keys: " + (($duplicates.Name) -join ", "))
-foreach ($key in @("gd_app_title", "gd_menu_calendar", "gd_menu_bookings", "gd_booking_conflict", "gd_menu_booking_series", "gd_booking_series_not_found", "gd_school_students", "gd_school_classes", "gd_school_attendance", "gd_finance_overview", "gd_finance_receivables", "gd_finance_cash")) {
+foreach ($key in @("gd_app_title", "gd_menu_calendar", "gd_menu_bookings", "gd_booking_conflict", "gd_menu_booking_series", "gd_booking_series_not_found", "gd_school_students", "gd_school_classes", "gd_school_attendance", "gd_finance_overview", "gd_finance_receivables", "gd_finance_cash", "gd_menu_barbecues", "gd_resource_type_barbecue_area")) {
     Assert-True ($keys -contains $key) "Required language key missing: $key"
 }
 Write-Host "  PASS $($keys.Count) unique gd_* keys"

@@ -9,8 +9,8 @@ use grupo_donato_gestao\Config\Constants;
 /** Projeção read-only de regras, exceções e bloqueios para FullCalendar. */
 class CalendarService extends CustomerDataService
 {
-    private TemporalService $time;private bool $can_view_bookings;
-    public function __construct(int $unit_id,bool $can_view_bookings=false){parent::__construct($unit_id);$this->time=new TemporalService($unit_id);$this->can_view_bookings=$can_view_bookings;}
+    private TemporalService $time;private bool $can_view_bookings;private ?string $resource_type;
+    public function __construct(int $unit_id,bool $can_view_bookings=false,?string $resource_type=null){parent::__construct($unit_id);if($resource_type!==null&&!Constants::isResourceType($resource_type)){throw new \InvalidArgumentException("Invalid calendar resource type.");}$this->time=new TemporalService($unit_id);$this->can_view_bookings=$can_view_bookings;$this->resource_type=$resource_type;}
     public function timezoneName():string{return $this->time->timezoneName();}
 
     public function events(string $range_start,string $range_end,array $resource_ids=[],array $types=[],array $booking_statuses=[],int $free_slot_minutes=90):array
@@ -18,7 +18,7 @@ class CalendarService extends CustomerDataService
         $start=$this->time->parseIsoInstant($range_start);$end=$this->time->parseIsoInstant($range_end);if($end<=$start){throw new \DomainException("gd_invalid_datetime_range");}
         if(($end->getTimestamp()-$start->getTimestamp())>$this->time->calendarMaxDays()*86400){throw new \DomainException("gd_calendar_range_too_large");}
         $start_utc=$start->format("Y-m-d H:i:s");$end_utc=$end->format("Y-m-d H:i:s");$types=array_values(array_intersect($types,["weekly_rule","open_exception","closed_exception","block","booking","free_slot"]));if(!$types){$types=["open_exception","closed_exception","block","booking"];} // sem tipos explícitos NÃO devolvemos disponibilidade padrão (weekly_rule)
-        $p=$this->db->getPrefix();$rb=$this->db->table($p."gd_resources")->select("id,code,name,is_active,is_bookable")->where("unit_id",$this->unit_id)->where("deleted",0)->where("is_active",1)->where("is_bookable",1);
+        $p=$this->db->getPrefix();$rb=$this->db->table($p."gd_resources")->select("id,code,name,is_active,is_bookable")->where("unit_id",$this->unit_id)->where("deleted",0)->where("is_active",1)->where("is_bookable",1);if($this->resource_type!==null){$rb->where("resource_type",$this->resource_type);}
         $resource_ids=array_values(array_unique(array_filter(array_map("intval",$resource_ids),static fn($id)=>$id>0)));if($resource_ids){$rb->whereIn("id",$resource_ids);}$resources=$rb->orderBy("sort_order")->orderBy("name")->get()->getResult();$ids=array_map(static fn($r)=>(int)$r->id,$resources);if(!$ids){return [];}$names=[];$codes=[];$orders=[];foreach($resources as $order=>$r){$id=(int)$r->id;$codes[$id]=(string)$r->code;$names[$id]=$codes[$id]." — ".(string)$r->name;$orders[$id]=(int)$order;}$events=[];$show_resource_label=count($ids)>1;
         if(in_array("free_slot",$types,true)&&$resource_ids){foreach($ids as $id){$events=array_merge($events,$this->freeSlotEvents($id,$names[$id],$codes[$id],$orders[$id],$show_resource_label,$start,$end,$free_slot_minutes));}}
         if(in_array("weekly_rule",$types,true)){$rules=$this->db->table($p."gd_resource_availability_rules")->where("unit_id",$this->unit_id)->whereIn("resource_id",$ids)->where("status","active")->where("deleted",0)->get()->getResult();$local_start=$start->setTimezone(new \DateTimeZone($this->time->timezoneName()))->modify("-1 day")->setTime(0,0);$local_end=$end->setTimezone(new \DateTimeZone($this->time->timezoneName()))->modify("+1 day")->setTime(0,0);
@@ -31,18 +31,19 @@ class CalendarService extends CustomerDataService
         // Vínculo comercial ativo (gd_court_rental_schedule_links) — enriquece o
         // evento com court_rental_id em lote (sem N+1). Somente para quem já vê
         // detalhes de booking, mantendo o mesmo nível de exposição.
-        if($this->can_view_bookings&&$this->db->tableExists($p."gd_court_rental_schedule_links")){
+        $rental_link_table=$this->resource_type===Constants::BARBECUE_RESOURCE_TYPE?"gd_barbecue_rental_schedule_links":"gd_court_rental_schedule_links";$rental_prop=$this->resource_type===Constants::BARBECUE_RESOURCE_TYPE?"barbecue_rental_id":"court_rental_id";
+        if($this->can_view_bookings&&$this->db->tableExists($p.$rental_link_table)){
             $booking_ids=[];$series_ids=[];
             foreach($events as $ev){if(($ev["extendedProps"]["event_type"]??"")!=="booking")continue;$booking_ids[]=(int)($ev["extendedProps"]["booking_id"]??0);$sid=(int)($ev["extendedProps"]["series_id"]??0);if($sid)$series_ids[]=$sid;}
             $booking_ids=array_values(array_unique(array_filter($booking_ids)));$series_ids=array_values(array_unique(array_filter($series_ids)));
             $by_booking=[];$by_series=[];
             if($booking_ids||$series_ids){
-                $lq=$this->db->table($p."gd_court_rental_schedule_links")->select("rental_id,booking_id,booking_series_id")->where("unit_id",$this->unit_id)->where("deleted",0)->where("link_kind !=","historical")->groupStart();
+                $lq=$this->db->table($p.$rental_link_table)->select("rental_id,booking_id,booking_series_id")->where("unit_id",$this->unit_id)->where("deleted",0)->where("link_kind !=","historical")->groupStart();
                 if($booking_ids)$lq->whereIn("booking_id",$booking_ids);
                 if($series_ids){if($booking_ids)$lq->orWhereIn("booking_series_id",$series_ids);else $lq->whereIn("booking_series_id",$series_ids);}
                 foreach($lq->groupEnd()->get()->getResult() as $lr){if($lr->booking_id)$by_booking[(int)$lr->booking_id]=(int)$lr->rental_id;if($lr->booking_series_id)$by_series[(int)$lr->booking_series_id]=(int)$lr->rental_id;}
             }
-            if($by_booking||$by_series){foreach($events as &$event){if(($event["extendedProps"]["event_type"]??"")!=="booking")continue;$bid=(int)($event["extendedProps"]["booking_id"]??0);$sid=(int)($event["extendedProps"]["series_id"]??0);$rid=$by_booking[$bid]??($sid?($by_series[$sid]??0):0);if($rid)$event["extendedProps"]["court_rental_id"]=$rid;}unset($event);}
+            if($by_booking||$by_series){foreach($events as &$event){if(($event["extendedProps"]["event_type"]??"")!=="booking")continue;$bid=(int)($event["extendedProps"]["booking_id"]??0);$sid=(int)($event["extendedProps"]["series_id"]??0);$rid=$by_booking[$bid]??($sid?($by_series[$sid]??0):0);if($rid)$event["extendedProps"][$rental_prop]=$rid;}unset($event);}
         }
         // School/personal uses the canonical booking projection. Enrich it with
         // its source instead of creating duplicate calendar events.
@@ -102,6 +103,6 @@ class CalendarService extends CustomerDataService
     {
         if(!$ranges){return false;}usort($ranges,static fn($a,$b)=>$a[0]<=>$b[0]);$cursor=$start;foreach($ranges as [$range_start,$range_end]){if($range_end<=$cursor){continue;}if($range_start>$cursor){return false;}$cursor=$range_end>$cursor?$range_end:$cursor;if($cursor>=$end){return true;}}return false;
     }
-    public function resources():array{$t=$this->db->prefixTable("gd_resources");return $this->db->table($t)->select("id,code,name")->where("unit_id",$this->unit_id)->where("deleted",0)->where("is_active",1)->where("is_bookable",1)->orderBy("sort_order")->orderBy("name")->get()->getResultArray();}
+    public function resources(?string $resource_type=null):array{$resource_type=$resource_type??$this->resource_type;$t=$this->db->prefixTable("gd_resources");$b=$this->db->table($t)->select("id,code,name,resource_type")->where("unit_id",$this->unit_id)->where("deleted",0)->where("is_active",1)->where("is_bookable",1);if($resource_type!==null&&$resource_type!==""){$b->where("resource_type",$resource_type);}return $b->orderBy("sort_order")->orderBy("name")->get()->getResultArray();}
     private function event(string $id,string $title,string $start,string $end,string $type,int $resource_id,string $color,bool $background):array{return ["id"=>$id,"title"=>$title,"start"=>$this->time->utcToIsoLocal($start),"end"=>$this->time->utcToIsoLocal($end),"display"=>$background?"background":"auto","backgroundColor"=>$color,"borderColor"=>$color,"extendedProps"=>["event_type"=>$type,"resource_id"=>$resource_id]];}
 }

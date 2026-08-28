@@ -33,6 +33,7 @@ final class Permissions
         "gd_barbecue_rentals_view" => "gd_barbecue_rentals_manage",
         "gd_school_view" => "gd_students_manage",
         "gd_finance_view" => "gd_receivables_manage",
+        "gd_rental_payments_view" => "gd_rental_payments_manage",
         "gd_imports_view" => "gd_imports_manage",
     ];
 
@@ -115,6 +116,8 @@ final class Permissions
         "gd_finance_view",
         "gd_receivables_manage",
         "gd_payments_manage",
+        "gd_rental_payments_view",
+        "gd_rental_payments_manage",
         "gd_expenses_manage",
         "gd_cash_view",
         "gd_imports_view",
@@ -200,6 +203,8 @@ final class Permissions
                 ["key" => "gd_finance_view", "label_key" => "gd_perm_finance_view"],
                 ["key" => "gd_receivables_manage", "label_key" => "gd_perm_receivables_manage"],
                 ["key" => "gd_payments_manage", "label_key" => "gd_perm_payments_manage"],
+                ["key" => "gd_rental_payments_view", "label_key" => "gd_perm_rental_payments_view"],
+                ["key" => "gd_rental_payments_manage", "label_key" => "gd_perm_rental_payments_manage"],
                 ["key" => "gd_expenses_manage", "label_key" => "gd_perm_expenses_manage"],
                 ["key" => "gd_cash_view", "label_key" => "gd_perm_cash_view"],
             ],

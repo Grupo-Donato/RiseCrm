@@ -34,7 +34,7 @@
         <div class="row">
             <label for="pwa_theme_color" class="col-md-2"><?php echo app_lang('app_color'); ?> </label>
             <div class=" col-md-10">
-                <input type="color" id="pwa_theme_color" name="pwa_theme_color" value="<?php echo get_setting("pwa_theme_color") ? get_setting("pwa_theme_color") : "#1c2026"; ?>" />
+                                <input type="color" id="pwa_theme_color" name="pwa_theme_color" value="<?php echo get_setting("pwa_theme_color") ? get_setting("pwa_theme_color") : "#0b1020"; ?>" />
             </div>
         </div>
     </div>

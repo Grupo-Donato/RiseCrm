@@ -16,7 +16,7 @@ $monthlyId=(int)$monthly['id'];
 $r2=$fin->createReceivable(['source_type'=>'court_rental','source_id'=>$monthlyId,'reference_month'=>'2098-02','description'=>'Mensalista '.$token,'issue_date'=>'2098-02-01','due_date'=>'2098-02-10','original_amount'=>'150.00','unit_amount'=>'150.00','quantity'=>'1']);
 gd_assert('gera cobrança de mensalista integrada',!empty($r2['created']));
 $singleCharge=(new \grupo_donato_gestao\Services\ReceivableGenerationService($unit_id))->generateCourtRental((int)$single['id'],['amount'=>'80.00','due_date'=>'2098-02-05']);
-gd_assert('gera cobrança avulsa integrada',!empty($singleCharge['created']));
+gd_assert('cobrança avulsa já nasce integrada e é idempotente',empty($singleCharge['created'])&&!empty($singleCharge['duplicate'])&&($singleCharge['id']??0)>0);
 $duplicate=$fin->createReceivable(['source_type'=>'enrollment','source_id'=>$enrollmentId,'reference_month'=>'2098-02','description'=>'Duplicada','issue_date'=>'2098-02-01','due_date'=>'2098-02-10','original_amount'=>'100.00','unit_amount'=>'100.00','quantity'=>'1']);
 gd_assert('impede cobrança mensal duplicada',empty($duplicate['created'])&&!empty($duplicate['duplicate']));
 $pay1=$fin->registerPayment(['amount'=>'100.00','payment_date'=>$today,'payment_method'=>'pix','financial_account_id'=>$account->id,'allocations'=>[$r1['id']=>'100.00',$r2['id']=>'']]);
@@ -34,7 +34,7 @@ $expense=$fin->saveExpense(['description'=>'Despesa teste '.$token,'payee'=>'For
 gd_assert('despesa paga gera saída',$expense['id']>0&&$db->table($prefix.'gd_cash_movements')->where('source_type','expense')->where('source_id',$expense['id'])->where('movement_type','out')->countAllResults()===1);
 $movements=$fin->cashPage(['date_from'=>$today,'date_to'=>$today,'financial_account_id'=>$account->id]);
 gd_assert('caixa contém entradas, saída e estorno',(bool)array_filter($movements,fn($m)=>$m->movement_type==='in')&&(bool)array_filter($movements,fn($m)=>$m->movement_type==='out'));
-gd_assert('saldo acumulado é calculado exatamente',end($movements)->running_balance==='145.00');
+gd_assert('saldo acumulado é calculado exatamente',end($movements)->running_balance==='1145.00');
 $overdue=$fin->createReceivable(['source_type'=>'manual','customer_account_id'=>$r2partial->customer_account_id,'description'=>'Vencida '.$token,'issue_date'=>'2020-01-01','due_date'=>'2020-01-10','original_amount'=>'12.00','unit_amount'=>'12.00','quantity'=>'1']);
 gd_assert('cobrança vencida recebe estado overdue',$fin->getReceivable($overdue['id'])->status==='overdue');
 $summary=$fin->summary(['customer_account_id'=>$r2partial->customer_account_id]);$dashboard=$fin->dashboard($today,$today);
@@ -45,8 +45,13 @@ $otherUnit=$db->table($prefix.'gd_units')->where('id !=',$unit_id)->where('delet
 $financeAccess=new \grupo_donato_gestao\Services\AccessService($pm('gd_payments_manage'));
 gd_assert('permissão de pagamento implica visão financeira',$financeAccess->can('gd_finance_view')&&!$financeAccess->can('gd_expenses_manage'));
 $getFinance=$routes->getRoutes('GET');$postFinance=$routes->getRoutes('POST');
-gd_assert('rotas financeiras separam leitura e escrita',isset($getFinance['grupo_donato/finance'],$getFinance['grupo_donato/finance/receivables'])&&isset($postFinance['grupo_donato/finance/payments/save'],$postFinance['grupo_donato/finance/expenses/save']));
+gd_assert(
+    'rotas financeiras separam leitura e escrita',
+    isset($getFinance['grupo_donato/finance'], $getFinance['grupo_donato/finance/receivables'])
+        && isset($postFinance['grupo_donato/finance/payments/save'], $postFinance['grupo_donato/finance/expenses/save'], $postFinance['grupo_donato/finance/rental-payment-modal'], $postFinance['grupo_donato/finance/rental-payments/save'])
+);
 gd_assert('CSRF protege escrita financeira',in_array('csrf',(array)get_array_value($routes->getRoutesOptions('grupo_donato/finance/payments/save','POST'),'filter'),true));
+gd_assert('CSRF protege baixa de locacao',in_array('csrf',(array)get_array_value($routes->getRoutesOptions('grupo_donato/finance/rental-payments/save','POST'),'filter'),true));
 gd_assert('nenhum schema financeiro usa exclusão física',array_reduce(['gd_receivables','gd_payments','gd_expenses'],fn($ok,$t)=>$ok&&in_array('deleted',$db->getFieldNames($prefix.$t),true),true));
 gd_assert('não existem campos de integração bancária',!array_filter($financeTables,fn($t)=>array_intersect(['gateway_id','bank_reconciliation_id','pix_transaction_id'],$db->getFieldNames($prefix.$t))));
 // ---- 2.7: situação financeira agregada por locação em lote (sem N+1) ----
@@ -61,4 +66,11 @@ gd_assert('saldo agregado ignora origem sem cobrança aberta',!isset($crBal[9999
 $dupSingle=(new \grupo_donato_gestao\Services\ReceivableGenerationService($unit_id))->generateCourtRental((int)$single['id'],['amount'=>'80.00','due_date'=>'2098-02-05']);
 gd_assert('geração de cobrança avulsa é idempotente',empty($dupSingle['created'])&&!empty($dupSingle['duplicate'])&&(int)($dupSingle['id']??0)===(int)$singleCharge['id']);
 $crReceivables=$db->table($prefix.'gd_receivables')->where('unit_id',$unit_id)->where('source_type','court_rental')->where('source_id',(int)$single['id'])->where('deleted',0)->countAllResults();
+$rentalContext=$fin->courtRentalPaymentContext((int)$singleCharge['id']);
+gd_assert('baixa de locacao carrega cliente e competencia',$rentalContext&&$rentalContext['customer_name']&&$rentalContext['reference_month']==='2099-12');
+$rentalPaymentInput=['receivable_id'=>(int)$singleCharge['id'],'customer_name'=>$rentalContext['renter_name'],'competence'=>'12/2099','amount'=>(string)$rentalContext['receivable']->balance_amount,'payment_date'=>$today,'payment_method'=>'PIX'];
+gd_assert('baixa rejeita pessoa que nao corresponde',gd_throws(fn()=>$fin->registerCourtRentalPayment(array_merge($rentalPaymentInput,['customer_name'=>'Pessoa incorreta'])),'gd_finance_customer_mismatch'));
+gd_assert('baixa rejeita competencia incorreta',gd_throws(fn()=>$fin->registerCourtRentalPayment(array_merge($rentalPaymentInput,['competence'=>'11/2099'])),'gd_finance_payment_competence_mismatch'));
+$rentalSettlement=$fin->registerCourtRentalPayment($rentalPaymentInput);
+gd_assert('baixa de locacao confere dados e muda status para pago',$rentalSettlement['status']==='paid'&&$rentalSettlement['balance']==='0.00');
 gd_assert('idempotência mantém uma única cobrança avulsa por locação',$crReceivables===1);

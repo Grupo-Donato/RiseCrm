@@ -121,12 +121,48 @@ if (!function_exists('gd_current_login_user')) {
             $sidebar_menu['files'],
             $sidebar_menu['projects'],
             $sidebar_menu['notes'],
-            $sidebar_menu['messages'],
             $sidebar_menu['grupo_donato']
         );
 
+        // Estes grupos são montados novamente abaixo conforme o cargo. A
+        // remoção antecipada evita que uma configuração antiga persistida no
+        // Rise ultrapasse a regra atual do menu.
+        unset(
+            $sidebar_menu['locacoes'],
+            $sidebar_menu['churrasqueiras'],
+            $sidebar_menu['rental_courts_menu'],
+            $sidebar_menu['rental_barbecues'],
+            $sidebar_menu['Churrasqueiras']
+        );
+
+        // Chat interno e Equipe são itens nativos e devem continuar visíveis
+        // para qualquer usuário de equipe, independentemente do cargo.
+        if (get_setting('module_message') == '1' && !isset($sidebar_menu['messages'])) {
+            $sidebar_menu['messages'] = [
+                'name' => 'messages',
+                'url' => 'messages',
+                'class' => 'message-circle',
+                'badge' => function_exists('count_unread_message') ? count_unread_message() : 0,
+                'badge_class' => 'bg-primary',
+            ];
+        }
+        if (!isset($sidebar_menu['team'])) {
+            $sidebar_menu['team'] = [
+                'name' => 'team',
+                'url' => 'team_members',
+                'class' => 'users',
+            ];
+        }
+        if (isset($sidebar_menu['messages'])) {
+            $messages_menu = $sidebar_menu['messages'];
+            unset($sidebar_menu['messages']);
+            $sidebar_menu = ['messages' => $messages_menu] + $sidebar_menu;
+        }
+
         $access = new AccessService($user);
         $can = static fn($key) => $access->can($key);
+
+        $can_view_rentals_menu = RoleAccessService::can_view_rentals_menu($user);
 
         $can_calendar = $can('gd_calendar_view');
         $can_bookings = $can('gd_bookings_view');
@@ -134,7 +170,7 @@ if (!function_exists('gd_current_login_user')) {
         $can_court_rentals = $can('gd_court_rentals_view');
         $can_barbecue_rentals = $can('gd_barbecue_rentals_view');
         $can_school = $can('gd_school_view');
-        $can_finance = $can('gd_finance_view');
+        $can_finance = $can('gd_rental_payments_view');
 
         if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_barbecue_rentals && !$can_school && !$can_finance) {
             return $sidebar_menu; // sem permissão → sem menu
@@ -219,18 +255,12 @@ if (!function_exists('gd_current_login_user')) {
                 "is_custom_menu_item" => true,
                 "url" => get_uri("grupo_donato/finance/rental-payments"),
             ];
-            $court_rental_submenu[] = [
-                "name" => "rental_charges",
-                "language_key" => "gd_menu_rental_charges",
-                "is_custom_menu_item" => true,
-                "url" => get_uri("grupo_donato/finance/rental-payments"),
-            ];
         }
         $court_rental_submenu = array_map(static function (array $item): array {
             $item["class"] = "grid";
             return $item;
         }, $court_rental_submenu);
-        if ($court_rental_submenu) {
+        if ($can_view_rentals_menu && $court_rental_submenu) {
             $sidebar_menu["locacoes"] = [
                 "name" => "LocaÃ§Ãµes",
                 "language_key" => "gd_menu_rentals",
@@ -273,18 +303,12 @@ if (!function_exists('gd_current_login_user')) {
                 "is_custom_menu_item" => true,
                 "url" => get_uri("grupo_donato/finance/barbecue-payments"),
             ];
-            $barbecue_rental_submenu[] = [
-                "name" => "barbecue_charges",
-                "language_key" => "gd_menu_barbecue_charges",
-                "is_custom_menu_item" => true,
-                "url" => get_uri("grupo_donato/finance/barbecue-payments"),
-            ];
         }
         $barbecue_rental_submenu = array_map(static function (array $item): array {
             $item["class"] = "grid";
             return $item;
         }, $barbecue_rental_submenu);
-        if ($barbecue_rental_submenu) {
+        if ($can_view_rentals_menu && $barbecue_rental_submenu) {
             $sidebar_menu["churrasqueiras"] = [
                 "name" => "Churrasqueiras",
                 "language_key" => "gd_menu_barbecues",

@@ -18,7 +18,7 @@ $buttons = [];
 if (!empty($can_calendar)) {
     $buttons[] = anchor(get_uri("grupo_donato/calendar"), '<i data-feather="calendar" class="icon-16"></i> ' . app_lang("gd_open_agenda"), ["class" => "btn btn-default"]);
 }
-$buttons[] = anchor(get_uri("grupo_donato/court-rentals"), '<i data-feather="clipboard" class="icon-16"></i> ' . app_lang("gd_view_reservations"), ["class" => "btn btn-default"]);
+$buttons[] = anchor(get_uri("grupo_donato/court-rentals"), '<i data-feather="clipboard" class="icon-16"></i> ' . app_lang("gd_menu_rental_bookings"), ["class" => "btn btn-default"]);
 if (!empty($can_manage)) {
     $buttons[] = modal_anchor(get_uri("grupo_donato/court-rentals/monthly-modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_court_rental_monthly"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_court_rental_monthly")]);
 }
@@ -29,19 +29,8 @@ if (!empty($can_manage)) {
         <div class="page-title clearfix gd-page-header">
             <div>
                 <h4><?php echo app_lang("gd_monthly_renters"); ?></h4>
-                <div class="text-muted gd-rentals-subtitle">
-                    <?php echo app_lang("gd_monthly_renters_help"); ?>
-                    <span class="ms-1"><?php echo app_lang("gd_unit_timezone") . ": " . $e($timezone); ?></span>
-                </div>
             </div>
             <div class="title-button-group gd-toolbar"><?php echo implode(" ", $buttons); ?></div>
-        </div>
-
-        <div class="gd-table-note text-muted">
-            <div class="gd-stat-line">
-                <span><i data-feather="repeat" class="icon-16"></i> <?php echo app_lang("gd_monthly_contract_hint"); ?></span>
-                <span><i data-feather="dollar-sign" class="icon-16"></i> <?php echo app_lang("gd_monthly_finance_hint"); ?></span>
-            </div>
         </div>
 
         <div class="table-responsive">
@@ -79,8 +68,11 @@ $(document).ready(function(){
         event.preventDefault();
         var button = $(this),
             data = {lock_version: button.data("lock")};
-        if (button.data("action") === "suspend") {
-            data.future_policy = "keep";
+        if (button.data("action") === "cancel") {
+            if (!window.confirm('<?php echo addslashes(app_lang("gd_cancel_rental_confirm")); ?>')) { return; }
+            var reason = window.prompt('<?php echo addslashes(app_lang("gd_reason")); ?>', "");
+            if (!reason) { return; }
+            data.reason = reason;
         }
         $.ajax({
             url: '<?php echo_uri("grupo_donato/court-rentals/"); ?>' + button.data("id") + "/" + button.data("action"),

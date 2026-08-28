@@ -24,15 +24,16 @@ class Finance extends Gd_Controller
     public function payment_modal()
     {
         try {
-            $this->access->require('gd_payments_manage');
             $rid=(int)$this->request->getPost('receivable_id');
             $balance=(string)$this->request->getPost('balance');
             if ($rid > 0) {
                 $rentalContext = $this->service->courtRentalPaymentContext($rid);
                 if ($rentalContext) {
+                    $this->access->require('gd_rental_payments_manage');
                     return $this->gd_view('finance/rental_payment_modal', $rentalContext + ['methods' => Constants::PAYMENT_METHODS, 'reload_target' => (string) $this->request->getPost('reload_target')]);
                 }
             }
+            $this->access->require('gd_payments_manage');
             $receivables=array_merge(
                 $this->service->receivablesPage(['status'=>'open','limit'=>100])['data'],
                 $this->service->receivablesPage(['status'=>'partial','limit'=>100])['data'],
@@ -53,7 +54,7 @@ class Finance extends Gd_Controller
     public function rental_payment_modal()
     {
         try {
-            $this->access->require('gd_payments_manage');
+            $this->access->require('gd_rental_payments_manage');
             $receivable_id = (int) $this->request->getPost('receivable_id');
             $context = $this->service->courtRentalPaymentContext($receivable_id);
             if (!$context) return show_404();
@@ -64,7 +65,7 @@ class Finance extends Gd_Controller
     public function save_rental_payment()
     {
         try {
-            $this->access->require('gd_payments_manage');
+            $this->access->require('gd_rental_payments_manage');
             $result = $this->service->registerCourtRentalPayment([
                 'receivable_id' => $this->request->getPost('receivable_id'),
                 'customer_name' => $this->request->getPost('customer_name'),

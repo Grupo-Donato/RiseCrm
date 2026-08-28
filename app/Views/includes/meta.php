@@ -1,5 +1,5 @@
 <link rel="manifest" href="<?php echo get_uri('pwa/manifest'); ?>">
-<meta id="theme-color-meta-tag" name="theme-color" content="<?php echo get_setting("pwa_theme_color") ? get_setting("pwa_theme_color") : "#1c2026"; ?>">
+<meta id="theme-color-meta-tag" name="theme-color" content="<?php echo get_setting("pwa_theme_color") ? get_setting("pwa_theme_color") : "#0b1020"; ?>">
 
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=Edge">

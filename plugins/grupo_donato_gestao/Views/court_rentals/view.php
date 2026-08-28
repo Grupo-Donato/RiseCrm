@@ -1,6 +1,6 @@
 <?php
 $e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
-$money = static fn($value) => $value === null ? "-" : $e(to_currency((float) $value));
+$money = static fn($value) => $value === null ? "-" : $e(to_currency($value));
 $status = (string) $rental->status;
 $status_classes = [
     "draft" => "bg-secondary",
@@ -20,6 +20,9 @@ if ($schedule_text === "") {
     $schedule_text = trim(implode(", ", $weekdays) . (!empty($rental->schedule["local_time"]) ? " · " . $rental->schedule["local_time"] : ""), " ·");
 }
 $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
+$extra_time_minutes = (int) ($rental->extra_time_minutes ?? 0);
+$extra_time_amount = (string) ($rental->extra_time_amount ?? "0.00");
+$edit_modal = ($rental->rental_type ?? "single") === "recurring" ? "monthly-modal" : "single-modal";
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
@@ -32,6 +35,7 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
             <div class="text-muted"><?php echo app_lang("gd_court_rental_type_" . $rental->rental_type); ?></div>
         </div>
         <div class="title-button-group gd-toolbar">
+            <?php if (!empty($can_manage) && !in_array($status, ["cancelled", "completed", "archived"], true)) { echo modal_anchor(get_uri("grupo_donato/court-rentals/" . $edit_modal), '<i data-feather="edit" class="icon-16"></i> ' . app_lang("edit"), ["class" => "btn btn-primary", "data-post-id" => (int) $rental->id, "title" => app_lang("edit")]); } ?>
             <?php if (!empty($can_calendar)) { echo anchor(get_uri("grupo_donato/calendar"), '<i data-feather="calendar" class="icon-16"></i> ' . app_lang("gd_open_agenda"), ["class" => "btn btn-default"]); } ?>
             <?php echo anchor(get_uri("grupo_donato/court-rentals"), '<i data-feather="arrow-left" class="icon-16"></i> ' . app_lang("back"), ["class" => "btn btn-default"]); ?>
         </div>
@@ -59,6 +63,12 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
                             <small class="text-muted"><?php echo app_lang("gd_contracted_amount"); ?></small>
                             <strong><?php echo $primary_amount !== null ? $money($primary_amount) : "-"; ?></strong>
                         </div>
+                        <?php if ($extra_time_minutes > 0 || $extra_time_amount !== "0.00") { ?>
+                            <div class="gd-detail-item">
+                                <small class="text-muted"><?php echo app_lang("gd_extra_time_title"); ?></small>
+                                <strong>+<?php echo $extra_time_minutes; ?> min · <?php echo $money($extra_time_amount); ?></strong>
+                            </div>
+                        <?php } ?>
                         <div class="gd-detail-item">
                             <small class="text-muted"><?php echo app_lang("gd_preferred_due_day"); ?></small>
                             <strong><?php echo $rental->preferred_due_day ? app_lang("gd_day_prefix") . " " . (int) $rental->preferred_due_day : "-"; ?></strong>
@@ -68,6 +78,9 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
                             <strong><?php echo $e(($rental->effective_from ? format_to_date($rental->effective_from, false) : "…") . " → " . ($rental->effective_until ? format_to_date($rental->effective_until, false) : "…")); ?></strong>
                         </div>
                     </div>
+                    <?php if ($status === "cancelled" && !empty($rental->cancellation_reason)) { ?>
+                        <div class="alert alert-danger mt15 mb0"><strong><?php echo app_lang("gd_cancellation_reason"); ?>:</strong> <?php echo $e($rental->cancellation_reason); ?></div>
+                    <?php } ?>
                     <?php if (!empty($rental->commercial_notes)) { ?>
                         <hr>
                         <small class="text-muted d-block mb5"><?php echo app_lang("gd_commercial_notes"); ?></small>
@@ -78,7 +91,47 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
 
             <?php if (!empty($financial)) { include dirname(__DIR__) . "/finance/context_summary.php"; } ?>
 
-            <?php if (!empty($can_generate_receivable) && ($rental->rental_type ?? "") === "single" && $primary_amount !== null) { ?>
+            <?php if (!empty($can_manage) && in_array(($rental->rental_type ?? ""), ["single", "recurring"], true) && !in_array($status, ["cancelled", "completed", "archived"], true)) { ?>
+                <div class="card mb15">
+                    <div class="page-title"><h4><i data-feather="clock" class="icon-16"></i> <?php echo app_lang("gd_extra_time_title"); ?></h4></div>
+                    <div class="card-body">
+                        <p class="text-muted mb15"><?php echo app_lang("gd_extra_time_help"); ?></p>
+<form id="gd-cr-extra-time">
+    <?php echo csrf_field(); ?>
+                            <input type="hidden" name="rental_id" value="<?php echo (int) $rental->id; ?>">
+                            <input type="hidden" name="lock_version" value="<?php echo (int) $rental->lock_version; ?>">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <div class="form-group">
+                                        <label><?php echo app_lang("gd_extra_time_minutes"); ?></label>
+                                        <input type="number" name="extra_time_minutes" class="form-control" min="0" max="1440" step="30" value="<?php echo $extra_time_minutes; ?>">
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="form-group">
+                                        <label><?php echo app_lang("gd_extra_time_amount"); ?></label>
+                                        <input type="text" name="extra_time_amount" class="form-control" inputmode="decimal" placeholder="0,00" value="<?php echo $extra_time_minutes > 0 || $extra_time_amount !== "0.00" ? $e($extra_time_amount) : ""; ?>">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label><?php echo app_lang("gd_extra_time_notes"); ?></label>
+                                        <input type="text" name="extra_time_notes" class="form-control" maxlength="2000" value="<?php echo $e($rental->extra_time_notes ?? ""); ?>">
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-warning btn-block"><?php echo app_lang("gd_extra_time_save"); ?></button></div>
+                                </div>
+                            </div>
+                        </form>
+                        <?php if ($extra_time_minutes > 0 || $extra_time_amount !== "0.00" || !empty($rental->extra_time_notes)) { ?>
+                            <div class="alert alert-info mb0"><strong><?php echo app_lang("gd_extra_time_current"); ?>:</strong> <?php echo $extra_time_minutes; ?> min · <?php echo $money($extra_time_amount); ?><?php if (!empty($rental->extra_time_notes)) { ?> — <?php echo $e($rental->extra_time_notes); ?><?php } ?></div>
+                        <?php } ?>
+                    </div>
+                </div>
+            <?php } ?>
+
+            <?php if (!empty($can_generate_receivable) && ($rental->rental_type ?? "") === "single" && $primary_amount !== null && empty($financial["receivables"])) { ?>
                 <div class="card mb15">
                     <div class="page-title"><h4><i data-feather="file-text" class="icon-16"></i> <?php echo app_lang("gd_generate_receivable_for_rental"); ?></h4></div>
                     <div class="card-body">
@@ -176,28 +229,19 @@ $primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
                 <div class="card mb15">
                     <div class="page-title"><h4><i data-feather="zap" class="icon-16"></i> <?php echo app_lang("gd_actions"); ?></h4></div>
                     <div class="card-body">
-                        <?php if (in_array($status, ["active", "suspended"], true)) { ?>
-                            <div class="form-group">
-                                <label><?php echo app_lang("gd_future_policy"); ?></label>
-                                <select id="gd-cr-future-policy" class="form-control">
-                                    <?php foreach ($future_policies as $policy) { ?><option value="<?php echo $e($policy); ?>"><?php echo app_lang("gd_court_rental_future_policy_" . $policy); ?></option><?php } ?>
-                                </select>
-                                <div class="text-muted gd-form-help mt5"><?php echo app_lang("gd_future_policy_help"); ?></div>
-                            </div>
-                        <?php } ?>
                         <div id="gd-cr-actions" class="gd-actions-stack">
                             <?php if ($status === "draft") { ?>
                                 <button data-action="activate" class="btn btn-success"><?php echo app_lang("gd_activate"); ?></button>
-                                <button data-action="cancel" data-reason="1" data-policy="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
+                                <button data-action="cancel" data-reason="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
                             <?php } ?>
                             <?php if ($status === "active") { ?>
-                                <button data-action="suspend" data-policy="1" class="btn btn-warning"><?php echo app_lang("gd_suspend"); ?></button>
+                                <button data-action="suspend" class="btn btn-warning"><?php echo app_lang("gd_suspend"); ?></button>
                                 <button data-action="complete" class="btn btn-default"><?php echo app_lang("gd_complete"); ?></button>
-                                <button data-action="cancel" data-reason="1" data-policy="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
+                                <button data-action="cancel" data-reason="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
                             <?php } ?>
                             <?php if ($status === "suspended") { ?>
                                 <button data-action="resume" class="btn btn-success"><?php echo app_lang("gd_resume"); ?></button>
-                                <button data-action="cancel" data-reason="1" data-policy="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
+                                <button data-action="cancel" data-reason="1" class="btn btn-danger"><?php echo app_lang("gd_cancel_rental"); ?></button>
                             <?php } ?>
                         </div>
                     </div>
@@ -250,7 +294,7 @@ $(document).ready(function(){
 
     $("#gd-cr-actions button").on("click", function(){
         var button = $(this), data = {lock_version: <?php echo (int) $rental->lock_version; ?>};
-        if (button.data("policy")) { data.future_policy = $("#gd-cr-future-policy").val(); }
+        if (button.data("action") === "cancel" && !window.confirm('<?php echo addslashes(app_lang("gd_cancel_rental_confirm")); ?>')) { return; }
         if (button.data("reason")) {
             var reason = window.prompt('<?php echo addslashes(app_lang("gd_reason")); ?>', "");
             if (!reason) { return; }
@@ -262,6 +306,11 @@ $(document).ready(function(){
     $("#gd-cr-reprice").on("submit", function(event){
         event.preventDefault();
         postAction('<?php echo_uri("grupo_donato/court-rentals/reprice"); ?>', $(this).serialize());
+    });
+
+    $("#gd-cr-extra-time").on("submit", function(event){
+        event.preventDefault();
+        postAction('<?php echo_uri("grupo_donato/court-rentals/extra-time"); ?>', $(this).serialize());
     });
 
     if (typeof feather !== "undefined") { feather.replace(); }

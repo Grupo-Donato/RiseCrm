@@ -30,12 +30,14 @@ app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
     // os cargos de gestão. Para os demais cargos, ele não deve aparecer no
     // menu nem ficar disponível como item salvo de menu.
     if ($user && ($user->user_type ?? '') === 'staff') {
-        if (\grupo_donato_gestao\Services\RoleAccessService::has_administrative_access($user)) {
+        unset($sidebar_menu['grupo_donato_academy'], $sidebar_menu['grupo_donato_administrativos']);
+
+        if (\grupo_donato_gestao\Services\RoleAccessService::can_view_dashboard_menu($user)) {
             $sidebar_menu['dashboard'] = [
                 // Mantém a chave nativa para funcionar com menus persistidos;
                 // o language_key evita que o Rise traduza o título para "Painel".
                 "name" => "dashboard",
-                "url" => get_uri("grupo_donato/operacional?gd_tab=dashboard"),
+                "url" => get_uri("grupo_donato/dashboard"),
                 "class" => "bar-chart-2",
                 "is_custom_menu_item" => true,
                 "language_key" => "gd_menu_dashboard",
@@ -206,7 +208,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             }
         }
 
-        if ($academy_submenu) {
+        if (\grupo_donato_gestao\Services\RoleAccessService::can_view_academy_menu($user) && $academy_submenu) {
             $items["grupo_donato_academy"] = [
                 "name" => "GD Academy",
                 "url" => $academy_submenu[0]["url"],
@@ -219,7 +221,7 @@ if (!function_exists("bombeiros_install_or_update")) {
 
         // Administrativos: somente admin, diretor e gestor chegam a esta
         // seção. A navegação fica limitada a inadimplência, custos e unidades.
-        if (\grupo_donato_gestao\Services\RoleAccessService::has_administrative_access($user)) {
+        if (\grupo_donato_gestao\Services\RoleAccessService::can_view_administrative_menu($user)) {
             $administrative_submenu = [];
             foreach (["financeiro", "custos", "unidades"] as $key) {
                 $item = $section_item($key);
@@ -284,7 +286,6 @@ if (!function_exists("bombeiros_install_or_update")) {
             "Despesas",
             "Mensagens",
             "SIAMESA Mensagens",
-            "messages",
             "grupo_donato",
             "Grupo Donato",
             "files",
@@ -404,6 +405,13 @@ if (!function_exists("bombeiros_install_or_update")) {
                 $rebuilt[] = $item;
             }
 
+            // O chat interno é um item nativo do Rise e deve existir no menu
+            // de todos os usuários de equipe. Ele fica sempre na primeira
+            // posição, antes do Dashboard ou dos grupos do plugin.
+            if (!in_array("messages", array_column($rebuilt, "name"), true)) {
+                array_unshift($rebuilt, ["name" => "messages"]);
+            }
+
             if ($needs_group_migration) {
                 $insert_at = $first_legacy_position === null ? 0 : min($first_legacy_position, count($rebuilt));
                 array_splice($rebuilt, $insert_at, 0, $group_items);
@@ -426,12 +434,17 @@ if (!function_exists("bombeiros_install_or_update")) {
 
             // Dashboard abre o menu e Configurações fecha o menu. Os demais
             // itens do Rise mantêm sua presença e ordem relativa.
+            $message_items = [];
             $dashboard_items = [];
             $settings_items = [];
             $ordered = [];
             foreach ($rebuilt as $item) {
                 $name = $item["name"] ?? "";
-                if ($name === "dashboard") {
+                if ($name === "messages") {
+                    if (!$message_items) {
+                        $message_items[] = $item;
+                    }
+                } else if ($name === "dashboard") {
                     if (!$dashboard_items) {
                         $dashboard_items[] = $item;
                     }
@@ -442,7 +455,7 @@ if (!function_exists("bombeiros_install_or_update")) {
                 }
             }
 
-            $rebuilt = array_merge($dashboard_items, $ordered, $settings_items);
+            $rebuilt = array_merge($message_items, $dashboard_items, $ordered, $settings_items);
 
             if (serialize($rebuilt) !== serialize($original_items)) {
                 $db->query("UPDATE `" . $settings_table . "` SET setting_value=" . $db->escape(serialize($rebuilt)) . "

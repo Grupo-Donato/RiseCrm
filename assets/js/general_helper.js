@@ -1526,8 +1526,9 @@ function getCookie(cname) {
 
 function setThemeColor() {
     var color = getCookie("theme_color");
-    if (!color || (color === "F2F2F2" && AppHelper.settings.defaultThemeColor !== "F2F2F2")) {
-        color = AppHelper.settings.defaultThemeColor;
+    var defaultColor = AppHelper.settings.defaultThemeColor || "0b1020";
+    if (!color || color === "F2F2F2") {
+        color = defaultColor;
     }
 
     if (color && color !== "F2F2F2") {

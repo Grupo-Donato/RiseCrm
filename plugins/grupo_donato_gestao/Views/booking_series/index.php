@@ -8,7 +8,7 @@ foreach ($statuses as $status) { $status_options[] = ["id" => $status, "text" =>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
     <div class="card">
         <div class="page-title clearfix gd-page-header">
-            <div><h4><?php echo app_lang("gd_menu_booking_series"); ?></h4><div class="text-muted"><?php echo app_lang("gd_recurrences_help"); ?></div></div>
+            <div><h4><?php echo app_lang("gd_menu_booking_series"); ?></h4></div>
             <?php if ($can_manage) { ?><div class="title-button-group"><?php echo modal_anchor(get_uri("grupo_donato/booking-series/modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_booking_series"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_booking_series")]); ?></div><?php } ?>
         </div>
         <div class="table-responsive"><table id="gd-booking-series-table" class="display" cellspacing="0" width="100%"></table></div>

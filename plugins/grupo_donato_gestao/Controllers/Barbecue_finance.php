@@ -20,7 +20,7 @@ class Barbecue_finance extends Gd_Controller
     public function __construct()
     {
         parent::__construct();
-        $this->access->require("gd_finance_view");
+        $this->access->require("gd_rental_payments_view");
         $this->access->require("gd_barbecue_rentals_view");
         $this->unit_id = (int) $this->active_unit_id();
         if (!$this->unit_id) {
@@ -35,8 +35,8 @@ class Barbecue_finance extends Gd_Controller
     public function index()
     {
         return $this->gd_render("finance/barbecue_payments", [
-            "can_generate" => $this->access->can("gd_receivables_manage"),
-            "can_payments" => $this->access->can("gd_payments_manage"),
+            "can_generate" => $this->access->can("gd_rental_payments_manage"),
+            "can_payments" => $this->access->can("gd_rental_payments_manage"),
             "can_calendar" => $this->access->can("gd_calendar_view"),
             "can_barbecue_rentals" => $this->access->can("gd_barbecue_rentals_view"),
             "can_bookings" => $this->access->can("gd_bookings_view"),
@@ -83,7 +83,7 @@ class Barbecue_finance extends Gd_Controller
     public function generate_month()
     {
         try {
-            $this->access->require("gd_receivables_manage");
+            $this->access->require("gd_rental_payments_manage");
             $reference = $this->referenceMonth($this->filters());
             $generator = new ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user);
             $rows = array_values(array_filter($generator->preview($reference), static fn($row) => ($row["source_type"] ?? "") === "barbecue_rental"));
@@ -126,7 +126,7 @@ class Barbecue_finance extends Gd_Controller
     public function create_rental_charge()
     {
         try {
-            $this->access->require("gd_receivables_manage");
+            $this->access->require("gd_rental_payments_manage");
 
             $rentalId = (int) $this->request->getPost("rental_id");
             $reference = $this->referenceMonth($this->filters());
@@ -386,7 +386,7 @@ class Barbecue_finance extends Gd_Controller
         $hasReceivable = (int) ($data->receivable_id ?? 0) > 0;
         $phoneDigits = $this->digits($data->contact_phone_normalized ?: $data->contact_phone ?: $data->account_whatsapp_normalized ?: $data->account_whatsapp ?: $data->account_phone_normalized ?: $data->account_phone);
         $whatsapp = $phoneDigits !== "" ? anchor("https://wa.me/55" . $phoneDigits, $this->escape($this->formatPhone($phoneDigits)), ["target" => "_blank", "title" => "Abrir WhatsApp"]) : "-";
-        $canPay = $hasReceivable && $this->access->can("gd_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
+        $canPay = $hasReceivable && $this->access->can("gd_rental_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
         $lastPaymentId = (int) ($data->last_payment_id ?? 0);
         $options = [];
         if ($canPay) {
@@ -399,7 +399,7 @@ class Barbecue_finance extends Gd_Controller
                 "data-modal-class" => "gd-payment-modal",
             ]);
         }
-        if (!$hasReceivable && $this->access->can("gd_receivables_manage")) {
+        if (!$hasReceivable && $this->access->can("gd_rental_payments_manage")) {
             $options[] = js_anchor("<i data-feather='plus-circle' class='icon-16'></i> Criar cobrança", [
                 "class" => "btn btn-default btn-sm gd-rental-create-charge",
                 "title" => "Criar cobrança deste mês",
@@ -410,7 +410,7 @@ class Barbecue_finance extends Gd_Controller
         }
         if ($hasReceivable && $lastPaymentId > 0) {
             $options[] = anchor(get_uri("grupo_donato/finance/payments/receipt/" . $lastPaymentId), "<i data-feather='file-text' class='icon-16'></i>", ["class" => "btn btn-default btn-sm", "title" => app_lang("gd_finance_receipt"), "target" => "_blank"]);
-            if ($this->access->can("gd_payments_manage")) {
+            if ($this->access->can("gd_rental_payments_manage")) {
                 $options[] = js_anchor("<i data-feather='rotate-ccw' class='icon-16'></i> " . app_lang("gd_rental_payments_undo"), [
                     "class" => "btn btn-danger btn-sm gd-rental-reverse-payment",
                     "title" => app_lang("gd_rental_payments_undo"),

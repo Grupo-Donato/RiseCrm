@@ -19,7 +19,7 @@ class Rental_finance extends Gd_Controller
     public function __construct()
     {
         parent::__construct();
-        $this->access->require("gd_finance_view");
+        $this->access->require("gd_rental_payments_view");
         $this->unit_id = (int) $this->active_unit_id();
         if (!$this->unit_id) {
             throw new \RuntimeException("No active unit.");
@@ -33,15 +33,15 @@ class Rental_finance extends Gd_Controller
     public function index()
     {
         return $this->gd_render("finance/rental_payments", [
-            "can_generate" => $this->access->can("gd_receivables_manage"),
-            "can_payments" => $this->access->can("gd_payments_manage"),
+            "can_generate" => $this->access->can("gd_rental_payments_manage"),
+            "can_payments" => $this->access->can("gd_rental_payments_manage"),
             "can_calendar" => $this->access->can("gd_calendar_view"),
             "can_court_rentals" => $this->access->can("gd_court_rentals_view"),
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
             "can_finance" => true,
             "active_unit" => $this->unit_context->get_active_unit(),
-            "resources" => $this->bookings->bookableResources(),
+            "resources" => $this->bookings->bookableResources("court"),
         ]);
     }
 
@@ -49,6 +49,7 @@ class Rental_finance extends Gd_Controller
     {
         try {
             $options = append_server_side_filtering_commmon_params($this->filters());
+            $this->ensureMonthlyReceivables($this->referenceMonth($options));
             $result = $this->paymentsPage($options);
             [$year, $month] = array_map("intval", explode("-", $this->referenceMonth($options)));
             $rows = [];
@@ -65,6 +66,7 @@ class Rental_finance extends Gd_Controller
     public function summary()
     {
         try {
+            $this->ensureMonthlyReceivables($this->referenceMonth($this->filters()));
             $this->json_success("", ["data" => $this->summaryData($this->filters())]);
         } catch (\Throwable $e) {
             log_message("critical", "Rental payments summary error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString());
@@ -75,7 +77,7 @@ class Rental_finance extends Gd_Controller
     public function generate_month()
     {
         try {
-            $this->access->require("gd_receivables_manage");
+            $this->access->require("gd_rental_payments_manage");
             $reference = $this->referenceMonth($this->filters());
             $generator = new ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user);
             $rows = array_values(array_filter($generator->preview($reference), static fn($row) => ($row["source_type"] ?? "") === "court_rental"));
@@ -118,12 +120,22 @@ class Rental_finance extends Gd_Controller
     public function create_rental_charge()
     {
         try {
-            $this->access->require("gd_receivables_manage");
+            $this->access->require("gd_rental_payments_manage");
 
             $rentalId = (int) $this->request->getPost("rental_id");
             $reference = $this->referenceMonth($this->filters());
             if ($rentalId <= 0) {
                 $this->json_error("Mensalista inválido.");
+                return;
+            }
+
+            $rentalRecord = $this->rentalForId($rentalId);
+            if (!$rentalRecord) {
+                $this->json_error("Locação não encontrada.");
+                return;
+            }
+            if ($rentalRecord->rental_type === "single") {
+                $this->createSingleRentalCharge($rentalId, $rentalRecord);
                 return;
             }
 
@@ -185,6 +197,34 @@ class Rental_finance extends Gd_Controller
         }
     }
 
+    /** Mantém a listagem de locações no mesmo comportamento da Academy: ao
+     * abrir uma competência, as cobranças dos mensalistas ativos são criadas
+     * automaticamente e de forma idempotente. */
+    private function ensureMonthlyReceivables(string $reference): void
+    {
+        $generator = new ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user);
+        $finance = new FinanceService($this->unit_id, $this->user_id(), $this->login_user);
+        foreach ($generator->preview($reference) as $row) {
+            if (($row['source_type'] ?? '') !== 'court_rental' || ($row['amount'] ?? null) === null || ($row['amount'] ?? '') === '') {
+                continue;
+            }
+
+            try {
+                $dueDate = (string) ($row['due_date'] ?? gmdate('Y-m-d'));
+                $finance->createReceivable($row + [
+                    'reference_month' => $reference,
+                    'issue_date' => min(gmdate('Y-m-d'), $dueDate),
+                    'due_date' => $dueDate,
+                    'original_amount' => $row['amount'],
+                    'unit_amount' => $row['amount'],
+                    'quantity' => '1',
+                ]);
+            } catch (\Throwable $e) {
+                log_message('warning', 'Rental monthly receivable sync skipped: ' . $e->getMessage());
+            }
+        }
+    }
+
     private function filters(): array
     {
         return [
@@ -208,7 +248,10 @@ class Rental_finance extends Gd_Controller
         $lastPaymentId = $this->lastPaymentSql("p.id");
         $contactValue = $this->contactSql("cm.value");
         $contactNormalized = $this->contactSql("cm.normalized_value");
-        $displayStatus = "CASE WHEN r.id IS NULL THEN 'none' WHEN r.status IN ('open','partial') AND r.balance_amount > 0 AND r.due_date < CURDATE() THEN 'overdue' ELSE r.status END";
+        $paymentAllocations = $this->db->prefixTable("gd_payment_allocations");
+        $payments = $this->db->prefixTable("gd_payments");
+        $depositOnly = "EXISTS (SELECT 1 FROM `$paymentAllocations` da JOIN `$payments` dp ON dp.id=da.payment_id AND dp.unit_id=da.unit_id AND dp.status='confirmed' AND dp.deleted=0 WHERE da.unit_id=r.unit_id AND da.receivable_id=r.id AND da.status='active' AND dp.payment_type='deposit') AND NOT EXISTS (SELECT 1 FROM `$paymentAllocations` ra JOIN `$payments` rp ON rp.id=ra.payment_id AND rp.unit_id=ra.unit_id AND rp.status='confirmed' AND rp.deleted=0 WHERE ra.unit_id=r.unit_id AND ra.receivable_id=r.id AND ra.status='active' AND rp.payment_type='regular')";
+        $displayStatus = "CASE WHEN r.id IS NULL THEN 'none' WHEN r.status IN ('open','partial') AND r.balance_amount > 0 AND r.due_date < CURDATE() THEN 'overdue' WHEN r.status='partial' AND r.paid_amount > 0 AND ($depositOnly) THEN 'deposit_only' ELSE r.status END";
         $orderMap = [
             "rental_number" => "cr.rental_number",
             "customer" => "a.display_name",
@@ -222,7 +265,7 @@ class Rental_finance extends Gd_Controller
 
         $query = $this->baseQuery($options)
             ->select("r.id receivable_id,r.receivable_number,r.reference_month,r.description,r.due_date,r.original_amount,r.paid_amount,r.balance_amount,r.status receivable_status,r.notes", false)
-            ->select("cr.id rental_id,cr.rental_number,cr.title rental_title,cr.contact_person_id,cr.preferred_due_day,cr.negotiated_amount", false)
+            ->select("cr.id rental_id,cr.rental_number,cr.title rental_title,cr.rental_type,cr.effective_from,cr.contact_person_id,cr.preferred_due_day,cr.negotiated_amount", false)
             ->select("a.display_name customer_name,a.phone account_phone,a.phone_normalized account_phone_normalized,a.whatsapp account_whatsapp,a.whatsapp_normalized account_whatsapp_normalized", false)
             ->select("ppl.full_name contact_name", false)
             ->select("$resourceNames resource_names", false)
@@ -255,19 +298,11 @@ class Rental_finance extends Gd_Controller
         $query = $this->db->table($rentals . " cr")
             ->join($accounts . " a", "a.id=cr.customer_account_id AND a.unit_id=cr.unit_id AND a.deleted=0", "inner", false)
             ->join($people . " ppl", "ppl.id=cr.contact_person_id AND ppl.unit_id=cr.unit_id AND ppl.deleted=0", "left", false)
-            ->join($receivables . " r", "r.source_type='court_rental' AND r.source_id=cr.id AND r.unit_id=cr.unit_id AND r.reference_month=$referenceSql AND r.deleted=0", "left", false)
+            ->join($receivables . " r", "r.source_type='court_rental' AND r.source_id=cr.id AND r.unit_id=cr.unit_id AND ((r.reference_month=$referenceSql) OR (r.reference_month='' AND cr.rental_type='single')) AND r.deleted=0", "left", false)
             ->where("cr.unit_id", $this->unit_id)
-            ->where("cr.rental_type", "recurring")
-            ->where("cr.status", "active")
+            ->whereIn("cr.status", ["draft", "active", "suspended", "completed"])
             ->where("cr.deleted", 0)
-            ->groupStart()
-                ->where("cr.effective_from IS NULL", null, false)
-                ->orWhere("cr.effective_from <=", $last)
-            ->groupEnd()
-            ->groupStart()
-                ->where("cr.effective_until IS NULL", null, false)
-                ->orWhere("cr.effective_until >=", $first)
-            ->groupEnd();
+            ->where("((cr.rental_type='recurring' AND (cr.effective_from IS NULL OR cr.effective_from <= " . $this->db->escape($last) . ") AND (cr.effective_until IS NULL OR cr.effective_until >= " . $this->db->escape($first) . ")) OR (cr.rental_type='single' AND cr.effective_from BETWEEN " . $this->db->escape($first) . " AND " . $this->db->escape($last) . "))", null, false);
 
         $status = (string) ($options["status_pagamento"] ?? "");
         if ($status === "pago") {
@@ -302,7 +337,7 @@ class Rental_finance extends Gd_Controller
     private function summaryData(array $options): array
     {
         $rows = $this->baseQuery($options)
-            ->select("r.id receivable_id,r.status,r.due_date,r.original_amount,r.paid_amount,r.balance_amount", false)
+            ->select("r.id receivable_id,r.status,r.due_date,r.balance_amount", false)
             ->get()
             ->getResult();
 
@@ -310,9 +345,6 @@ class Rental_finance extends Gd_Controller
         $paid = 0;
         $open = 0;
         $overdue = 0;
-        $received = "0.00";
-        $toReceive = "0.00";
-        $planned = "0.00";
         $today = gmdate("Y-m-d");
 
         foreach ($rows as $row) {
@@ -323,13 +355,10 @@ class Rental_finance extends Gd_Controller
             $status = (string) $row->status;
             if ($status !== "cancelled") {
                 $total++;
-                $planned = $this->moneyAdd($planned, (string) $row->original_amount);
             }
-            $received = $this->moneyAdd($received, (string) $row->paid_amount);
             if ($status === "paid") {
                 $paid++;
             } elseif (in_array($status, ["open", "partial", "overdue"], true) && DataNormalizationService::decimalCompare((string) $row->balance_amount, "0.00") > 0) {
-                $toReceive = $this->moneyAdd($toReceive, (string) $row->balance_amount);
                 if ((string) $row->due_date < $today) {
                     $overdue++;
                 } else {
@@ -343,9 +372,6 @@ class Rental_finance extends Gd_Controller
             "total_pagos" => (string) $paid,
             "total_em_aberto" => (string) $open,
             "total_vencidos" => (string) $overdue,
-            "total_recebido_formatado" => $this->currencyBr($received),
-            "total_a_receber_formatado" => $this->currencyBr($toReceive),
-            "valor_previsto_formatado" => $this->currencyBr($planned),
         ];
     }
 
@@ -354,11 +380,11 @@ class Rental_finance extends Gd_Controller
         $hasReceivable = (int) ($data->receivable_id ?? 0) > 0;
         $phoneDigits = $this->digits($data->contact_phone_normalized ?: $data->contact_phone ?: $data->account_whatsapp_normalized ?: $data->account_whatsapp ?: $data->account_phone_normalized ?: $data->account_phone);
         $whatsapp = $phoneDigits !== "" ? anchor("https://wa.me/55" . $phoneDigits, $this->escape($this->formatPhone($phoneDigits)), ["target" => "_blank", "title" => "Abrir WhatsApp"]) : "-";
-        $canPay = $hasReceivable && $this->access->can("gd_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
+        $canPay = $hasReceivable && $this->access->can("gd_rental_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
         $lastPaymentId = (int) ($data->last_payment_id ?? 0);
         $options = [];
         if ($canPay) {
-            $options[] = modal_anchor(get_uri("grupo_donato/finance/payment-modal"), "<i data-feather='check-circle' class='icon-16'></i> " . app_lang("gd_rental_payments_settle"), [
+            $options[] = modal_anchor(get_uri("grupo_donato/finance/rental-payment-modal"), "<i data-feather='check-circle' class='icon-16'></i> " . app_lang("gd_rental_payments_settle"), [
                 "class" => "btn btn-primary btn-sm",
                 "title" => app_lang("gd_rental_payments_settle"),
                 "data-post-receivable_id" => (int) $data->receivable_id,
@@ -367,7 +393,7 @@ class Rental_finance extends Gd_Controller
                 "data-modal-class" => "gd-payment-modal",
             ]);
         }
-        if (!$hasReceivable && $this->access->can("gd_receivables_manage")) {
+        if (!$hasReceivable && $this->access->can("gd_rental_payments_manage")) {
             $options[] = js_anchor("<i data-feather='plus-circle' class='icon-16'></i> Criar cobrança", [
                 "class" => "btn btn-default btn-sm gd-rental-create-charge",
                 "title" => "Criar cobrança deste mês",
@@ -378,7 +404,7 @@ class Rental_finance extends Gd_Controller
         }
         if ($hasReceivable && $lastPaymentId > 0) {
             $options[] = anchor(get_uri("grupo_donato/finance/payments/receipt/" . $lastPaymentId), "<i data-feather='file-text' class='icon-16'></i>", ["class" => "btn btn-default btn-sm", "title" => app_lang("gd_finance_receipt"), "target" => "_blank"]);
-            if ($this->access->can("gd_payments_manage")) {
+            if ($this->access->can("gd_rental_payments_manage")) {
                 $options[] = js_anchor("<i data-feather='rotate-ccw' class='icon-16'></i> " . app_lang("gd_rental_payments_undo"), [
                     "class" => "btn btn-danger btn-sm gd-rental-reverse-payment",
                     "title" => app_lang("gd_rental_payments_undo"),
@@ -393,10 +419,9 @@ class Rental_finance extends Gd_Controller
             $this->escape($data->contact_name ?: "-"),
             $whatsapp,
             $this->escape($data->resource_names ?: "-"),
-            $hasReceivable && $data->reference_month ? $this->escape($this->referenceLabel((string) $data->reference_month)) : sprintf("%02d/%04d", $month, $year),
+            $hasReceivable && ($data->reference_month ?: ($data->rental_type === "single" ? substr((string) $data->effective_from, 0, 7) : "")) ? $this->escape($this->referenceLabel((string) ($data->reference_month ?: substr((string) $data->effective_from, 0, 7)))) : sprintf("%02d/%04d", $month, $year),
             $hasReceivable ? $this->escape($data->description ?: "-") : "-",
             $hasReceivable ? $this->dateBr((string) $data->due_date) : "-",
-            $hasReceivable ? $this->currencyBr((string) $data->original_amount) : "-",
             $this->statusBadge((string) $data->display_status),
             $hasReceivable && $data->last_payment_date ? $this->dateBr((string) $data->last_payment_date) : "-",
             $hasReceivable && $data->last_payment_method ? $this->escape(app_lang("gd_finance_method_" . $data->last_payment_method)) : "-",
@@ -407,11 +432,12 @@ class Rental_finance extends Gd_Controller
 
     private function statusBadge(string $status): string
     {
-        $classes = ["none" => "bg-secondary", "open" => "bg-warning", "partial" => "bg-warning", "paid" => "bg-success", "overdue" => "bg-danger", "cancelled" => "bg-secondary"];
+        $classes = ["none" => "bg-secondary", "open" => "bg-warning", "partial" => "bg-warning", "deposit_only" => "bg-warning", "paid" => "bg-success", "overdue" => "bg-danger", "cancelled" => "bg-secondary"];
         $labels = [
             "none" => "Sem cobrança",
             "open" => app_lang("gd_rental_payments_status_open"),
             "partial" => app_lang("gd_finance_receivable_status_partial"),
+            "deposit_only" => app_lang("gd_finance_status_deposit_only"),
             "paid" => app_lang("gd_rental_payments_status_paid"),
             "overdue" => app_lang("gd_rental_payments_status_overdue"),
             "cancelled" => app_lang("gd_finance_receivable_status_cancelled"),
@@ -430,6 +456,68 @@ class Rental_finance extends Gd_Controller
             ->where("deleted", 0)
             ->get(1)
             ->getRow();
+    }
+
+    private function rentalForId(int $rentalId): ?object
+    {
+        return $this->db->table($this->db->prefixTable("gd_court_rentals"))
+            ->select("id,rental_type,status,customer_account_id,title,negotiated_amount,effective_from,product_id", false)
+            ->where("id", $rentalId)
+            ->where("unit_id", $this->unit_id)
+            ->where("deleted", 0)
+            ->whereNotIn("status", ["cancelled", "archived"])
+            ->get(1)
+            ->getRow();
+    }
+
+    private function createSingleRentalCharge(int $rentalId, object $rental): void
+    {
+        if ($this->existingReceivable($rentalId, "")) {
+            $this->json_error("Esta locação já possui cobrança.");
+            return;
+        }
+
+        $lockName = "grupo_donato_avulsa_" . $this->unit_id . "_" . $rentalId;
+        $lock = $this->db->query("SELECT GET_LOCK(" . $this->db->escape($lockName) . ", 10) AS lock_status")->getRow();
+        if ((int) ($lock->lock_status ?? 0) !== 1) {
+            $this->json_error("Não foi possível bloquear a criação da cobrança. Tente novamente.");
+            return;
+        }
+
+        try {
+            if ($this->existingReceivable($rentalId, "")) {
+                $this->json_error("Esta locação já possui cobrança.");
+                return;
+            }
+            if ($rental->negotiated_amount === null || $rental->negotiated_amount === "") {
+                $this->json_error(app_lang("gd_finance_amount_required"));
+                return;
+            }
+
+            $dueDate = preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $rental->effective_from)
+                ? substr((string) $rental->effective_from, 0, 10)
+                : gmdate("Y-m-d");
+            $saved = $this->finance->createReceivable([
+                "source_type" => "court_rental",
+                "source_id" => $rentalId,
+                "customer_account_id" => (int) $rental->customer_account_id,
+                "reference_month" => "",
+                "description" => "Locação avulsa — " . $rental->title,
+                "issue_date" => min(gmdate("Y-m-d"), $dueDate),
+                "due_date" => $dueDate,
+                "original_amount" => $rental->negotiated_amount,
+                "unit_amount" => $rental->negotiated_amount,
+                "quantity" => "1",
+                "product_id" => (int) $rental->product_id,
+            ]);
+            if (empty($saved["created"])) {
+                $this->json_error("Esta locação já possui cobrança.");
+                return;
+            }
+            $this->json_success("Cobrança da locação criada.", ["receivable_id" => (int) $saved["id"]]);
+        } finally {
+            $this->db->query("SELECT RELEASE_LOCK(" . $this->db->escape($lockName) . ")");
+        }
     }
 
     private function monthlyRentalForReference(int $rentalId, string $reference): ?object

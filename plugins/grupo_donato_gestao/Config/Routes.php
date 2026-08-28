@@ -11,10 +11,24 @@ if (!isset($routes)) {
 
 // Landing de staff: o núcleo do Rise encaminha para "green_crm" (pós-login, menu
 // "Dashboard" e app_redirect interno). Aqui o destino é redirecionado para o painel
-// operacional do Grupo Donato, sem alterar arquivos do núcleo.
+// painel executivo do Grupo Donato, sem alterar arquivos do núcleo.
 $routes->match(["get", "post"], "green_crm", static function () {
     helper("url");
-    return redirect()->to(site_url("grupo_donato/operacional") . "?gd_tab=dashboard");
+
+    $user = function_exists("gd_current_login_user") ? gd_current_login_user() : null;
+    if ($user && ($user->user_type ?? "") === "staff") {
+        $access = "\\grupo_donato_gestao\\Services\\RoleAccessService";
+
+        if ($access::can_view_dashboard_menu($user)) {
+            return redirect()->to(site_url("grupo_donato/dashboard"));
+        }
+
+        // Professor, Locação e demais cargos de equipe começam pelo chat
+        // interno. O Dashboard permanece reservado à gestão.
+        return redirect()->to(site_url("messages"));
+    }
+
+    return redirect()->to(site_url("grupo_donato/dashboard"));
 });
 
 $routes->group("grupo_donato/finance/rental-payments", ["namespace" => "grupo_donato_gestao\\Controllers"], function ($routes) {

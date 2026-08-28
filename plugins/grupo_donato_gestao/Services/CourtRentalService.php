@@ -13,10 +13,11 @@ use grupo_donato_gestao\Config\Constants;
  * reserva única (avulso) ou a uma série (mensalista), registra valor contratado
  * como snapshot imutável, dia preferencial de vencimento, vigência e estados.
  *
- * NÃO gera título a receber, cobrança, pagamento, baixa, recibo, caixa, crédito,
- * multa, juros, caução ou nota fiscal. O dia de vencimento é apenas condição
- * comercial. Reaproveita BookingService, BookingSeriesService e PricingService;
- * não duplica o gerador de recorrência nem o motor de conflitos.
+ * Para locações avulsas, integra o título a receber e o sinal opcional ao
+ * FinanceService na mesma operação transacional. Mensalistas continuam usando
+ * o fluxo financeiro recorrente existente; o dia de vencimento é condição
+ * comercial do contrato. Reaproveita BookingService, BookingSeriesService e
+ * PricingService; não duplica recorrência nem o motor de conflitos.
  */
 class CourtRentalService extends CatalogDataService
 {
@@ -67,6 +68,11 @@ class CourtRentalService extends CatalogDataService
     public function listPage(array $options): array
     {
         return $this->queryList($options, null);
+    }
+
+    public function singleRentalsList(array $options): array
+    {
+        return $this->queryList($options, "single");
     }
 
     public function monthlyRentersList(array $options): array
@@ -180,6 +186,8 @@ class CourtRentalService extends CatalogDataService
     public function createWithBooking(array $input): array
     {
         $commercial = $this->normalizeCommercial($input, "single");
+        $this->assertCommercialValue($commercial);
+        $deposit = $this->normalizeDeposit($input, $commercial);
         $booking_input = $this->bookingInputFrom($input, $commercial);
         $resource_ids = array_map(static fn($r) => (int) $r["resource_id"], $booking_input["resources"]);
         $lock = new CourtRentalLockService();
@@ -203,6 +211,7 @@ class CourtRentalService extends CatalogDataService
             $evt->append($id, "created", null, "draft", null, ["rental_number" => $number, "mode" => "single", "booking_id" => (int) $booking["id"]]);
             $evt->append($id, "schedule_linked", null, "draft", null, ["booking_id" => (int) $booking["id"], "link_kind" => "primary"]);
             $this->audit_change("court_rental_created", "court_rental", $id, null, ["rental_number" => $number] + $commercial, ["mode" => "single", "booking_id" => (int) $booking["id"]]);
+            $finance = $this->createSingleRentalFinance($id, $commercial, $deposit);
             if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental single commit"); }
             $in_tx = false;
         } catch (\Throwable $e) {
@@ -212,13 +221,14 @@ class CourtRentalService extends CatalogDataService
             $rlock->release();
             $lock->release();
         }
-        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "booking_id" => (int) ($booking["id"] ?? 0), "booking_number" => (string) ($booking["booking_number"] ?? "")];
+        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "booking_id" => (int) ($booking["id"] ?? 0), "booking_number" => (string) ($booking["booking_number"] ?? ""), "finance" => $finance ?? null];
     }
 
     /** Mensalista integrado: série (serviço existente) + locação + vínculo + snapshot. */
     public function createWithSeries(array $input): array
     {
         $commercial = $this->normalizeCommercial($input, "recurring");
+        $this->assertCommercialValue($commercial);
         $series_input = $this->seriesInputFrom($input, $commercial);
         $lock = new CourtRentalLockService();
         $in_tx = false; $id = 0; $number = ""; $series = [];
@@ -250,6 +260,226 @@ class CourtRentalService extends CatalogDataService
     }
 
     /**
+     * Edita a reserva avulsa e seus termos comerciais como uma única operação.
+     * O BookingService continua sendo a fonte de verdade para conflitos,
+     * disponibilidade, locks e histórico da reserva.
+     */
+    public function updateSingle(int $rental_id, array $input): array
+    {
+        $commercial = $this->normalizeCommercial($input, "single");
+        $this->assertCommercialValue($commercial);
+        $booking_input = $this->bookingInputFrom($input, $commercial);
+        $lock = new CourtRentalLockService();
+        $rlock = new BookingResourceLockService();
+        $in_tx = false;
+        $booking_id = 0;
+        $booking_result = [];
+
+        try {
+            $lock->acquire($this->unit_id, (string) $rental_id);
+            $before = $this->rentals->get_scoped($rental_id, $this->unit_id);
+            if (!$before) { throw new \DomainException("gd_court_rental_not_found"); }
+            if ((string) $before->rental_type !== "single" || in_array((string) $before->status, ["cancelled", "completed", "archived"], true)) {
+                throw new \DomainException("gd_court_rental_not_editable");
+            }
+            $expected = (int) ($input["lock_version"] ?? 0);
+            if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
+
+            foreach ($this->links->for_rental($rental_id, $this->unit_id) as $link) {
+                if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0) {
+                    $booking_id = (int) $link->booking_id;
+                    break;
+                }
+            }
+            if ($booking_id <= 0) { throw new \DomainException("gd_court_rental_booking_not_found"); }
+
+            $booking_service = new BookingService($this->unit_id, $this->actor_id, $this->login_user);
+            $booking_before = $booking_service->get($booking_id);
+            if (!$booking_before) { throw new \DomainException("gd_court_rental_booking_not_found"); }
+            $booking_input["status"] = (string) $booking_before->status;
+            $booking_input["notes"] = $booking_before->notes;
+            $booking_input["metadata"] = $booking_before->metadata;
+            if ((string) $booking_before->status === "hold" && $booking_before->hold_expires_at_utc) {
+                $booking_input["hold_expires_at_local"] = $this->time()->utcToLocalInput((string) $booking_before->hold_expires_at_utc);
+            }
+            $booking_input["lock_version"] = (int) ($input["booking_lock_version"] ?? 0);
+
+            $old_resource_ids = array_map(static fn($r): int => (int) $r->resource_id, $booking_before->resources ?? []);
+            $new_resource_ids = array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $booking_input["resources"] ?? []);
+            sort($old_resource_ids); sort($new_resource_ids);
+            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency"];
+            $price_changed = $old_resource_ids !== $new_resource_ids;
+            foreach ($price_fields as $field) {
+                if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
+            }
+
+            $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
+            $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
+            $rlock->acquire($this->unit_id, array_values(array_unique(array_merge($old_resource_ids, $new_resource_ids))));
+
+            if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental single update transaction"); }
+            $in_tx = true;
+            $booking_result = $booking_service->save($booking_input, $booking_id, true, true, true);
+            if (!$this->rentals->optimistic_update($rental_id, $this->unit_id, $expected, $this->stamp($commercial, false))) {
+                throw new \DomainException("gd_court_rental_edit_conflict");
+            }
+            if ($price_changed) {
+                $this->db->table($this->db->prefixTable("gd_court_rental_price_items"))
+                    ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
+                $this->writeSnapshotIfPriced($rental_id, $commercial, (int) ($new_resource_ids[0] ?? 0));
+            }
+            if (DataNormalizationService::decimalCompare($old_total, $new_total) !== 0) {
+                (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->syncCourtRentalReceivableAmount(
+                    $rental_id,
+                    $new_total,
+                    "Locação avulsa — " . $commercial["title"]
+                );
+            }
+            (new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
+                $rental_id,
+                "commercial_terms_changed",
+                (string) $before->status,
+                (string) $before->status,
+                null,
+                ["scope" => "single_full_edit", "booking_id" => $booking_id, "old_total" => $old_total, "new_total" => $new_total]
+            );
+            $this->audit_change("court_rental_updated", "court_rental", $rental_id, $this->commercialArray($before), $commercial, ["scope" => "single_full_edit", "booking_id" => $booking_id]);
+            if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental single update commit"); }
+            $in_tx = false;
+        } catch (\Throwable $e) {
+            if ($in_tx) { $this->db->transRollback(); }
+            throw $e;
+        } finally {
+            $rlock->release();
+            $lock->release();
+        }
+
+        $fresh = $this->rentals->get_scoped($rental_id, $this->unit_id);
+        return [
+            "id" => $rental_id,
+            "lock_version" => (int) ($fresh->lock_version ?? 0),
+            "booking_id" => $booking_id,
+            "booking_lock_version" => (int) ($booking_result["lock_version"] ?? 0),
+        ];
+    }
+
+    /**
+     * Registra o tempo adicional de uma locação sem criar outro booking.
+     * Para avulsas sincroniza a cobrança única; para mensalistas aplica a
+     * diferença nas competências em aberto e nas próximas gerações.
+     */
+    public function registerExtraTime(int $rental_id, array $input): array
+    {
+        $lock = new CourtRentalLockService();
+        $in_tx = false;
+        try {
+            $lock->acquire($this->unit_id, "extra-time:" . $rental_id);
+            $before = $this->rentals->get_scoped($rental_id, $this->unit_id);
+            if (!$before) { throw new \DomainException("gd_court_rental_not_found"); }
+            $rental_type = (string) $before->rental_type;
+            if (!in_array($rental_type, ["single", "recurring"], true)) { throw new \DomainException("gd_extra_time_unsupported_type"); }
+            if (in_array((string) $before->status, ["cancelled", "completed", "archived"], true)) {
+                throw new \DomainException("gd_extra_time_not_editable");
+            }
+            $has_booking = false;
+            foreach ($this->links->for_rental($rental_id, $this->unit_id) as $link) {
+                if ((string) ($link->link_kind ?? "") !== "historical"
+                    && ((int) ($link->booking_id ?? 0) > 0 || (int) ($link->booking_series_id ?? 0) > 0)
+                ) {
+                    $has_booking = true;
+                    break;
+                }
+            }
+            if (!$has_booking) { throw new \DomainException("gd_court_rental_booking_not_found"); }
+
+            $raw_minutes = trim((string) ($input["extra_time_minutes"] ?? "0"));
+            if ($raw_minutes === "") { $raw_minutes = "0"; }
+            if (!preg_match('/^\d+$/', $raw_minutes)) { throw new \DomainException("gd_extra_time_invalid_minutes"); }
+            $minutes = (int) $raw_minutes;
+            if ($minutes < 0 || $minutes > 1440) { throw new \DomainException("gd_extra_time_invalid_minutes"); }
+
+            $raw_amount = trim((string) ($input["extra_time_amount"] ?? ""));
+            $amount = $raw_amount === "" ? "0.00" : DataNormalizationService::decimal($raw_amount, 2);
+            if ($minutes === 0 && DataNormalizationService::decimalCompare($amount, "0.00") === 0) {
+                $amount = "0.00";
+            } elseif ($minutes <= 0 || DataNormalizationService::decimalCompare($amount, "0.00") <= 0) {
+                throw new \DomainException("gd_extra_time_amount_required");
+            }
+
+            $notes = trim(strip_tags((string) ($input["extra_time_notes"] ?? "")));
+            if (mb_strlen($notes) > 2000) { throw new \DomainException("gd_extra_time_notes_too_large"); }
+            $expected = (int) ($input["lock_version"] ?? 0);
+            if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
+
+            $base_total = $this->commercialTotal($this->commercialArray($before)) ?? "0.00";
+            $old_extra = DataNormalizationService::decimal((string) ($before->extra_time_amount ?? "0.00"), 2);
+            $old_total = $this->totalWithExtra($base_total, $old_extra) ?? "0.00";
+            $new_total = $this->totalWithExtra($base_total, $amount) ?? "0.00";
+
+            if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental extra time transaction"); }
+            $in_tx = true;
+            if (!$this->rentals->optimistic_update($rental_id, $this->unit_id, $expected, [
+                "extra_time_minutes" => $minutes,
+                "extra_time_amount" => $amount,
+                "extra_time_notes" => $notes !== "" ? $notes : null,
+            ])) {
+                throw new \DomainException("gd_court_rental_edit_conflict");
+            }
+            if (DataNormalizationService::decimalCompare($old_total, $new_total) !== 0) {
+                $finance = new FinanceService($this->unit_id, $this->actor_id, $this->login_user);
+                if ($rental_type === "single") {
+                    $finance->syncCourtRentalReceivableAmount(
+                        $rental_id,
+                        $new_total,
+                        "Locação avulsa — " . $before->title
+                    );
+                } else {
+                    $finance->syncCourtRentalRecurringReceivableAmount(
+                        $rental_id,
+                        $old_extra,
+                        $amount,
+                        "Mensalista — " . $before->title
+                    );
+                }
+            }
+            (new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
+                $rental_id,
+                "extra_time_added",
+                (string) $before->status,
+                (string) $before->status,
+                $notes !== "" ? $notes : null,
+                ["minutes" => $minutes, "old_amount" => $old_extra, "amount" => $amount, "old_total" => $old_total, "new_total" => $new_total]
+            );
+            $this->audit_change("court_rental_extra_time", "court_rental", $rental_id, [
+                "extra_time_minutes" => (int) ($before->extra_time_minutes ?? 0),
+                "extra_time_amount" => $old_extra,
+                "extra_time_notes" => $before->extra_time_notes ?? null,
+            ], [
+                "extra_time_minutes" => $minutes,
+                "extra_time_amount" => $amount,
+                "extra_time_notes" => $notes !== "" ? $notes : null,
+            ], ["old_total" => $old_total, "new_total" => $new_total]);
+            if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental extra time commit"); }
+            $in_tx = false;
+        } catch (\Throwable $e) {
+            if ($in_tx) { $this->db->transRollback(); }
+            throw $e;
+        } finally {
+            $lock->release();
+        }
+
+        $fresh = $this->rentals->get_scoped($rental_id, $this->unit_id);
+        return [
+            "id" => $rental_id,
+            "lock_version" => (int) ($fresh->lock_version ?? 0),
+            "extra_time_minutes" => (int) ($fresh->extra_time_minutes ?? $minutes),
+            "extra_time_amount" => (string) ($fresh->extra_time_amount ?? $amount),
+            "total" => $new_total,
+        ];
+    }
+
+    /**
      * Edita um mensalista e a série semanal vinculada como uma única operação.
      * Reservas passadas permanecem no histórico; o serviço canônico de séries
      * substitui apenas as ocorrências futuras.
@@ -257,6 +487,7 @@ class CourtRentalService extends CatalogDataService
     public function updateMonthly(int $rental_id, array $input): array
     {
         $commercial = $this->normalizeCommercial($input, "recurring");
+        $this->assertCommercialValue($commercial);
         $series_input = $this->seriesInputFrom($input, $commercial);
         $lock = new CourtRentalLockService();
         $in_tx = false;
@@ -383,6 +614,9 @@ class CourtRentalService extends CatalogDataService
             $expected = (int) ($input["lock_version"] ?? 0);
             if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
             $commercial = $this->normalizeCommercial(array_merge($this->commercialArray($before), $input), (string) $before->rental_type);
+            $this->assertCommercialValue($commercial);
+            $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
+            $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
             // Override sobre preço sugerido exige motivo + permissão.
             $is_override = $this->isPriceOverride($before, $commercial);
             if ($is_override) {
@@ -402,6 +636,17 @@ class CourtRentalService extends CatalogDataService
             $primary_resource = $this->primaryResource($rental_id);
             $this->db->table($this->db->prefixTable("gd_court_rental_price_items"))->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
             $this->writeSnapshotIfPriced($rental_id, $commercial, $primary_resource);
+            $has_booking = (string) $before->rental_type === "single" && (bool) array_filter(
+                $this->links->for_rental($rental_id, $this->unit_id),
+                static fn($link): bool => (string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0
+            );
+            if ($has_booking && DataNormalizationService::decimalCompare($old_total, $new_total) !== 0) {
+                (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->syncCourtRentalReceivableAmount(
+                    $rental_id,
+                    $new_total,
+                    "Locação avulsa — " . $commercial["title"]
+                );
+            }
             $evt = new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user);
             $evt->append($rental_id, $is_override ? "price_overridden" : "commercial_terms_changed", (string) $before->status, (string) $before->status, $commercial["discount_reason"] ?? null, ["list_amount" => $commercial["list_amount"], "negotiated_amount" => $commercial["negotiated_amount"], "discount_amount" => $commercial["discount_amount"]]);
             $this->audit_change("court_rental_repriced", "court_rental", $rental_id, $this->commercialArray($before), $commercial, ["override" => $is_override]);
@@ -476,6 +721,65 @@ class CourtRentalService extends CatalogDataService
             "product_id" => $product_id, "price_list_id" => $price_list_id, "price_id" => $price_id,
             "commercial_notes" => $notes ?: null, "metadata" => $metadata,
         ];
+    }
+
+    /** Locação operacional completa precisa ter um valor livremente informado. */
+    private function assertCommercialValue(array $commercial): void
+    {
+        $total = $this->commercialTotal($commercial);
+        if ($total === null || DataNormalizationService::decimalCompare($total, "0.00") <= 0) {
+            throw new \DomainException("gd_court_rental_value_required");
+        }
+    }
+
+    /** Normaliza o sinal sem float e sem permitir valor acima do total. */
+    private function normalizeDeposit(array $input, array $commercial): array
+    {
+        $raw = array_key_exists("deposit_amount", $input) ? $input["deposit_amount"] : "0.00";
+        $deposit = DataNormalizationService::decimal($raw === "" || $raw === null ? "0.00" : $raw, 2);
+        $base = $commercial["negotiated_amount"] ?? $commercial["list_amount"] ?? "0.00";
+        $total = $this->moneyTotal("1.000", (string) $base, (string) ($commercial["discount_amount"] ?? "0.00"));
+        if (DataNormalizationService::decimalCompare($deposit, $total) > 0) {
+            throw new \DomainException("gd_deposit_exceeds_total");
+        }
+        $method = trim((string) ($input["deposit_payment_method"] ?? $input["payment_method"] ?? ""));
+        $account = (int) ($input["financial_account_id"] ?? 0);
+        if (DataNormalizationService::decimalCompare($deposit, "0.00") > 0 && !in_array($method, Constants::PAYMENT_METHODS, true)) {
+            throw new \DomainException("gd_deposit_payment_method_required");
+        }
+        return ["amount" => $deposit, "payment_method" => $method, "financial_account_id" => $account];
+    }
+
+    /** Liga a cobrança avulsa ao ledger existente, com sinal opcional. */
+    private function createSingleRentalFinance(int $rental_id, array $commercial, array $deposit): ?array
+    {
+        $total = $this->commercialTotal($commercial);
+        if ($total === null) { return null; }
+        if (DataNormalizationService::decimalCompare($total, "0.00") <= 0) { return null; }
+        $issue = gmdate("Y-m-d");
+        $due = (string) ($commercial["effective_from"] ?? $issue);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $due) || $due < $issue) { $due = $issue; }
+        return (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->createCourtRentalReceivableWithDeposit([
+            "source_type" => "court_rental", "source_id" => $rental_id, "reference_month" => "",
+            "description" => "Locação avulsa — " . $commercial["title"], "issue_date" => $issue, "due_date" => $due,
+            "original_amount" => $total, "unit_amount" => $total, "quantity" => "1", "product_id" => (int) ($commercial["product_id"] ?? 0),
+            "deposit_amount" => $deposit["amount"], "payment_method" => $deposit["payment_method"],
+            "financial_account_id" => $deposit["financial_account_id"], "payment_date" => $issue,
+        ]);
+    }
+
+    private function commercialTotal(array $commercial): ?string
+    {
+        $base = $commercial["negotiated_amount"] ?? $commercial["list_amount"] ?? null;
+        if ($base === null) { return null; }
+        return $this->moneyTotal("1.000", (string) $base, (string) ($commercial["discount_amount"] ?? "0.00"));
+    }
+
+    private function totalWithExtra(?string $base_total, $extra_amount): ?string
+    {
+        if ($base_total === null) { return null; }
+        $extra = DataNormalizationService::decimal($extra_amount ?? "0.00", 2);
+        return $this->centsToDecimal($this->scaledInt($base_total, 2) + $this->scaledInt($extra, 2));
     }
 
     private function assertCustomerAndContact(int $customer, int $contact): void
@@ -581,18 +885,35 @@ class CourtRentalService extends CatalogDataService
     private function assertLinkTargetValid(object $rental, int $booking_id, int $series_id): void
     {
         if ($booking_id > 0) {
+            $this->assertScheduleResourceType($booking_id, 0, "court");
             $b = $this->db->table($this->db->prefixTable("gd_bookings"))->select("id,customer_account_id,status")->where("id", $booking_id)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow();
             if (!$b) { throw new \DomainException("gd_court_rental_booking_not_found"); }
             if (in_array((string) $b->status, ["cancelled", "expired"], true)) { throw new \DomainException("gd_court_rental_link_status_invalid"); }
             if ($b->customer_account_id !== null && (int) $b->customer_account_id !== (int) $rental->customer_account_id) { throw new \DomainException("gd_court_rental_link_customer_mismatch"); }
             if ($this->links->active_for_booking($booking_id, $this->unit_id)) { throw new \DomainException("gd_court_rental_already_linked"); }
         } else {
+            $this->assertScheduleResourceType(0, $series_id, "court");
             $s = $this->db->table($this->db->prefixTable("gd_booking_series"))->select("id,customer_account_id,status")->where("id", $series_id)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow();
             if (!$s) { throw new \DomainException("gd_court_rental_series_not_found"); }
             if (in_array((string) $s->status, ["cancelled", "archived"], true)) { throw new \DomainException("gd_court_rental_link_status_invalid"); }
             if ($s->customer_account_id !== null && (int) $s->customer_account_id !== (int) $rental->customer_account_id) { throw new \DomainException("gd_court_rental_link_customer_mismatch"); }
             if ($this->links->active_for_series($series_id, $this->unit_id)) { throw new \DomainException("gd_court_rental_already_linked"); }
         }
+    }
+
+    private function assertScheduleResourceType(int $booking_id, int $series_id, string $resource_type): void
+    {
+        $bridge = $booking_id > 0 ? "gd_booking_resources" : "gd_booking_series_resources";
+        $foreign = $booking_id > 0 ? "booking_id" : "series_id";
+        $target = $booking_id > 0 ? $booking_id : $series_id;
+        $table = $this->db->prefixTable($bridge);
+        $resources = $this->db->prefixTable("gd_resources");
+        $total = $this->db->table($table)->where("unit_id", $this->unit_id)->where($foreign, $target)->where("deleted", 0)->countAllResults();
+        $matching = $this->db->table($table . " br")
+            ->join($resources . " r", "r.id=br.resource_id AND r.unit_id=br.unit_id", "inner", false)
+            ->where("br.unit_id", $this->unit_id)->where("br." . $foreign, $target)->where("br.deleted", 0)
+            ->where("r.deleted", 0)->where("r.resource_type", $resource_type)->countAllResults();
+        if ($total < 1 || $matching !== $total) { throw new \DomainException("gd_invalid_booking_resources"); }
     }
 
     /* ============================ Construção de input reaproveitado ============================ */
@@ -636,6 +957,12 @@ class CourtRentalService extends CatalogDataService
             $out[] = ["resource_id" => (int) ($entry["resource_id"] ?? 0), "buffer_before_minutes" => $entry["buffer_before_minutes"] ?? 0, "buffer_after_minutes" => $entry["buffer_after_minutes"] ?? 0];
         }
         if (!$out) { throw new \DomainException("gd_invalid_booking_resources"); }
+        $ids = array_values(array_unique(array_map(static fn($r): int => (int) $r["resource_id"], $out)));
+        $valid = $this->db->table($this->db->prefixTable("gd_resources"))
+            ->select("id")->where("unit_id", $this->unit_id)->where("resource_type", "court")
+            ->where("deleted", 0)->where("is_active", 1)->where("is_bookable", 1)->whereIn("id", $ids)
+            ->countAllResults();
+        if ($valid !== count($ids)) { throw new \DomainException("gd_invalid_booking_resources"); }
         return $out;
     }
 

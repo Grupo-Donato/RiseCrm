@@ -2,11 +2,12 @@
 
 ## Estado final
 
-- Última entrega: **Finalização do protótipo** (menu de 9 telas, dashboard operacional,
-  navegação por abas/botões, mensalistas com situação financeira).
-- Versão: **0.9.0** (1.0.0 pendente — ver "Pendência").
-- Schema/marker: **049**; **49 tabelas** (inclui 4 `gd_import_*` sem uso).
-- Self-test: **444 PASS / 0 FAIL** (sem `import_selftest`, fora de escopo).
+- Última entrega: **TASK-GD-BBQ-001** — réplica isolada do módulo de Locações para Churrasqueiras 1–6.
+- Entrega anterior: **TASK-GD-LOC-001** (preços livres, cancelamento/liberação de mensalistas,
+  sinal e saldo de avulsas, histórico financeiro e lista operacional).
+- Versão: **0.9.8**.
+- Schema alvo: **053**; V053 adiciona 4 tabelas comerciais próprias para churrasqueiras, preservando as tabelas de quadras.
+- O self-test completo anterior não foi reexecutado neste pacote fora de uma instalação Rise; o QA desta entrega inclui lint integral e checagem estática de rotas/arquivos.
 
 ## sistema legado embutido (override dos guardrails #2/#3, autorizado)
 
@@ -24,13 +25,15 @@
   `school_attendance/index.php`, `calendar/index.php` (+ controller), `court_rentals/monthly.php`
   (+ controller), `finance/*`, `settings/general.php` (+ controller).
 - `Language/portuguese/default_lang.php` — novas chaves `gd_*` (menu/KPIs/atalhos/abas).
+- `Services/CourtRentalLifecycleService.php` — pausa reversível e cancelamento definitivo com liberação futura/auditoria.
+- `Services/FinanceService.php` + `Database/Schema/Versions/V051_add_payment_type.php` — sinal, saldo e histórico sem segundo financeiro.
+- `Services/CourtRentalService.php` + `Database/Schema/Versions/V052_add_court_rental_extra_time.php` — permanência adicional sem nova reserva, recebível sincronizado e entrada na baixa.
 - `Tests/cli.php` — `import_selftest` desligado (comentado) por estar fora do escopo.
 
 ## Testes
 
-- `verify-fast`: PASS (lint 294/294; `049|049`; rotas+CSRF; 966 chaves únicas).
-- `verify-full`: PASS no escopo do plugin — install+idempotência, self-test 444/0,
-  concorrências, uninstall 49/49, sistema legado, `CHECK TABLE` 49/49.
+- Lint dos arquivos alterados, migration/idempotência, rotas+CSRF e smoke HTTP local: PASS.
+- Self-test atual: 489 PASS / 4 FAIL; nenhuma das falhas restantes pertence aos cenários novos de locações.
 
 ## Pendência (não-plugin) — bloqueia 1.0.0
 
@@ -46,5 +49,5 @@
 
 ## Próxima ação
 
-1. Reverter `Logger.php` → `verify-full` 100% verde → bump **1.0.0** (Constants + `index.php`).
+1. Corrigir as quatro falhas antigas do harness e repetir o `verify-full` autenticado, se necessário.
 2. Importação permanece **não continuada**; só retomar se formalmente definido.

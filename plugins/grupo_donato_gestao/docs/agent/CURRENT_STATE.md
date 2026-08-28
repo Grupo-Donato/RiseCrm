@@ -2,18 +2,21 @@
 
 ## Versão e schema
 
-- Versão: **0.9.0** (bump para **1.0.0** pendente: ver "Pendência de homologação" abaixo).
-- Schema alvo/aplicado e marker: **049** (V046–V049 já aplicadas no banco real).
-- Tabelas `gd_*`: **49** (inclui 4 `gd_import_*` **sem uso** no protótipo).
-- Uninstall não destrutivo: **49/49 preservadas**.
+- Versão: **0.9.8**.
+- Schema alvo do pacote: **053** (V053 cria as tabelas comerciais independentes de churrasqueiras).
+- Tabelas `gd_*` previstas após V053: **53** (49 anteriores + 4 tabelas de churrasqueiras).
+- Uninstall permanece não destrutivo.
 
 ## Fases entregues
 
 - Fundação, cadastro central, catálogo e recursos.
 - Disponibilidade, reservas únicas, séries e calendário.
 - Locação comercial de quadras.
+- Aluguel comercial de churrasqueiras 1–6, isolado das quadras (agenda, avulsos, mensalistas e pagamentos).
 - Escola de futebol e personal.
 - Financeiro básico integrado.
+- Locações avulsas com valor livre, recebível idempotente, sinal opcional, saldo e histórico de pagamentos.
+- Cancelamento de mensalista encerra a série, libera ocorrências futuras e preserva o histórico passado; pausa permanece reversível.
 - **Finalização do protótipo**: menu reduzido a 9 telas, dashboard operacional com
   atalhos, navegação por abas/botões, mensalistas com situação financeira. Ver
   `docs/prototype-guide.md` e `docs/reports/prototype-final.md`.
@@ -48,7 +51,11 @@
 - Contas financeiras com seed idempotente `Caixa Principal`.
 - Cobranças manuais e vinculadas a matrícula ou locação, com itens snapshot.
 - Geração mensal assistida para matrículas e mensalistas; duplicidades são ignoradas.
-- Cobrança avulsa sob ação explícita no detalhe da locação.
+- Cobrança avulsa criada automaticamente de forma idempotente na criação da locação; o detalhe mantém geração manual apenas para legados sem cobrança.
+- Sinal de avulso usa `payment_type=deposit`; pagamentos posteriores continuam no ledger e nas alocações existentes.
+- Pagamentos de locações seguem baixa contextual no padrão da GD Academy: a competência cria cobranças recorrentes de forma idempotente, confere pessoa/competência/valor/data/forma e usa a conta financeira padrão, mudando a cobrança para `paid` ao quitar o saldo.
+- Edição integral de locações: avulsa atualiza reserva/horário/quadra/termos e sincroniza o recebível sem apagar pagamentos; mensalista atualiza contrato e ocorrências futuras.
+- Locação avulsa e mensalista permitem registrar tempo adicional, valor e observação sem criar reserva; a avulsa atualiza a cobrança única e o mensalista atualiza competências em aberto/próximas, virando entrada no caixa na baixa.
 - Pagamentos totais, parciais e multi-cobrança por alocações separadas.
 - Estorno preserva pagamento/alocações e cria movimento inverso.
 - Despesas pendentes, pagas ou canceladas; pagamento gera saída.
@@ -59,12 +66,12 @@
 
 ## Baseline atual (pós-protótipo)
 
-- Self-test: **444 PASS / 0 FAIL** (sem `import_selftest`).
+- Self-test: **503 PASS / 5 FAIL** (sem `import_selftest`); as cinco falhas são regressões preexistentes fora do acréscimo de permanência.
 - Schema/idempotência e concorrências (sequência/temporal, booking, séries, locação): PASS.
 - `CHECK TABLE`: **49/49 OK**.
 - Uninstall: **49/49 preservadas**.
 - sistema legado: PASS contra baseline.
-- Migrations 001–045 preservadas; 046–049 (importação) aplicadas e intactas.
+- Migrations 001–051 preservadas; 046–049 (importação) e V050–V052 aplicadas e intactas.
 
 ## Pendência de homologação (não-plugin)
 

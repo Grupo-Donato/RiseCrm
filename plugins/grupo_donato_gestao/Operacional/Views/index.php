@@ -338,7 +338,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 <div id="page-content" class="page-wrapper clearfix gd-mobile-ready gd-operacional-page">
     <div class="card">
         <div class="page-title clearfix">
-            <h1>Grupo Donato — Operacional</h1>
+            <h1><?php echo esc($gd_section_labels[$gd_active_tab] ?? "Dashboard"); ?></h1>
             <div class="title-button-group skip-dropdown-migration">
                 <?php
                 if ($gd_can_access_section("importar")) {
@@ -365,10 +365,6 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                         "class" => "form-control"
                     ]);
                     ?>
-                </div>
-                <div class="col-md-7">
-                    <div class="text-off">Contexto ativo: <strong id="gd-unidade-atual"><?php echo esc($unidade_atual->nome_unidade ?? "Sao Bernardo do Campo"); ?></strong></div>
-                    <div class="text-off">slug: <code id="gd-unidade-slug"><?php echo esc($unidade_atual_slug); ?></code></div>
                 </div>
             </div>
         </div>

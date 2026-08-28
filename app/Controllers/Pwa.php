@@ -13,7 +13,7 @@ class Pwa extends App_Controller {
 
     $pwa_theme_color = get_setting("pwa_theme_color");
     if (!$pwa_theme_color) {
-      $pwa_theme_color = "#1c2026";
+      $pwa_theme_color = "#0b1020";
     }
 
 

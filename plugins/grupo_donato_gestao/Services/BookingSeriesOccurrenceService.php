@@ -138,12 +138,14 @@ final class BookingSeriesOccurrenceService extends CustomerDataService
         return $updated;
     }
 
-    public function cancelFuture(int $series_id, string $from_local_date, string $reason, bool $detach_for_regeneration = false): array
+    public function cancelFuture(int $series_id, string $from_local_date, string $reason, bool $detach_for_regeneration = false, bool $include_detached = false): array
     {
         $series = $this->series->get_scoped($series_id, $this->unit_id);
         if (!$series) { throw new \DomainException("gd_booking_series_not_found"); }
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_local_date)) { throw new \DomainException("gd_invalid_date"); }
-        $rows = $this->db->table($this->db->prefixTable("gd_bookings"))->where("unit_id", $this->unit_id)->where("series_id", $series_id)->where("deleted", 0)->where("detached_from_series", 0)->where("series_local_date >=", $from_local_date)->where("starts_at_utc >", gmdate("Y-m-d H:i:s"))->whereIn("status", Constants::BOOKING_EDITABLE_STATUSES)->orderBy("series_local_date")->get()->getResult();
+        $query = $this->db->table($this->db->prefixTable("gd_bookings"))->where("unit_id", $this->unit_id)->where("series_id", $series_id)->where("deleted", 0)->where("series_local_date >=", $from_local_date)->where("starts_at_utc >", gmdate("Y-m-d H:i:s"))->whereIn("status", Constants::BOOKING_BLOCKING_STATUSES)->orderBy("series_local_date");
+        if (!$include_detached) { $query->where("detached_from_series", 0); }
+        $rows = $query->get()->getResult();
         $cancelled = [];
         $lifecycle = new BookingLifecycleService($this->unit_id, $this->actor_id, $this->login_user);
         foreach ($rows as $booking) {

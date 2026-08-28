@@ -13,14 +13,14 @@ class Bookings extends Gd_Controller
     private int $unit_id;private BookingService $service;private TemporalService $time;
     public function __construct(){parent::__construct();$this->access->require("gd_bookings_view");$this->unit_id=(int)$this->active_unit_id();if(!$this->unit_id){throw new \RuntimeException("No active unit.");}$this->service=new BookingService($this->unit_id,$this->user_id(),$this->login_user);$this->time=new TemporalService($this->unit_id);}
     public function index(){
-        if($this->access->can("gd_court_rentals_view")){return redirect()->to(get_uri("grupo_donato/court-rentals")."?tab=bookings");}
+        if($this->access->can("gd_court_rentals_view")){return redirect()->to($this->access->can("gd_calendar_view")?get_uri("grupo_donato/calendar"):get_uri("grupo_donato/court-rentals"));}
         return $this->gd_render("bookings/index",[
             "can_manage"=>$this->access->can("gd_bookings_manage"),
             "can_calendar"=>$this->access->can("gd_calendar_view"),
             "can_court_rentals"=>false,
             "can_bookings"=>true,
             "can_series"=>$this->access->can("gd_booking_series_view"),
-            "can_finance"=>$this->access->can("gd_finance_view"),
+            "can_finance"=>$this->access->can("gd_rental_payments_view"),
             "types"=>Constants::BOOKING_TYPES,
             "statuses"=>Constants::BOOKING_STATUSES,
             "resources"=>$this->service->bookableResources()

@@ -12,9 +12,9 @@ use grupo_donato_gestao\Config\Constants;
  * Transições: draft→active|cancelled; active→suspended|cancelled|completed;
  * suspended→active|cancelled; completed/cancelled→archived (terminais).
  *
- * Suspender/cancelar NÃO apaga série ou reservas; impede geração futura adicional
- * da série (pausa) e aplica uma política EXPLÍCITA às ocorrências futuras
- * (keep|cancel|pause_series), sempre auditada. Não gera multa nem crédito.
+ * Suspender preserva a série e suas reservas conforme a política operacional.
+ * Cancelar encerra definitivamente a série e libera as ocorrências futuras,
+ * preservando o histórico passado. Não gera multa nem crédito.
  */
 final class CourtRentalLifecycleService extends CustomerDataService
 {
@@ -91,13 +91,54 @@ final class CourtRentalLifecycleService extends CustomerDataService
         return $this->rentals->get_scoped($id, $this->unit_id);
     }
 
-    public function cancel(int $id, int $lock_version, string $reason, string $future_policy): object
+    public function cancel(int $id, int $lock_version, string $reason, string $future_policy = "cancel"): object
     {
         $reason = trim(strip_tags($reason));
         if ($reason === "") { throw new \DomainException("gd_cancellation_reason_required"); }
-        if (!Constants::isCourtRentalFuturePolicy($future_policy)) { throw new \DomainException("gd_court_rental_future_policy_required"); }
-        $this->transition($id, "cancelled", $lock_version, $reason, fn(object $r): array => ["cancelled_at" => gmdate("Y-m-d H:i:s"), "cancelled_by" => $this->actor_id ?: null, "cancellation_reason" => mb_substr($reason, 0, 255), "_event_payload" => ["future_policy" => $future_policy]]);
-        $this->applyFuturePolicy($id, $future_policy, $reason);
+
+        // O quarto parâmetro é mantido apenas para compatibilidade com clientes
+        // antigos. Cancelamento comercial sempre encerra a série e cancela todas
+        // as reservas futuras; a escolha técnica não é mais uma opção de usuário.
+        $lock = new CourtRentalLockService();
+        $in_tx = false;
+        try {
+            $lock->acquire($this->unit_id, (string) $id);
+            $before = $this->rentals->get_scoped($id, $this->unit_id);
+            if (!$before) { throw new \DomainException("gd_court_rental_not_found"); }
+            if (!in_array("cancelled", self::ALLOWED[(string) $before->status] ?? [], true)) { throw new \DomainException("gd_invalid_court_rental_transition"); }
+            if ((int) $before->lock_version !== $lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
+
+            $targets = $this->futureTargets($id);
+            if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental cancellation transaction"); }
+            $in_tx = true;
+            $cancelled_count = $this->cancelLinkedFuture($targets, $reason);
+            $now = gmdate("Y-m-d H:i:s");
+            $payload = [
+                "rental_id" => $id,
+                "old_state" => (string) $before->status,
+                "new_state" => "cancelled",
+                "actor_id" => $this->actor_id ?: null,
+                "cancelled_at" => $now,
+                "future_occurrences_count" => $cancelled_count,
+                "series_ids" => array_keys($targets["series"]),
+                "booking_ids" => $targets["bookings"],
+            ];
+            $columns = [
+                "status" => "cancelled", "updated_by" => $this->actor_id ?: null,
+                "cancelled_at" => $now, "cancelled_by" => $this->actor_id ?: null,
+                "cancellation_reason" => mb_substr($reason, 0, 255),
+            ];
+            if (!$this->rentals->optimistic_update($id, $this->unit_id, $lock_version, $columns)) { throw new \DomainException("gd_court_rental_edit_conflict"); }
+            (new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append($id, "cancelled", (string) $before->status, "cancelled", $reason, $payload);
+            $this->audit_change("court_rental_cancelled", "court_rental", $id, ["status" => $before->status], ["status" => "cancelled"], $payload + ["reason" => $reason]);
+            if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental cancellation commit"); }
+            $in_tx = false;
+        } catch (\Throwable $e) {
+            if ($in_tx) { $this->db->transRollback(); }
+            throw $e;
+        } finally {
+            $lock->release();
+        }
         return $this->rentals->get_scoped($id, $this->unit_id);
     }
 
@@ -141,13 +182,7 @@ final class CourtRentalLifecycleService extends CustomerDataService
         return $this->rentals->get_scoped($id, $this->unit_id);
     }
 
-    /**
-     * Trata as ocorrências futuras com a política explícita escolhida.
-     *
-     * A série vinculada é SEMPRE pausada (impede geração futura adicional, requisito
-     * de suspensão/cancelamento). A política decide apenas o destino das ocorrências
-     * já materializadas: "keep"/"pause_series" mantêm; "cancel" encerra as futuras.
-     */
+    /** Trata as ocorrências futuras ao suspender, mantendo a compatibilidade legada. */
     private function applyFuturePolicy(int $rental_id, string $policy, string $reason): void
     {
         $today = (new \DateTimeImmutable("today", new \DateTimeZone((new TemporalService($this->unit_id))->timezoneName())))->format("Y-m-d");
@@ -172,6 +207,70 @@ final class CourtRentalLifecycleService extends CustomerDataService
                 }
             }
         }
+    }
+
+    /** @return array{series:array<int,array<int>>,bookings:array<int>} */
+    private function futureTargets(int $rental_id): array
+    {
+        $today = (new \DateTimeImmutable("today", new \DateTimeZone((new TemporalService($this->unit_id))->timezoneName())))->format("Y-m-d");
+        $now = gmdate("Y-m-d H:i:s");
+        $series = [];
+        $bookings = [];
+        foreach ($this->links->for_rental($rental_id, $this->unit_id) as $link) {
+            if ((string) $link->link_kind === "historical") { continue; }
+            if ((int) ($link->booking_series_id ?? 0) > 0) {
+                $sid = (int) $link->booking_series_id;
+                $rows = $this->db->table($this->db->prefixTable("gd_bookings"))->select("id")
+                    ->where("unit_id", $this->unit_id)->where("series_id", $sid)->where("deleted", 0)
+                    ->where("series_local_date >=", $today)
+                    ->where("starts_at_utc >", $now)->whereIn("status", Constants::BOOKING_BLOCKING_STATUSES)
+                    ->get()->getResult();
+                $series[$sid] = array_map(static fn($row): int => (int) $row->id, $rows);
+            } elseif ((int) ($link->booking_id ?? 0) > 0) {
+                $bid = (int) $link->booking_id;
+                $row = $this->db->table($this->db->prefixTable("gd_bookings"))->select("id,status,starts_at_utc")
+                    ->where("id", $bid)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow();
+                if ($row && (string) $row->starts_at_utc > $now && in_array((string) $row->status, Constants::BOOKING_BLOCKING_STATUSES, true)) { $bookings[] = $bid; }
+            }
+        }
+        return ["series" => $series, "bookings" => array_values(array_unique($bookings))];
+    }
+
+    /** Cancela os alvos já materializados e retorna quantos mudaram de estado. */
+    private function cancelLinkedFuture(array $targets, string $reason): int
+    {
+        $today = (new \DateTimeImmutable("today", new \DateTimeZone((new TemporalService($this->unit_id))->timezoneName())))->format("Y-m-d");
+        $occurrences = new BookingSeriesOccurrenceService($this->unit_id, $this->actor_id, $this->login_user);
+        $seriesLifecycle = new BookingSeriesLifecycleService($this->unit_id, $this->actor_id, $this->login_user);
+        foreach ($targets["series"] as $sid => $booking_ids) {
+            $series = $this->db->table($this->db->prefixTable("gd_booking_series"))->select("id,status,lock_version")
+                ->where("id", (int) $sid)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow();
+            if (!$series) { continue; }
+            if (in_array((string) $series->status, ["active", "paused"], true)) {
+                $seriesLifecycle->cancel((int) $sid, (int) $series->lock_version, $reason);
+                // Uma ocorrência editada individualmente continua relacionada ao
+                // contrato, embora não seja mais regenerável pela série.
+                $occurrences->cancelFuture((int) $sid, $today, $reason, false, true);
+            } else {
+                // Corrige também séries legadas já encerradas que ainda tenham
+                // uma reserva futura editável vinculada.
+                $today = (new \DateTimeImmutable("today", new \DateTimeZone((new TemporalService($this->unit_id))->timezoneName())))->format("Y-m-d");
+                $occurrences->cancelFuture((int) $sid, $today, $reason, false, true);
+            }
+        }
+        $bookingLifecycle = new BookingLifecycleService($this->unit_id, $this->actor_id, $this->login_user);
+        foreach ($targets["bookings"] as $bid) {
+            $booking = $this->db->table($this->db->prefixTable("gd_bookings"))->select("id,status,starts_at_utc")
+                ->where("id", (int) $bid)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow();
+            if ($booking && (string) $booking->starts_at_utc > gmdate("Y-m-d H:i:s") && in_array((string) $booking->status, Constants::BOOKING_BLOCKING_STATUSES, true)) {
+                $bookingLifecycle->cancel((int) $bid, $reason);
+            }
+        }
+        $ids = $targets["bookings"];
+        foreach ($targets["series"] as $seriesBookingIds) { $ids = array_merge($ids, $seriesBookingIds); }
+        if (!$ids) { return 0; }
+        $rows = $this->db->table($this->db->prefixTable("gd_bookings"))->select("id,status")->where("unit_id", $this->unit_id)->whereIn("id", array_values(array_unique($ids)))->where("status", "cancelled")->get()->getResult();
+        return count($rows);
     }
 
     private function resumeLinkedSeries(int $rental_id): void

@@ -1374,7 +1374,7 @@ if (!function_exists("get_custom_theme_color_list")) {
             $files = scandir($dir);
             if ($files && is_array($files)) {
 
-                echo "<span class='color-tag clickable mr15 change-theme theme-default' data-color='F2F2F2' style='background:#F2F2F2'> </span>"; //default color
+                echo "<span class='color-tag clickable mr15 change-theme theme-default' data-color='0b1020' style='background:#0b1020'> </span>"; //default color
 
                 foreach ($files as $file) {
                     if ($file != "." && $file != ".." && $file != "index.html" && $file != ".DS_Store") {

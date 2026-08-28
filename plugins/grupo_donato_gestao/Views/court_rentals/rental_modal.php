@@ -1,17 +1,22 @@
 <?php
 $e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
-$initial_mode = in_array(($initial_mode ?? "single"), ["single", "recurring", "special"], true) ? $initial_mode : "single";
+$initial_mode = in_array(($initial_mode ?? "single"), ["single", "recurring"], true) ? $initial_mode : "single";
 $edit_data = is_array($edit_data ?? null) ? $edit_data : null;
 $is_edit = !empty($edit_data["id"]);
+$edit_type = (string) ($edit_data["rental_type"] ?? $initial_mode);
+$edit_endpoint = $edit_type === "single" ? "grupo_donato/court-rentals/update-single" : "grupo_donato/court-rentals/update-monthly";
 $edit_duration = (int) ($edit_data["duration_minutes"] ?? 0);
+$finance_accounts = is_array($finance_accounts ?? null) ? $finance_accounts : [];
+$payment_methods = is_array($payment_methods ?? null) ? $payment_methods : [];
 $messages = [
     "resource_required" => app_lang("gd_select_at_least_one_court"),
     "date_required" => app_lang("gd_rental_date_required"),
     "time_required" => app_lang("gd_rental_time_required"),
     "duration_required" => app_lang("gd_invalid_rental_duration"),
     "due_day_required" => app_lang("gd_due_day_required"),
-    "special_amount_required" => app_lang("gd_special_amount_required"),
-    "special_end_required" => app_lang("gd_special_end_required"),
+    "amount_required" => app_lang("gd_rental_amount_required"),
+    "deposit_invalid" => app_lang("gd_deposit_invalid"),
+    "deposit_method_required" => app_lang("gd_deposit_payment_method_required"),
     "checking" => app_lang("gd_booking_form_checking"),
     "available" => app_lang("gd_booking_availability_ok"),
     "unavailable" => app_lang("gd_booking_availability_problem"),
@@ -37,11 +42,15 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
     ];
 }
 ?>
-<?php echo form_open(get_uri($is_edit ? "grupo_donato/court-rentals/update-monthly" : "grupo_donato/court-rentals/save-rental"), ["id" => "gd-rental-form", "class" => "general-form", "role" => "form"]); ?>
+<?php echo form_open(get_uri($is_edit ? $edit_endpoint : "grupo_donato/court-rentals/save-rental"), ["id" => "gd-rental-form", "class" => "general-form", "role" => "form"]); ?>
 <?php if ($is_edit) { ?>
 <input type="hidden" name="id" value="<?php echo (int) $edit_data["id"]; ?>">
 <input type="hidden" name="lock_version" value="<?php echo (int) $edit_data["lock_version"]; ?>">
-<input type="hidden" name="series_lock_version" value="<?php echo (int) $edit_data["series_lock_version"]; ?>">
+<?php if ($edit_type === "single") { ?>
+<input type="hidden" name="booking_lock_version" value="<?php echo (int) ($edit_data["booking_lock_version"] ?? 0); ?>">
+<?php } else { ?>
+<input type="hidden" name="series_lock_version" value="<?php echo (int) ($edit_data["series_lock_version"] ?? 0); ?>">
+<?php } ?>
 <?php } ?>
 <input type="hidden" name="rental_mode" id="gd-rental-mode" value="<?php echo $e($initial_mode); ?>">
 <input type="hidden" name="rental_type" id="gd-rental-type" value="single">
@@ -73,7 +82,6 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                 <select name="rental_mode_choice" id="gd-rental-mode-choice" class="form-control"<?php echo $is_edit ? " disabled" : ""; ?>>
                     <option value="single"<?php echo $initial_mode === "single" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_single"); ?></option>
                     <option value="recurring"<?php echo $initial_mode === "recurring" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_recurring"); ?></option>
-                    <option value="special"<?php echo $initial_mode === "special" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_special"); ?></option>
                 </select>
                 <div class="text-muted mt5"><small id="gd-rental-mode-help"></small></div>
             </div>
@@ -137,26 +145,10 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         </div>
                     </div>
 
-                    <div class="gd-special-duration" style="display:none">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="gd-rental-special-end"><?php echo app_lang("gd_special_end_time"); ?> <span class="text-danger">*</span></label>
-                                    <select id="gd-rental-special-end" class="form-control">
-                                        <option value=""></option>
-                                        <?php foreach ($time_options as $time_option) { ?>
-                                            <option value="<?php echo $e($time_option["value"]); ?>"><?php echo $e($time_option["label"]); ?></option>
-                                        <?php } ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="gd-rental-special-amount"><?php echo app_lang("gd_special_amount"); ?> <span class="text-danger">*</span></label>
-                                    <input type="text" id="gd-rental-special-amount" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0,00">
-                                </div>
-                            </div>
-                        </div>
+                    <div class="form-group">
+                        <label for="gd-rental-amount" id="gd-rental-amount-label"><span id="gd-rental-amount-label-text"><?php echo app_lang("gd_rental_value"); ?></span> <span class="text-danger">*</span></label>
+                        <input type="text" id="gd-rental-amount" class="form-control" inputmode="decimal" autocomplete="off" value="<?php echo $e($edit_data["amount"] ?? ""); ?>" placeholder="0,00" required>
+                        <small class="text-muted"><?php echo app_lang("gd_rental_amount_help"); ?></small>
                     </div>
 
                     <div class="gd-recurring-fields" style="display:none">
@@ -174,6 +166,47 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="gd-single-payment-fields" style="display:none">
+                        <?php if ($is_edit) { ?>
+                        <div class="alert alert-info mb0">
+                            <i data-feather="info" class="icon-16"></i>
+                            <?php echo app_lang("gd_rental_edit_payments_help"); ?>
+                        </div>
+                        <?php } else { ?>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="gd-rental-deposit"><?php echo app_lang("gd_deposit_amount"); ?></label>
+                                    <input type="text" id="gd-rental-deposit" name="deposit_amount" class="form-control" inputmode="decimal" autocomplete="off" value="0,00" placeholder="0,00">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="gd-rental-deposit-method"><?php echo app_lang("gd_deposit_payment_method"); ?></label>
+                                    <select id="gd-rental-deposit-method" name="deposit_payment_method" class="form-control">
+                                        <option value=""><?php echo app_lang("gd_deposit_payment_method_select"); ?></option>
+                                        <?php foreach ($payment_methods as $method) { ?>
+                                            <option value="<?php echo $e($method); ?>"<?php echo $method === "pix" ? " selected" : ""; ?>><?php echo $e(app_lang("gd_finance_method_" . $method)); ?></option>
+                                        <?php } ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="gd-rental-financial-account"><?php echo app_lang("gd_finance_account"); ?></label>
+                                    <select id="gd-rental-financial-account" name="financial_account_id" class="form-control">
+                                        <option value=""><?php echo app_lang("gd_deposit_account_select"); ?></option>
+                                        <?php foreach ($finance_accounts as $account) { ?>
+                                            <option value="<?php echo (int) $account["id"]; ?>"<?php echo count($finance_accounts) === 1 ? " selected" : ""; ?>><?php echo $e($account["name"]); ?></option>
+                                        <?php } ?>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="gd-rental-balance-preview" class="text-muted"></div>
+                        <?php } ?>
                     </div>
 
                     <div class="text-muted mb0">
@@ -261,9 +294,10 @@ $(document).ready(function(){
         dateInput = $("#gd-rental-date"),
         startTime = $("#gd-rental-start-time"),
         durationInput = $("#gd-rental-duration"),
+        amountInput = $("#gd-rental-amount"),
+        depositInput = $("#gd-rental-deposit"),
+        depositMethod = $("#gd-rental-deposit-method"),
         courtInput = $("#gd-rental-court"),
-        specialEnd = $("#gd-rental-special-end"),
-        specialAmount = $("#gd-rental-special-amount"),
         dueDay = $("#gd-rental-due-day"),
         customer = $("#gd-rental-customer"),
         contact = $("#gd-rental-contact"),
@@ -279,11 +313,9 @@ $(document).ready(function(){
         initialMode = <?php echo json_encode($initial_mode); ?>,
         editData = <?php echo json_encode($edit_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
         isEdit = !!(<?php echo $is_edit ? "true" : "false"; ?>),
-        prices = <?php echo json_encode($pricing_presets ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
         modeHelp = {
             single: <?php echo json_encode(app_lang("gd_rental_mode_single_help")); ?>,
-            recurring: <?php echo json_encode(app_lang("gd_rental_mode_recurring_help")); ?>,
-            special: <?php echo json_encode(app_lang("gd_rental_mode_special_help")); ?>
+            recurring: <?php echo json_encode(app_lang("gd_rental_mode_recurring_help")); ?>
         },
         checkTimer = null,
         availableCourtsTimer = null,
@@ -317,6 +349,12 @@ $(document).ready(function(){
         if (!value) { return ""; }
         if (value.indexOf(",") !== -1) { return value.replace(/\./g, "").replace(",", "."); }
         return value;
+    }
+    function moneyCents(value) {
+        var normalized = normalizeMoney(value), parts;
+        if (!/^\d+(\.\d{1,2})?$/.test(normalized)) { return null; }
+        parts = normalized.split(".");
+        return parseInt(parts[0], 10) * 100 + parseInt((parts[1] || "").padEnd(2, "0"), 10);
     }
     function brl(value) {
         return new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"}).format(Number(value || 0));
@@ -369,28 +407,13 @@ $(document).ready(function(){
         if (typeof feather !== "undefined") { feather.replace(); }
     }
     function currentAmount() {
-        if (mode() === "special") { return normalizeMoney(specialAmount.val()); }
-        var duration = selectedDuration();
-        if (isEdit && mode() === "recurring" && duration === parseInt(editData.duration_minutes || "0", 10) && editData.amount !== null && editData.amount !== "") {
-            return String(editData.amount);
-        }
-        return prices[mode()] ? String(prices[mode()][duration] || "") : "";
+        return normalizeMoney(amountInput.val());
     }
     function scheduleValues() {
         var date = dateInput.val(), start = startTime.val(), currentMode = mode(), duration = selectedDuration(), end = null;
         if (!date || !start) { return null; }
         if (!isHalfHour(start)) { return null; }
-        if (currentMode === "special") {
-            if (!specialEnd.val()) { return null; }
-            if (!isHalfHour(specialEnd.val())) { return null; }
-            end = {date: date, time: specialEnd.val()};
-            if (specialEnd.val() <= start) {
-                var next = addMinutes(date, specialEnd.val(), 24 * 60);
-                end.date = next ? next.date : date;
-            }
-        } else {
-            end = addMinutes(date, start, duration);
-        }
+        end = addMinutes(date, start, duration);
         if (!end) { return null; }
         return {
             startDate: date,
@@ -428,14 +451,11 @@ $(document).ready(function(){
             $("#gd-rental-starts-at, #gd-rental-ends-at, #gd-rental-starts-on, #gd-rental-local-start, #gd-rental-local-end").val("");
         }
 
-        var metadata = {rental_mode: currentMode};
-        if (currentMode === "special") { metadata.package = "court_and_barbecue"; }
-        else { metadata.duration_minutes = duration; metadata.pricing_preset = currentMode + "_" + duration; }
+        var metadata = {rental_mode: currentMode, duration_minutes: duration, amount_source: "manual"};
         $("#gd-rental-metadata").val(JSON.stringify(metadata));
 
         var titleBits = [$.trim(customer.val()), court.code];
         if (currentMode === "recurring") { titleBits.push("mensalista"); }
-        else if (currentMode === "special") { titleBits.push("quadra + churrasqueira"); }
         else { titleBits.push("avulso"); }
         if (dateInput.val()) { titleBits.push(formatDate(dateInput.val())); }
         if (startTime.val()) { titleBits.push(startTime.val()); }
@@ -445,23 +465,29 @@ $(document).ready(function(){
         var currentMode = modeChoice.val() || initialMode;
         modeInput.val(currentMode);
         $("#gd-rental-mode-help").text(modeHelp[currentMode] || "");
-        $(".gd-regular-duration").toggle(currentMode !== "special");
-        $(".gd-special-duration").toggle(currentMode === "special");
+        $(".gd-regular-duration").show();
         $(".gd-recurring-fields").toggle(currentMode === "recurring");
-        specialEnd.prop("required", currentMode === "special");
-        specialAmount.prop("required", currentMode === "special");
+        $(".gd-single-payment-fields").toggle(currentMode === "single");
+        $("#gd-rental-amount-label-text").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_monthly_value")); ?> : <?php echo json_encode(app_lang("gd_rental_value")); ?>);
         dueDay.prop("required", currentMode === "recurring");
         $(".gd-date-label").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_first_date")); ?> : <?php echo json_encode(app_lang("gd_rental_date")); ?>);
-        submitButton.find("span").text(isEdit ? <?php echo json_encode(app_lang("save")); ?> : (currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_create_recurring_rental")); ?> : (currentMode === "special" ? <?php echo json_encode(app_lang("gd_create_special_rental")); ?> : <?php echo json_encode(app_lang("gd_create_single_rental")); ?>)));
+        submitButton.find("span").text(isEdit ? <?php echo json_encode(app_lang("save")); ?> : (currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_create_recurring_rental")); ?> : <?php echo json_encode(app_lang("gd_create_single_rental")); ?>));
 
-        durationInput.find("option[value='90']").text(currentMode === "recurring" ? "1h30 — R$ 900,00/mês" : "1h30 — R$ 380,00");
-        durationInput.find("option[value='120']").text(currentMode === "recurring" ? "2h — R$ 1.050,00/mês" : "2h — R$ 460,00");
         clearAvailability();
         updateSummary();
         scheduleAvailableCourts();
     }
+    function updateBalancePreview() {
+        if (mode() !== "single") {
+            $("#gd-rental-balance-preview").empty();
+            return;
+        }
+        var totalCents = moneyCents(currentAmount()), depositCents = moneyCents(depositInput.val());
+        $("#gd-rental-balance-preview").text(totalCents !== null && depositCents !== null && depositCents <= totalCents ? <?php echo json_encode(app_lang("gd_finance_balance")); ?> + ": " + brl((totalCents - depositCents) / 100) : "");
+    }
     function updateSummary() {
         syncDerivedFields();
+        updateBalancePreview();
         var currentMode = mode(), schedule = scheduleValues(), amount = currentAmount();
         $("#gd-rental-weekday-preview").val(dateInput.val() ? recurrenceLabel(dateInput.val()) : "-");
         if (schedule) {
@@ -556,11 +582,15 @@ $(document).ready(function(){
         if (!dateInput.val()) { return messages.date_required; }
         if (!startTime.val()) { return messages.time_required; }
         if (!selectedCourt().id) { return messages.resource_required; }
+        var amountCents = moneyCents(currentAmount());
+        if (amountCents === null) { return messages.amount_required; }
         if (mode() === "recurring" && (!dueDay.val() || parseInt(dueDay.val(), 10) < 1 || parseInt(dueDay.val(), 10) > 31)) { return messages.due_day_required; }
-        if (mode() === "special") {
-            if (!specialEnd.val()) { return messages.special_end_required; }
-            if (!currentAmount() || Number(currentAmount()) <= 0) { return messages.special_amount_required; }
-        } else if ([90, 120].indexOf(selectedDuration()) === -1 && !(isEdit && selectedDuration() === parseInt(editData.duration_minutes || "0", 10))) { return messages.duration_required; }
+        if ([90, 120].indexOf(selectedDuration()) === -1 && !(isEdit && selectedDuration() === parseInt(editData.duration_minutes || "0", 10))) { return messages.duration_required; }
+        if (mode() === "single") {
+            var depositCents = moneyCents(depositInput.val());
+            if (depositCents === null || depositCents > amountCents) { return messages.deposit_invalid; }
+            if (depositCents > 0 && !depositMethod.val()) { return messages.deposit_method_required; }
+        }
         if (!scheduleValues()) { return messages.time_required; }
         return "";
     }
@@ -573,6 +603,7 @@ $(document).ready(function(){
         setPostValue(data, "contact_phone", digitsOnly(phone.val()).substring(0, 11));
         setPostValue(data, "negotiated_amount", currentAmount());
         setPostValue(data, "list_amount", currentAmount());
+        setPostValue(data, "deposit_amount", mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
         if (mode() === "recurring") {
             setPostValue(data, "weekdays[]", isoWeekday(dateInput.val()));
         }
@@ -625,13 +656,13 @@ $(document).ready(function(){
     }
 
     form.on("input", "#gd-rental-phone", function(){ this.value = maskPhone(this.value); });
-    form.on("input", "#gd-rental-special-amount", function(){ this.value = maskMoney(this.value); });
+    form.on("input", "#gd-rental-amount, #gd-rental-deposit", function(){ this.value = maskMoney(this.value); updateSummary(); });
     form.on("change", "#gd-rental-mode-choice", syncMode);
     form.on("change", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
     form.on("change", "#gd-rental-court", scheduleAutoCheck);
-    form.on("change input", "#gd-rental-date, #gd-rental-start-time, #gd-rental-special-end", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
+    form.on("change input", "#gd-rental-date, #gd-rental-start-time", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
     form.on("change input", "#gd-rental-due-day", scheduleAutoCheck);
-    form.on("input", "#gd-rental-customer, #gd-rental-contact, #gd-rental-phone, #gd-rental-special-amount", updateSummary);
+    form.on("input change", "#gd-rental-customer, #gd-rental-contact, #gd-rental-phone, #gd-rental-deposit-method, #gd-rental-financial-account", updateSummary);
     activateInput.on("change", function(){ syncDerivedFields(); });
     customer.on("blur", scheduleAutoCheck);
     checkButton.on("click", checkAvailability);
@@ -674,6 +705,7 @@ $(document).ready(function(){
         dateInput.val(editData.starts_on || "");
         startTime.val(editData.local_start_time || "");
         durationInput.val(String(editData.duration_minutes || ""));
+        amountInput.val(editData.amount || "");
         courtInput.val(String(editData.resource_id || ""));
         dueDay.val(editData.preferred_due_day || "");
     }

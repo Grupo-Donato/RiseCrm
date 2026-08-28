@@ -2769,7 +2769,6 @@ class Bombeiros extends Security_Controller
         $a_receber = in_array($status, ["Pendente", "Vencido"], true);
         $competencia = $data->cobranca_competencia ?: sprintf("%02d/%04d", $mes_referencia, $ano_referencia);
         $vencimento = $data->cobranca_vencimento ?? "";
-        $valor = $tem_cobranca ? (float) $data->cobranca_valor : 0;
         $status_label = "Sem cobrança";
         $status_class = "bg-secondary";
 
@@ -2838,7 +2837,6 @@ class Bombeiros extends Security_Controller
             esc($competencia),
             esc($data->cobranca_descricao ?: "-"),
             $tem_cobranca ? $this->_format_date($vencimento) : "-",
-            $tem_cobranca ? "R$ " . number_format($valor, 2, ",", ".") : "-",
             "<span class='badge $status_class'>$status_label</span>",
             $tem_cobranca && $data->data_pagamento ? $this->_format_date($data->data_pagamento) : "-",
             esc($data->forma_pagamento ?: "-"),
@@ -2942,13 +2940,6 @@ class Bombeiros extends Security_Controller
             "total_pagos" => (int) ($resumo->total_pagos ?? 0),
             "total_em_aberto" => (int) ($resumo->total_em_aberto ?? 0),
             "total_vencidos" => (int) ($resumo->total_vencidos ?? 0),
-            "total_sem_cobranca" => (int) ($resumo->total_sem_cobranca ?? 0),
-            "total_recebido" => (float) ($resumo->total_recebido ?? 0),
-            "total_a_receber" => (float) ($resumo->total_a_receber ?? 0),
-            "valor_previsto" => (float) ($resumo->valor_previsto ?? 0),
-            "total_recebido_formatado" => "R$ " . number_format((float) ($resumo->total_recebido ?? 0), 2, ",", "."),
-            "total_a_receber_formatado" => "R$ " . number_format((float) ($resumo->total_a_receber ?? 0), 2, ",", "."),
-            "valor_previsto_formatado" => "R$ " . number_format((float) ($resumo->valor_previsto ?? 0), 2, ",", ".")
         ];
     }
 

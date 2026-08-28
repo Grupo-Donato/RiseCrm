@@ -22,7 +22,7 @@ class Barbecue_calendar extends Gd_Controller
         "can_series_manage"=>$this->access->can("gd_booking_series_manage"),
         "can_barbecue_rentals_view"=>$this->access->can("gd_barbecue_rentals_view"),
         "can_barbecue_rentals_manage"=>$this->access->can("gd_barbecue_rentals_manage"),
-        "can_finance"=>$this->access->can("gd_finance_view"),
+        "can_finance"=>$this->access->can("gd_rental_payments_view"),
         "booking_statuses"=>Constants::BOOKING_STATUSES,
     ]);}
     public function events(){try{$allowed=array_map(static fn($r)=>(int)$r["id"],$this->service->resources(Constants::BARBECUE_RESOURCE_TYPE));$requested=$this->csv((string)$this->request->getGet("resources"));$resources=$requested?array_values(array_intersect($requested,$allowed)):$allowed;$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));$duration=(int)$this->request->getGet("duration_minutes");return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses,$duration));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}

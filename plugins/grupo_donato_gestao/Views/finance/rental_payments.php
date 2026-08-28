@@ -40,7 +40,6 @@ $pagamento_select_options = function ($items) {
     return $options;
 };
 
-$active_unit_name = $active_unit->name ?? "Unidade Principal";
 ?>
 
 <style>
@@ -77,26 +76,9 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
 
 <div id="page-content" class="page-wrapper clearfix gd-mobile-ready gd-operacional-page">
     <div class="card">
-        <div class="page-title clearfix">
-            <h1>Grupo Donato — Operacional</h1>
-        </div>
-
-        <div class="p20 border-bottom">
-            <div class="row align-items-end">
-                <div class="col-md-5">
-                    <label>Unidade</label>
-                    <input type="text" class="form-control" value="<?php echo esc($active_unit_name); ?>" readonly>
-                </div>
-                <div class="col-md-7">
-                    <div class="text-off">Contexto ativo: <strong><?php echo esc($active_unit_name); ?></strong></div>
-                    <div class="text-off">Área: <code>locacoes_mensalistas</code></div>
-                </div>
-            </div>
-        </div>
-
 <div class="p20">
     <div class="page-title clearfix">
-        <h4>Controle mensal de pagamentos</h4>
+        <h4><?php echo app_lang("gd_finance_payments"); ?></h4>
         <?php if (!empty($can_generate)) { ?>
             <div class="title-button-group skip-dropdown-migration">
                 <button type="button" id="bombeiros-gerar-cobrancas-mes" class="btn btn-default">
@@ -105,8 +87,6 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
             </div>
         <?php } ?>
     </div>
-
-    <div class="text-off mb15">Pagamentos Mensais</div>
 
     <div class="gd-mobile-filter-panel p15 mb15">
         <div class="row">
@@ -178,39 +158,6 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
                 </div>
             </div>
         </div>
-        <div class="col-md-3 col-sm-6">
-            <div class="card dashboard-icon-widget">
-                <div class="card-body">
-                    <div class="widget-icon bg-success"><i data-feather="dollar-sign" class="icon"></i></div>
-                    <div class="widget-details">
-                        <h1 data-resumo="total_recebido_formatado">R$ 0,00</h1>
-                        <span>Total recebido</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-sm-6">
-            <div class="card dashboard-icon-widget">
-                <div class="card-body">
-                    <div class="widget-icon bg-warning"><i data-feather="trending-up" class="icon"></i></div>
-                    <div class="widget-details">
-                        <h1 data-resumo="total_a_receber_formatado">R$ 0,00</h1>
-                        <span>Total a receber</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-sm-6">
-            <div class="card dashboard-icon-widget">
-                <div class="card-body">
-                    <div class="widget-icon bg-primary"><i data-feather="bar-chart-2" class="icon"></i></div>
-                    <div class="widget-details">
-                        <h1 data-resumo="valor_previsto_formatado">R$ 0,00</h1>
-                        <span>Valor lançado do mês</span>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div class="table-responsive">
@@ -239,7 +186,7 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
 
             table.rows().every(function (rowIndex) {
                 var data = this.data() || [];
-                var $actions = $("<div>").html(data[13] || "");
+                var $actions = $("<div>").html(data[12] || "");
                 var cobrancaId = $actions.find("[data-post-receivable_id]").first().attr("data-post-receivable_id") ||
                     $actions.find("[data-id]").first().attr("data-id") ||
                     $actions.find("[data-post-id]").first().attr("data-post-id") ||
@@ -326,15 +273,14 @@ $active_unit_name = $active_unit->name ?? "Unidade Principal";
                     {title: "Competência", "class": "w120"},
                     {title: "Parcela/Descrição", "class": "w170"},
                     {title: "Vencimento", "class": "w110"},
-                    {title: "Valor", "class": "text-right w120"},
                     {title: "Status", "class": "text-center w120"},
                     {title: "Data pagamento", "class": "w130"},
                     {title: "Forma", "class": "w130"},
                     {title: "Observação", "class": "w180"},
                     {title: "Ações", "class": "all text-center option w220"}
                 ],
-                printColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-                xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                printColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
             });
         } else {
             $("#bombeiros-pagamentos-table").DataTable().columns.adjust();

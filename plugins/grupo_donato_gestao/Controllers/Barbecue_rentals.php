@@ -41,7 +41,7 @@ class Barbecue_rentals extends Gd_Controller
             "can_manage" => $this->access->can("gd_barbecue_rentals_manage"),
             "can_calendar" => $this->access->can("gd_calendar_view"),
             "can_barbecue_rentals" => true,
-            "can_finance" => $this->access->can("gd_finance_view"),
+            "can_finance" => $this->access->can("gd_rental_payments_view"),
             "statuses" => Constants::COURT_RENTAL_STATUSES,
             "resources" => $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE),
         ]);
@@ -55,7 +55,7 @@ class Barbecue_rentals extends Gd_Controller
             "can_barbecue_rentals" => true,
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
-            "can_finance" => $this->access->can("gd_finance_view"),
+            "can_finance" => $this->access->can("gd_rental_payments_view"),
             "statuses" => Constants::COURT_RENTAL_STATUSES,
             "resources" => $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE),
             "timezone" => $this->time->timezoneName(),
@@ -73,7 +73,7 @@ class Barbecue_rentals extends Gd_Controller
             $result = $this->service->monthlyRentersList(append_server_side_filtering_commmon_params($this->filters()));
             // Situação financeira e contatos calculados EM LOTE (sem N+1 por linha).
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
-            $balances = $this->access->can("gd_finance_view")
+            $balances = $this->access->can("gd_rental_payments_view")
                 ? (new \grupo_donato_gestao\Services\FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids)
                 : [];
             $contacts = $this->batchContacts($result["data"]);
@@ -91,15 +91,15 @@ class Barbecue_rentals extends Gd_Controller
             "rental" => $rental, "timezone" => $this->time->timezoneName(),
             "can_manage" => $this->access->can("gd_barbecue_rentals_manage"),
             "can_status" => $this->access->can("gd_barbecue_rentals_status_manage"),
-            "can_payments" => $this->access->can("gd_payments_manage"),
+            "can_payments" => $this->access->can("gd_rental_payments_manage"),
             "can_override" => $this->access->can("gd_barbecue_rentals_price_override"),
-            "financial" => $this->access->can("gd_finance_view") ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->summary(["source_type" => "barbecue_rental", "source_id" => (int) $rental->id]) : null,
-            "can_generate_receivable" => $this->access->can("gd_receivables_manage"),
+            "financial" => $this->access->can("gd_rental_payments_view") ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->summary(["source_type" => "barbecue_rental", "source_id" => (int) $rental->id]) : null,
+            "can_generate_receivable" => $this->access->can("gd_rental_payments_manage"),
             "can_calendar" => $this->access->can("gd_calendar_view"),
             "can_barbecue_rentals" => true,
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
-            "can_finance" => $this->access->can("gd_finance_view"),
+            "can_finance" => $this->access->can("gd_rental_payments_view"),
         ]);
     }
 
@@ -437,7 +437,7 @@ class Barbecue_rentals extends Gd_Controller
         try {
             $result = $this->service->singleRentalsList(append_server_side_filtering_commmon_params($this->filters()));
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
-            $balances = $this->access->can("gd_finance_view")
+            $balances = $this->access->can("gd_rental_payments_view")
                 ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids)
                 : [];
             $contacts = $this->batchContacts($result["data"]);
@@ -1270,7 +1270,7 @@ class Barbecue_rentals extends Gd_Controller
      */
     private function monthlyFinance(object $row, array $balances): string
     {
-        if (!$this->access->can("gd_finance_view")) { return "-"; }
+        if (!$this->access->can("gd_rental_payments_view")) { return "-"; }
         $info = $balances[(int) $row->id] ?? null;
         if (!$info) { return '<span class="badge bg-secondary">' . app_lang("gd_finance_no_receivable") . "</span>"; }
         $bal = (string) ($info["balance"] ?? "0.00");
@@ -1308,8 +1308,8 @@ class Barbecue_rentals extends Gd_Controller
             if ($status === "suspended") { $html .= '<a href="#" class="gd-cr-act me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="resume" title="' . app_lang("gd_resume") . '"><i data-feather="play-circle" class="icon-16"></i></a>'; }
             if (in_array($status, ["draft", "active", "suspended"], true)) { $html .= '<a href="#" class="gd-cr-act gd-cr-cancel me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="cancel" title="' . app_lang("gd_cancel_rental") . '"><i data-feather="x-circle" class="icon-16"></i></a>'; }
         }
-        if ($this->access->can("gd_receivables_manage")) { $html .= anchor(get_uri("grupo_donato/finance/generate"), "<i data-feather='file-text' class='icon-16'></i>", ["title" => app_lang("gd_finance_generate"), "class" => "me-2"]); }
-        if ($this->access->can("gd_payments_manage")) {
+        if ($this->access->can("gd_rental_payments_manage")) { $html .= anchor(get_uri("grupo_donato/finance/barbecue-payments"), "<i data-feather='file-text' class='icon-16'></i>", ["title" => app_lang("gd_finance_generate"), "class" => "me-2"]); }
+        if ($this->access->can("gd_rental_payments_manage")) {
             $open_ids = $balances[$id]["open_ids"] ?? [];
             if (count($open_ids) === 1) {
                 $html .= modal_anchor(get_uri("grupo_donato/finance/rental-payment-modal"), "<i data-feather='dollar-sign' class='icon-16'></i>", ["title" => app_lang("gd_finance_register_payment"), "data-post-receivable_id" => (int) $open_ids[0], "data-post-balance" => (string) ($balances[$id]["balance"] ?? ""), "data-post-reload_target" => $reload_target, "data-modal-class" => "gd-payment-modal"]);

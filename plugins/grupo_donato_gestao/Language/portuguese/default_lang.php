@@ -946,6 +946,8 @@ return [
     "gd_perm_finance_view" => "Visualizar financeiro",
     "gd_perm_receivables_manage" => "Gerenciar contas a receber",
     "gd_perm_payments_manage" => "Registrar e estornar pagamentos",
+    "gd_perm_rental_payments_view" => "Visualizar pagamentos de locações",
+    "gd_perm_rental_payments_manage" => "Gerenciar pagamentos de locações",
     "gd_perm_expenses_manage" => "Gerenciar despesas",
     "gd_perm_cash_view" => "Visualizar livro-caixa",
     "gd_finance_invalid_source" => "Origem financeira inválida.",

@@ -1356,7 +1356,7 @@ $lang["migrated_to_client_at"] = "Migrado para o cliente em";
 $lang["edit_estimate_form"] = "Editar formulário de estimativa";
 
 $lang["please_upload_a_excel_file"] = "Faça upload de um arquivo excel.";
-$lang["back"] = "Costas";
+$lang["back"] = "voltar";
 
 $lang["import_client_error_header"] = "Existe um cabeçalho inválido. O campo indicado deve ser <b>%s</b>.";
 $lang["import_client_error_company_name_field_required"] = "O campo do nome da empresa é obrigatório.";

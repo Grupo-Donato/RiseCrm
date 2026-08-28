@@ -25,7 +25,7 @@ Fundação
 | 3A | Disponibilidade semanal, exceções, bloqueios, motor em lote e calendário. |
 | 3B1 | Reservas únicas, múltiplos recursos, buffers, holds, conflitos, estados e histórico. |
 | 3B2 | Séries diárias/semanais/mensais, ocorrências materializadas, exceções e alterações por escopo. |
-| 3C | Operação comercial de locação de quadras: avulso, mensalista, negociação, snapshot de valor contratado, dia de vencimento, vigência, estados e visão de mensalistas. Sem financeiro. |
+| 3C | Operação comercial de locação de quadras: avulso, mensalista, valor livre, snapshot, dia de vencimento, vigência, estados, cancelamento/liberação futura e visão financeira integrada de avulsas. |
 | 4 | Protótipo funcional de escola e personal: alunos, famílias, responsáveis, turmas, agenda integrada, matrículas, chamada e frequência. Sem financeiro. |
 | 5 | Financeiro básico: cobranças, pagamentos/alocações, estornos, despesas, caixa e indicadores integrados. |
 

@@ -231,6 +231,10 @@ if (!function_exists('gd_current_login_user')) {
                 "url" => get_uri("grupo_donato/finance/rental-payments"),
             ];
         }
+        $court_rental_submenu = array_map(static function (array $item): array {
+            $item["class"] = "grid";
+            return $item;
+        }, $court_rental_submenu);
         if ($court_rental_submenu) {
             $sidebar_menu["locacoes"] = [
                 "name" => "LocaÃ§Ãµes",
@@ -281,6 +285,10 @@ if (!function_exists('gd_current_login_user')) {
                 "url" => get_uri("grupo_donato/finance/barbecue-payments"),
             ];
         }
+        $barbecue_rental_submenu = array_map(static function (array $item): array {
+            $item["class"] = "grid";
+            return $item;
+        }, $barbecue_rental_submenu);
         if ($barbecue_rental_submenu) {
             $sidebar_menu["churrasqueiras"] = [
                 "name" => "Churrasqueiras",

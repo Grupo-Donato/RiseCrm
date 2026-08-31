@@ -6,7 +6,10 @@
  * Bootstrapa o framework em modo console e exercita schema/seeds/serviços.
  * Uso:
  *   php plugins/grupo_donato_gestao/Tests/cli.php install
+ *   php plugins/grupo_donato_gestao/Tests/cli.php demo
  *   php plugins/grupo_donato_gestao/Tests/cli.php selftest
+ *   php plugins/grupo_donato_gestao/Tests/cli.php costs-selftest
+ *   php plugins/grupo_donato_gestao/Tests/cli.php rental-finance-diagnostic [YYYY-MM]
  *   php plugins/grupo_donato_gestao/Tests/cli.php student-photo-selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php seqgrab 25 [tipo]
  */
@@ -105,8 +108,49 @@ if ($task === "install") {
     (new FoundationSeeder(0))->run();
     (new \grupo_donato_gestao\Database\Seeds\CatalogSeeder(0))->run();
     (new \grupo_donato_gestao\Database\Seeds\FinanceSeeder(0))->run();
+    (new \grupo_donato_gestao\Database\Seeds\CostSeeder(0))->run();
     echo "seeds done\n";
     exit($r["failed"] ? 1 : 0);
+}
+
+if ($task === "costs-selftest") {
+    require_once __DIR__ . "/costs_selftest.php";
+    gd_costs_selftest();
+    echo "\n==== RESULTADO: {$GLOBALS["gd_pass"]} PASS / {$GLOBALS["gd_fail"]} FAIL ====\n";
+    exit($GLOBALS["gd_fail"] ? 1 : 0);
+}
+
+if ($task === "monthly-reschedule-selftest") {
+    require_once __DIR__ . "/monthly_reschedule_selftest.php";
+    gd_monthly_reschedule_selftest();
+    echo "\n==== RESULTADO: {$GLOBALS["gd_pass"]} PASS / {$GLOBALS["gd_fail"]} FAIL ====\n";
+    exit($GLOBALS["gd_fail"] ? 1 : 0);
+}
+
+if ($task === "demo") {
+    try {
+        $result = (new \grupo_donato_gestao\Database\Seeds\DemoSeeder(0))->run();
+        echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
+        exit(0);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "demo failed: " . $e->getMessage() . "\n");
+        exit(1);
+    }
+}
+
+if ($task === "rental-finance-diagnostic") {
+    try {
+        $db = db_connect();
+        $unit = model("grupo_donato_gestao\\Models\\Gd_units_model")->get_default();
+        if (!$unit) { throw new \RuntimeException("No active unit."); }
+        $reference = (string) ($argv[2] ?? date("Y-m"));
+        $result = (new \grupo_donato_gestao\Services\RentalFinanceDiagnosticService((int) $unit->id))->run($reference);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
+        exit(0);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "rental finance diagnostic failed: " . $e->getMessage() . "\n");
+        exit(1);
+    }
 }
 
 if ($task === "operacional-install") {
@@ -354,7 +398,7 @@ if ($task === "selftest") {
     $gd_table_pattern = gd_like_literal_prefix($prefix . "gd_");
 
     echo "# Schema & tabelas\n";
-    foreach (["gd_schema_versions", "gd_units", "gd_business_areas", "gd_cost_centers", "gd_settings", "gd_sequences", "gd_audit_logs", "gd_customer_accounts", "gd_people", "gd_account_people", "gd_contact_methods", "gd_addresses", "gd_product_categories", "gd_resources", "gd_products", "gd_product_variants", "gd_price_lists", "gd_prices", "gd_resource_availability_rules", "gd_resource_availability_exceptions", "gd_resource_blocks", "gd_bookings", "gd_booking_resources", "gd_booking_events", "gd_court_rentals", "gd_court_rental_schedule_links", "gd_court_rental_price_items", "gd_court_rental_events", "gd_barbecue_rentals", "gd_barbecue_rental_schedule_links", "gd_barbecue_rental_price_items", "gd_barbecue_rental_events", "gd_school_profiles", "gd_classes", "gd_enrollments", "gd_attendance_sessions", "gd_attendance_records", "gd_financial_accounts", "gd_receivables", "gd_receivable_items", "gd_payments", "gd_payment_allocations", "gd_expenses", "gd_cash_movements", "gd_import_batches", "gd_import_rows", "gd_import_issues", "gd_import_links"] as $t) {
+    foreach (["gd_schema_versions", "gd_units", "gd_business_areas", "gd_cost_centers", "gd_settings", "gd_sequences", "gd_audit_logs", "gd_customer_accounts", "gd_people", "gd_account_people", "gd_contact_methods", "gd_addresses", "gd_product_categories", "gd_resources", "gd_products", "gd_product_variants", "gd_price_lists", "gd_prices", "gd_resource_availability_rules", "gd_resource_availability_exceptions", "gd_resource_blocks", "gd_bookings", "gd_booking_resources", "gd_booking_events", "gd_court_rentals", "gd_court_rental_schedule_links", "gd_court_rental_price_items", "gd_court_rental_events", "gd_barbecue_rentals", "gd_barbecue_rental_schedule_links", "gd_barbecue_rental_price_items", "gd_barbecue_rental_events", "gd_school_profiles", "gd_classes", "gd_enrollments", "gd_attendance_sessions", "gd_attendance_records", "gd_financial_accounts", "gd_receivables", "gd_receivable_items", "gd_payments", "gd_payment_allocations", "gd_expenses", "gd_cash_movements", "gd_expense_categories", "gd_expense_payments", "gd_expense_allocations", "gd_expense_recurrences", "gd_expense_attachments", "gd_cost_budgets", "gd_import_batches", "gd_import_rows", "gd_import_issues", "gd_import_links"] as $t) {
         gd_assert("tabela {$prefix}{$t} existe", $db->tableExists($prefix . $t));
     }
     $sv = model("grupo_donato_gestao\\Models\\Gd_schema_versions_model");
@@ -362,7 +406,7 @@ if ($task === "selftest") {
     gd_assert("nenhuma falha de schema", !$sv->has_failed());
     gd_assert("versão aplicada == alvo " . Constants::SCHEMA_TARGET, $sv->get_applied_version() === Constants::SCHEMA_TARGET, "aplicada=" . $sv->get_applied_version());
     $physical = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [$gd_table_pattern])->getResult();
-    gd_assert("53 tabelas do plugin", count($physical) === 53, count($physical) . " tabelas gd_*");
+    gd_assert("59 tabelas do plugin", count($physical) === 59, count($physical) . " tabelas gd_*");
     gd_assert("marker em disco atualizado para " . Constants::SCHEMA_TARGET, trim((string) @file_get_contents(SchemaRunner::marker_path())) === Constants::SCHEMA_TARGET);
 
     echo "# Seeds\n";
@@ -397,10 +441,14 @@ if ($task === "selftest") {
     // Todos os dados de teste abaixo são revertidos ao final.
     $barbecue_count = static fn() => $db->table($prefix . "gd_resources")->where("unit_id", $def_unit_id)->where("resource_type", Constants::BARBECUE_RESOURCE_TYPE)->where("deleted", 0)->countAllResults();
     $barbecue_codes = static fn() => array_column($db->table($prefix . "gd_resources")->select("code")->where("unit_id", $def_unit_id)->where("resource_type", Constants::BARBECUE_RESOURCE_TYPE)->where("deleted", 0)->orderBy("code")->get()->getResultArray(), "code");
-    gd_assert("CH1-CH6 cadastradas (6 churrasqueiras)", $barbecue_count() === 6, $barbecue_count() . " churrasqueiras");
-    gd_assert("codigos CH1-CH6 corretos", $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6"], implode(",", $barbecue_codes()));
+    $barbecue_salon = $db->table($prefix . "gd_resources")->where("unit_id", $def_unit_id)->where("code", "CH5-SL")->where("deleted", 0)->get(1)->getRow();
+    $barbecue_ch6 = $db->table($prefix . "gd_resources")->where("unit_id", $def_unit_id)->where("code", "CH6")->orderBy("id", "DESC")->get(1)->getRow();
+    gd_assert("CH1-CH4 e CH5-SL cadastradas (5 churrasqueiras)", $barbecue_count() === 5, $barbecue_count() . " churrasqueiras");
+    gd_assert("codigos das churrasqueiras corretos", $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5-SL"], implode(",", $barbecue_codes()));
+    gd_assert("CH5-SL possui nome de churrasqueira/salão", $barbecue_salon && (string) $barbecue_salon->name === "Churrasqueira 5 / Salão");
+    gd_assert("CH6 foi excluída logicamente", !$barbecue_ch6 || ((int) $barbecue_ch6->deleted === 1 && (int) $barbecue_ch6->is_active === 0 && (int) $barbecue_ch6->is_bookable === 0));
     (new \grupo_donato_gestao\Database\Seeds\CatalogSeeder(0))->run();
-    gd_assert("seed de churrasqueiras idempotente", $barbecue_count() === 6 && $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6"]);
+    gd_assert("seed de churrasqueiras idempotente", $barbecue_count() === 5 && $barbecue_codes() === ["CH1", "CH2", "CH3", "CH4", "CH5-SL"]);
 
     $db->transBegin();
 
@@ -942,6 +990,7 @@ if ($task === "selftest") {
     require __DIR__ . "/barbecue_rental_selftest.php";
     require __DIR__ . "/school_selftest.php";
     require __DIR__ . "/finance_selftest.php";
+    require __DIR__ . "/rental_finance_selftest.php";
     require_once __DIR__ . "/student_photo_selftest.php";
     gd_student_photo_selftest();
     // Protótipo (Cenário 2): o módulo de importação está oculto e NÃO foi continuado.

@@ -75,6 +75,8 @@ $availability_messages = [
                             <input name="list_amount" id="gd-cr-list" class="form-control" inputmode="decimal" autocomplete="off" placeholder="0,00" data-gd-mask="money">
                         </div>
                     </div>
+                    <div class="form-check mt10"><input type="checkbox" class="form-check-input" id="gd-cr-exempt" name="financial_status" value="exempt"><label class="form-check-label" for="gd-cr-exempt"><?php echo app_lang("gd_finance_mark_exempt"); ?></label></div>
+                    <small class="text-muted"><?php echo app_lang("gd_finance_exempt_help"); ?></small>
                 </div>
                 <div class="form-group">
                     <label><?php echo app_lang("gd_commercial_notes"); ?></label>

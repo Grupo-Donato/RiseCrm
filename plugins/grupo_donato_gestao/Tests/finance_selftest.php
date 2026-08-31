@@ -60,7 +60,7 @@ gd_assert('não existem campos de integração bancária',!array_filter($finance
 $pastDueCr=$fin->createReceivable(['source_type'=>'court_rental','source_id'=>(int)$monthly['id'],'reference_month'=>'2020-01','description'=>'Vencida CR '.$token,'issue_date'=>'2020-01-01','due_date'=>'2020-01-10','original_amount'=>'60.00','unit_amount'=>'60.00','quantity'=>'1']);
 $crBal=$fin->balancesBySource('court_rental',[(int)$monthly['id'],(int)$single['id']]);
 gd_assert('saldo agregado por locação retorna aberto/vencido/parcial em lote',isset($crBal[(int)$monthly['id']],$crBal[(int)$single['id']])&&$crBal[(int)$monthly['id']]['partial']===true&&\grupo_donato_gestao\Services\DataNormalizationService::decimalCompare($crBal[(int)$monthly['id']]['balance'],'0.00')>0&&\grupo_donato_gestao\Services\DataNormalizationService::decimalCompare($crBal[(int)$monthly['id']]['overdue'],'0.00')>0);
-gd_assert('saldo agregado lista as cobranças abertas da locação',count($crBal[(int)$monthly['id']]['open_ids'])===2&&count($crBal[(int)$single['id']]['open_ids'])===1&&$crBal[(int)$single['id']]['partial']===false);
+gd_assert('saldo agregado lista as cobranças abertas da locação',count($crBal[(int)$monthly['id']]['open_ids'])===3&&count($crBal[(int)$single['id']]['open_ids'])===1&&$crBal[(int)$single['id']]['partial']===false);
 gd_assert('saldo agregado ignora origem sem cobrança aberta',!isset($crBal[999999]));
 // ---- 2.8: geração de cobrança avulsa é idempotente (retorna a existente, sem duplicar) ----
 $dupSingle=(new \grupo_donato_gestao\Services\ReceivableGenerationService($unit_id))->generateCourtRental((int)$single['id'],['amount'=>'80.00','due_date'=>'2098-02-05']);

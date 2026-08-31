@@ -2,11 +2,11 @@
 
 ## Estado final
 
-- Última entrega: **TASK-GD-BBQ-001** — réplica isolada do módulo de Locações para Churrasqueiras 1–6.
+- Última entrega: **TASK-GD-BBQ-001** — réplica isolada do módulo de Locações para quatro churrasqueiras e o espaço CH5-SL (salão).
 - Entrega anterior: **TASK-GD-LOC-001** (preços livres, cancelamento/liberação de mensalistas,
   sinal e saldo de avulsas, histórico financeiro e lista operacional).
 - Versão: **0.9.8**.
-- Schema alvo: **053**; V053 adiciona 4 tabelas comerciais próprias para churrasqueiras, preservando as tabelas de quadras.
+- Schema alvo: **066**; V053 adiciona 4 tabelas comerciais próprias para churrasqueiras e V066 ajusta o catálogo físico, preservando as tabelas de quadras.
 - O self-test completo anterior não foi reexecutado neste pacote fora de uma instalação Rise; o QA desta entrega inclui lint integral e checagem estática de rotas/arquivos.
 
 ## sistema legado embutido (override dos guardrails #2/#3, autorizado)

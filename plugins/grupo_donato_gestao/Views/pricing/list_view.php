@@ -8,6 +8,7 @@ $category_filter = $category_options;
 $type_filter = $type_options;
 ?>
 <div id="page-content" class="page-wrapper clearfix">
+    <?php echo view("grupo_donato_gestao\\Views\\components\\catalog_nav", ["active_catalog_tab" => "pricing", "can_categories" => $can_categories, "can_resources" => $can_resources, "can_pricing" => $can_pricing]); ?>
     <div class="page-title clearfix">
         <h4><?php echo $e($list->code . " — " . $list->name); ?> <small class="text-muted">(<?php echo $e($list->currency); ?><?php echo (int) $list->is_default ? " · " . app_lang("gd_default") : ""; ?> · <?php echo app_lang("gd_status_" . $list->status); ?>)</small></h4>
         <div class="title-button-group">

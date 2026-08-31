@@ -19,6 +19,10 @@ if (!empty($can_court_rentals_view)) {
 }
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
+<style>
+    #gd-calendar .gd-rescheduled-occurrence { box-shadow: inset 4px 0 0 #ffc107; }
+    #gd-calendar .gd-rescheduled-occurrence .fc-event-title { font-weight: 700; }
+</style>
 <div id="page-content" class="page-wrapper clearfix gd-rentals-shell">
     <div class="card gd-calendar-card">
         <div class="page-title clearfix gd-page-header">
@@ -273,6 +277,7 @@ $(document).ready(function(){
                 title += " — " + <?php echo json_encode($status_labels, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>[props.status];
             }
             info.el.setAttribute("title", title);
+            if (props.is_rescheduled) { info.el.classList.add("gd-rescheduled-occurrence"); }
             if (props.event_type === "booking" || (props.event_type === "free_slot" && freeSlotBook.length)) {
                 info.el.style.cursor = "pointer";
             }

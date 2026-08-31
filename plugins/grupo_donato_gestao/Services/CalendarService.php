@@ -28,9 +28,35 @@ class CalendarService extends CustomerDataService
         if(in_array("block",$types,true)){$rows=$this->db->table($p."gd_resource_blocks")->where("unit_id",$this->unit_id)->whereIn("resource_id",$ids)->where("status","active")->where("deleted",0)->where("starts_at_utc <",$end_utc)->where("ends_at_utc >",$start_utc)->get()->getResult();foreach($rows as $r){$events[]=$this->event("block-{$r->id}",$names[(int)$r->resource_id]." — ".$r->title,$r->starts_at_utc,$r->ends_at_utc,"block",(int)$r->resource_id,"#fd7e14",false);}}
         if(in_array("booking",$types,true)&&$this->db->tableExists($p."gd_bookings")){$allowed=Constants::BOOKING_STATUSES;$booking_statuses=array_values(array_intersect($booking_statuses,$allowed));$b=$p."gd_bookings";$br=$p."gd_booking_resources";$q=$this->db->table($br)->select("$b.id,$b.booking_number,$b.title,$b.status,$b.booking_type,$b.starts_at_utc,$b.ends_at_utc,$b.hold_expires_at_utc,$b.series_id,$b.detached_from_series,$br.resource_id,$br.occupancy_starts_at_utc,$br.occupancy_ends_at_utc,$br.buffer_before_minutes,$br.buffer_after_minutes")->join($b,"$b.id=$br.booking_id AND $b.unit_id=$br.unit_id","inner",false)->where("$br.unit_id",$this->unit_id)->whereIn("$br.resource_id",$ids)->where("$br.deleted",0)->where("$b.deleted",0)->where("$b.starts_at_utc <",$end_utc)->where("$b.ends_at_utc >",$start_utc)->groupStart()->where("$b.status !=","hold")->orWhere("$b.hold_expires_at_utc >",gmdate("Y-m-d H:i:s"))->groupEnd();if($booking_statuses){$q->whereIn("$b.status",$booking_statuses);} $colors=["hold"=>"#ffc107","pending_confirmation"=>"#6f42c1","confirmed"=>"#0d6efd","in_progress"=>"#20c997","completed"=>"#198754","cancelled"=>"#6c757d","expired"=>"#adb5bd","no_show"=>"#dc3545"];
             foreach($q->orderBy("$b.starts_at_utc","ASC")->get()->getResult() as $r){$resource_id=(int)$r->resource_id;$is_series=(int)$r->series_id>0&&!(int)$r->detached_from_series;$base_title=$this->can_view_bookings?($is_series?"↻ ":"").$r->booking_number." — ".$r->title:(function_exists("app_lang")?app_lang("gd_calendar_busy"):"Ocupado");$title=($show_resource_label?$codes[$resource_id]." · ":"").$base_title;$events[]=["id"=>"booking-{$r->id}-{$r->resource_id}","title"=>$title,"start"=>$this->time->utcToIsoLocal($r->starts_at_utc),"end"=>$this->time->utcToIsoLocal($r->ends_at_utc),"backgroundColor"=>$colors[$r->status]??"#0d6efd","borderColor"=>$colors[$r->status]??"#0d6efd","classNames"=>$is_series?["gd-series-occurrence"]:[],"extendedProps"=>["event_type"=>"booking","booking_id"=>(int)$r->id,"booking_number"=>$this->can_view_bookings?$r->booking_number:null,"resource_id"=>$resource_id,"resource_ids"=>[$resource_id],"resource_name"=>$names[$resource_id],"resource_code"=>$codes[$resource_id],"resource_order"=>$orders[$resource_id],"booking_type"=>$r->booking_type,"status"=>$r->status,"is_series"=>$is_series,"series_id"=>$this->can_view_bookings&&$is_series?(int)$r->series_id:null,"occupancy_start"=>$this->time->utcToIsoLocal($r->occupancy_starts_at_utc),"occupancy_end"=>$this->time->utcToIsoLocal($r->occupancy_ends_at_utc),"buffer_before_minutes"=>(int)$r->buffer_before_minutes,"buffer_after_minutes"=>(int)$r->buffer_after_minutes]];}}
+        // Detached occurrences still belong to a series. Recover that relation
+        // for the calendar projection so a point reschedule can be opened from
+        // the event itself.
+        if ($this->can_view_bookings) {
+            $booking_ids = array_values(array_unique(array_filter(array_map(static fn ($event): int => (int) ($event["extendedProps"]["booking_id"] ?? 0), $events))));
+            if ($booking_ids) {
+                $series_by_booking = [];
+                foreach ($this->db->table($p . "gd_bookings")->select("id,series_id")->where("unit_id", $this->unit_id)->whereIn("id", $booking_ids)->where("deleted", 0)->get()->getResult() as $booking) {
+                    if ((int) $booking->series_id > 0) { $series_by_booking[(int) $booking->id] = (int) $booking->series_id; }
+                }
+                if ($series_by_booking) {
+                    foreach ($events as &$event) {
+                        $booking_id = (int) ($event["extendedProps"]["booking_id"] ?? 0);
+                        $series_id = $series_by_booking[$booking_id] ?? 0;
+                        if (!$series_id || ($event["extendedProps"]["event_type"] ?? "") !== "booking") { continue; }
+                        $event["extendedProps"]["is_series"] = true;
+                        $event["extendedProps"]["series_id"] = $series_id;
+                        if (!in_array("gd-series-occurrence", $event["classNames"] ?? [], true)) { $event["classNames"][] = "gd-series-occurrence"; }
+                        if (!str_starts_with((string) $event["title"], "↻ ") && $this->can_view_bookings) { $event["title"] = "↻ " . $event["title"]; }
+                    }
+                    unset($event);
+                }
+            }
+        }
+
         // Vínculo comercial ativo (gd_court_rental_schedule_links) — enriquece o
         // evento com court_rental_id em lote (sem N+1). Somente para quem já vê
         // detalhes de booking, mantendo o mesmo nível de exposição.
+        if($this->db->tableExists($p."gd_booking_series_exceptions")){$booking_ids=array_values(array_unique(array_filter(array_map(static fn($event)=>(int)($event["extendedProps"]["booking_id"]??0),$events))));if($booking_ids){$rescheduled=[];foreach($this->db->table($p."gd_booking_series_exceptions")->select("id,booking_id")->where("unit_id",$this->unit_id)->where("exception_type","reschedule")->where("status","active")->whereIn("booking_id",$booking_ids)->get()->getResult() as $exception){$rescheduled[(int)$exception->booking_id]=(int)$exception->id;}if($rescheduled){foreach($events as &$event){$booking_id=(int)($event["extendedProps"]["booking_id"]??0);if(!isset($rescheduled[$booking_id])){continue;}$event["extendedProps"]["is_rescheduled"]=true;$event["extendedProps"]["reschedule_exception_id"]=$rescheduled[$booking_id];$event["classNames"][]="gd-rescheduled-occurrence";if($this->can_view_bookings){$event["title"].=" · ".(function_exists("app_lang")?app_lang("gd_calendar_rescheduled"):"Remanejado");}}unset($event);}}}
         $rental_link_table=$this->resource_type===Constants::BARBECUE_RESOURCE_TYPE?"gd_barbecue_rental_schedule_links":"gd_court_rental_schedule_links";$rental_prop=$this->resource_type===Constants::BARBECUE_RESOURCE_TYPE?"barbecue_rental_id":"court_rental_id";
         if($this->can_view_bookings&&$this->db->tableExists($p.$rental_link_table)){
             $booking_ids=[];$series_ids=[];
@@ -54,7 +80,7 @@ class CalendarService extends CustomerDataService
     /** Projeta inícios livres de 30 em 30 minutos para cada quadra selecionada. */
     private function freeSlotEvents(int $resource_id,string $resource_name,string $resource_code,int $resource_order,bool $show_resource_label,\DateTimeImmutable $range_start,\DateTimeImmutable $range_end,int $duration_minutes):array
     {
-        $duration_minutes=in_array($duration_minutes,[90,120],true)?$duration_minutes:90;
+        $duration_minutes=max(1,min(Constants::BOOKING_MAX_DURATION_MINUTES,(int)$duration_minutes));
         $p=$this->db->getPrefix();$range_start_utc=$range_start->format("Y-m-d H:i:s");$range_end_utc=$range_end->format("Y-m-d H:i:s");$query_end_utc=$range_end->modify("+$duration_minutes minutes")->format("Y-m-d H:i:s");
         $blocks=$this->db->table($p."gd_resource_blocks")->where("unit_id",$this->unit_id)->where("resource_id",$resource_id)->where("status","active")->where("deleted",0)->where("starts_at_utc <",$query_end_utc)->where("ends_at_utc >",$range_start_utc)->get()->getResult();
         $exceptions=$this->db->table($p."gd_resource_availability_exceptions")->where("unit_id",$this->unit_id)->where("resource_id",$resource_id)->where("status","active")->where("deleted",0)->where("starts_at_utc <",$query_end_utc)->where("ends_at_utc >",$range_start_utc)->get()->getResult();
@@ -73,11 +99,13 @@ class CalendarService extends CustomerDataService
         $open_ranges=[];foreach($exceptions as $row){if((string)$row->exception_type==="open"){$open_ranges[]=[(string)$row->starts_at_utc,(string)$row->ends_at_utc];}}
         $timezone=new \DateTimeZone($this->time->timezoneName());$local_start=$range_start->setTimezone($timezone);$local_end=$range_end->setTimezone($timezone);
         $minute=(int)$local_start->format("i");$cursor=$local_start->setTime((int)$local_start->format("H"),$minute<30?0:30,0);if($cursor<$local_start){$cursor=$cursor->modify("+30 minutes");}
-        $events=[];$now_utc=gmdate("Y-m-d H:i:s");$duration_label=$duration_minutes===120?"2h":"1h30";
+        $events=[];$now_utc=gmdate("Y-m-d H:i:s");$duration_hours=intdiv($duration_minutes,60);$duration_remainder=$duration_minutes%60;$duration_label=$duration_hours>0?$duration_hours."h".($duration_remainder?str_pad((string)$duration_remainder,2,"0",STR_PAD_LEFT):""):$duration_minutes."min";$availability=new AvailabilityService($this->unit_id);$canonical_slots=[];
+        for($day=$local_start->setTime(0,0,0);$day<=$local_end;$day=$day->modify("+1 day")){foreach($availability->findAvailableSlots($day->format("Y-m-d"),"00:00","23:59",$duration_minutes,[$resource_id],0,30) as $slot){$slot_start_utc=(string)($slot["starts_at_utc"]??"");if($slot_start_utc>=$range_start_utc&&$slot_start_utc<$range_end_utc&&$slot_start_utc>$now_utc){$canonical_slots[$slot_start_utc]=true;}}}
         for(;$cursor<$local_end;$cursor=$cursor->modify("+30 minutes")){
             try{$slot_start=$this->time->localToUtc($cursor->format("Y-m-d"),$cursor->format("H:i"));}catch(\DomainException $e){continue;}
             if($slot_start<$range_start_utc||$slot_start>=$range_end_utc||$slot_start<=$now_utc){continue;}
             $slot_end=$this->time->parseUtc($slot_start)->modify("+$duration_minutes minutes")->format("Y-m-d H:i:s");
+            if(empty($canonical_slots[$slot_start])){continue;}
             if($this->freeSlotOverlaps($blocks,$slot_start,$slot_end)||$this->freeSlotOverlaps($closed,$slot_start,$slot_end)||$this->freeSlotOverlaps($bookings,$slot_start,$slot_end)){continue;}
             $physically_open=$this->freeSlotCovered($slot_start,$slot_end,$open_ranges)||(!$rules)||$this->freeSlotCovered($slot_start,$slot_end,$weekly_ranges);
             if(!$physically_open){continue;}

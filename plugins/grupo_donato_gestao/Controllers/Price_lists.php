@@ -27,6 +27,9 @@ class Price_lists extends Gd_Controller
     {
         return $this->gd_render("pricing/lists_index", [
             "can_manage" => $this->access->can("gd_price_lists_manage"),
+            "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => true,
         ]);
     }
 
@@ -37,6 +40,9 @@ class Price_lists extends Gd_Controller
         return $this->gd_render("pricing/list_view", [
             "list" => $row,
             "can_manage_prices" => $this->access->can("gd_prices_manage"),
+            "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => true,
             "product_options" => $this->product_options(),
             "resource_options" => $this->resource_options(),
             "category_options" => $this->category_options(),

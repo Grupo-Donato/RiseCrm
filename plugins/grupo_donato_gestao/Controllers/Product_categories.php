@@ -27,6 +27,9 @@ class Product_categories extends Gd_Controller
     {
         return $this->gd_render("catalog/categories_index", [
             "can_manage" => $this->access->can("gd_product_categories_manage"),
+            "can_categories" => true,
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => $this->access->can("gd_price_lists_view"),
         ]);
     }
 

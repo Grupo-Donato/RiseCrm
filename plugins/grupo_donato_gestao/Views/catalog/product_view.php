@@ -3,6 +3,7 @@ $e = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUB
 $flag = static fn($v) => $v ? app_lang("yes") : app_lang("no");
 ?>
 <div id="page-content" class="page-wrapper clearfix">
+    <?php echo view("grupo_donato_gestao\\Views\\components\\catalog_nav", ["active_catalog_tab" => "products", "can_categories" => $can_categories, "can_resources" => $can_resources, "can_pricing" => $can_pricing]); ?>
     <div class="page-title clearfix">
         <h4><?php echo $e($product->code . " — " . $product->name); ?></h4>
         <div class="title-button-group">

@@ -268,6 +268,11 @@ class BarbecueRentalService extends CatalogDataService
             $evt->append($id, "created", null, "draft", null, ["rental_number" => $number, "mode" => "recurring", "series_id" => (int) $series["id"]]);
             $evt->append($id, "schedule_linked", null, "draft", null, ["booking_series_id" => (int) $series["id"], "link_kind" => "primary"]);
             $this->audit_change("barbecue_rental_created", "barbecue_rental", $id, null, ["rental_number" => $number] + $commercial, ["mode" => "recurring", "series_id" => (int) $series["id"]]);
+            // A série e a locação só ficam concluídas quando a primeira
+            // competência também está no ledger. A geração posterior continua
+            // idempotente, mas a lista não pode depender da abertura do
+            // financeiro para criar a cobrança inicial.
+            $finance = $this->createRecurringRentalFinance($id, $commercial);
             if ($this->db->transCommit() === false) { throw new \RuntimeException("barbecue rental recurring commit"); }
             $in_tx = false;
         } catch (\Throwable $e) {
@@ -276,7 +281,7 @@ class BarbecueRentalService extends CatalogDataService
         } finally {
             $lock->release();
         }
-        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "series_id" => (int) ($series["id"] ?? 0), "series_number" => (string) ($series["series_number"] ?? ""), "generation" => $series["generation"] ?? null];
+        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "series_id" => (int) ($series["id"] ?? 0), "series_number" => (string) ($series["series_number"] ?? ""), "generation" => $series["generation"] ?? null, "finance" => $finance ?? null];
     }
 
     /**
@@ -332,7 +337,6 @@ class BarbecueRentalService extends CatalogDataService
             foreach ($price_fields as $field) {
                 if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
             }
-
             $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $rlock->acquire($this->unit_id, array_values(array_unique(array_merge($old_resource_ids, $new_resource_ids))));
@@ -545,6 +549,8 @@ class BarbecueRentalService extends CatalogDataService
                 if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
             }
 
+            $old_base_total = $this->commercialTotal($this->commercialArray($before));
+            $new_base_total = $this->commercialTotal($commercial);
             if ($this->db->transBegin() === false) { throw new \RuntimeException("barbecue rental monthly update transaction"); }
             $in_tx = true;
             $series_result = $series_service->updateEntire($series_id, $series_input);
@@ -556,6 +562,11 @@ class BarbecueRentalService extends CatalogDataService
                     ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)
                     ->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
                 $this->writeSnapshotIfPriced($rental_id, $commercial, (int) ($new_resource_ids[0] ?? 0));
+                if ($old_base_total !== null && $new_base_total !== null && DataNormalizationService::decimalCompare($old_base_total, $new_base_total) !== 0) {
+                    (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->syncBarbecueRentalRecurringReceivableAmount(
+                        $rental_id, $old_base_total, $new_base_total, "Mensalista churrasqueira — " . $commercial["title"]
+                    );
+                }
             }
             (new BarbecueRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
                 $rental_id,
@@ -731,6 +742,16 @@ class BarbecueRentalService extends CatalogDataService
         $notes = trim(strip_tags((string) ($input["commercial_notes"] ?? "")));
         if (mb_strlen($notes) > 5000) { throw new \DomainException("gd_court_rental_notes_too_large"); }
         $metadata = $this->metadata($input["metadata"] ?? null);
+        $financial_status = strtolower(trim((string) ($input["financial_status"] ?? "")));
+        if ($financial_status !== "" && !in_array($financial_status, ["chargeable", "exempt"], true)) {
+            throw new \DomainException("gd_finance_invalid_rental_status");
+        }
+        if ($financial_status === "exempt") {
+            $metadata_data = $metadata ? json_decode($metadata, true) : [];
+            if (!is_array($metadata_data)) { $metadata_data = []; }
+            $metadata_data["financial_status"] = "exempt";
+            $metadata = $this->metadata(json_encode($metadata_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
 
         return [
             "customer_account_id" => $customer, "contact_person_id" => $contact ?: null,
@@ -746,10 +767,17 @@ class BarbecueRentalService extends CatalogDataService
     /** Locação operacional completa precisa ter um valor livremente informado. */
     private function assertCommercialValue(array $commercial): void
     {
+        if ($this->isExemptCommercial($commercial)) { return; }
         $total = $this->commercialTotal($commercial);
         if ($total === null || DataNormalizationService::decimalCompare($total, "0.00") <= 0) {
             throw new \DomainException("gd_barbecue_rental_value_required");
         }
+    }
+
+    private function isExemptCommercial(array $commercial): bool
+    {
+        $metadata = json_decode((string) ($commercial["metadata"] ?? ""), true);
+        return is_array($metadata) && (string) ($metadata["financial_status"] ?? "") === "exempt";
     }
 
     /** Normaliza o sinal sem float e sem permitir valor acima do total. */
@@ -785,6 +813,27 @@ class BarbecueRentalService extends CatalogDataService
             "original_amount" => $total, "unit_amount" => $total, "quantity" => "1", "product_id" => (int) ($commercial["product_id"] ?? 0),
             "deposit_amount" => $deposit["amount"], "payment_method" => $deposit["payment_method"],
             "financial_account_id" => $deposit["financial_account_id"], "payment_date" => $issue,
+        ]);
+    }
+
+    /** Cria a primeira competência do contrato mensalista de forma idempotente. */
+    private function createRecurringRentalFinance(int $rental_id, array $commercial): ?array
+    {
+        $total = $this->commercialTotal($commercial);
+        if ($total === null || DataNormalizationService::decimalCompare($total, "0.00") <= 0) { return null; }
+
+        $effective = (string) ($commercial["effective_from"] ?? "");
+        $reference = preg_match('/^\d{4}-\d{2}-\d{2}$/', $effective) ? substr($effective, 0, 7) : gmdate("Y-m");
+        $day = (int) ($commercial["preferred_due_day"] ?? 10);
+        $max = (int) (new \DateTimeImmutable($reference . "-01"))->format("t");
+        $due = sprintf("%s-%02d", $reference, min(max($day, 1), $max));
+        $issue = min(gmdate("Y-m-d"), $due);
+
+        return (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->createReceivable([
+            "source_type" => "barbecue_rental", "source_id" => $rental_id,
+            "reference_month" => $reference, "description" => "Mensalista churrasqueira — " . $commercial["title"],
+            "issue_date" => $issue, "due_date" => $due, "original_amount" => $total,
+            "unit_amount" => $total, "quantity" => "1", "product_id" => (int) ($commercial["product_id"] ?? 0),
         ]);
     }
 

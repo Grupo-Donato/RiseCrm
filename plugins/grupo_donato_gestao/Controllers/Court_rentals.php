@@ -14,6 +14,7 @@ use grupo_donato_gestao\Services\CourtRentalService;
 use grupo_donato_gestao\Services\CustomerAccountService;
 use grupo_donato_gestao\Services\DataNormalizationService;
 use grupo_donato_gestao\Services\FinanceService;
+use grupo_donato_gestao\Services\MonthlyRescheduleService;
 use grupo_donato_gestao\Services\PersonService;
 use grupo_donato_gestao\Services\TemporalService;
 
@@ -22,6 +23,7 @@ class Court_rentals extends Gd_Controller
     private int $unit_id;
     private CourtRentalService $service;
     private BookingService $bookings;
+    private MonthlyRescheduleService $reschedules;
     private TemporalService $time;
 
     public function __construct()
@@ -32,6 +34,7 @@ class Court_rentals extends Gd_Controller
         if (!$this->unit_id) { throw new \RuntimeException("No active unit."); }
         $this->service = new CourtRentalService($this->unit_id, $this->user_id(), $this->login_user);
         $this->bookings = new BookingService($this->unit_id, $this->user_id(), $this->login_user);
+        $this->reschedules = new MonthlyRescheduleService($this->unit_id, $this->user_id(), $this->login_user);
         $this->time = new TemporalService($this->unit_id);
     }
 
@@ -71,10 +74,12 @@ class Court_rentals extends Gd_Controller
     {
         try {
             $result = $this->service->monthlyRentersList(append_server_side_filtering_commmon_params($this->filters()));
+            $reference = date("Y-m");
+            (new \grupo_donato_gestao\Services\ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user))->ensureMonth($reference, "court_rental");
             // Situação financeira e contatos calculados EM LOTE (sem N+1 por linha).
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
             $balances = $this->access->can("gd_rental_payments_view")
-                ? (new \grupo_donato_gestao\Services\FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("court_rental", $ids)
+                ? (new \grupo_donato_gestao\Services\FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("court_rental", $ids, $reference)
                 : [];
             $contacts = $this->batchContacts($result["data"]);
             $rows = []; foreach ($result["data"] as $row) { $rows[] = $this->monthlyRow($row, $balances, $contacts); } $result["data"] = $rows;
@@ -100,11 +105,99 @@ class Court_rentals extends Gd_Controller
             "can_bookings" => $this->access->can("gd_bookings_view"),
             "can_series" => $this->access->can("gd_booking_series_view"),
             "can_finance" => $this->access->can("gd_rental_payments_view"),
+            "can_reschedule" => $this->access->can("gd_court_rentals_manage") && (string) ($rental->rental_type ?? "") === "recurring",
+            "reschedule_history" => $this->access->can("gd_court_rentals_manage") && (string) ($rental->rental_type ?? "") === "recurring" ? $this->reschedules->historyForRental((int) $rental->id) : [],
         ]);
     }
 
     public function single_modal() { return $this->rentalModal("single"); }
     public function monthly_modal() { return $this->rentalModal("recurring"); }
+
+    public function reschedule_modal()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $booking_id = (int) $this->request->getPost("booking_id");
+            $rental_id = (int) $this->request->getPost("rental_id");
+            $occurrence_options = [];
+            $selected_occurrence_date = trim((string) $this->request->getPost("occurrence_date"));
+            if ($booking_id <= 0 && $rental_id > 0) {
+                $occurrence_options = array_values(array_filter(
+                    $this->reschedules->futureOccurrencesForRental($rental_id),
+                    static fn(array $item): bool => empty($item["has_reschedule"])
+                ));
+                if ($selected_occurrence_date !== "") {
+                    $valid_dates = array_map(static fn(array $item): string => (string) $item["occurrence_date"], $occurrence_options);
+                    if (!in_array($selected_occurrence_date, $valid_dates, true)) { $selected_occurrence_date = ""; }
+                }
+            }
+            $occurrence = $booking_id > 0 ? $this->reschedules->occurrence($booking_id) : null;
+            return $this->gd_view("court_rentals/reschedule_modal", [
+                "occurrence" => $occurrence,
+                "occurrence_options" => $occurrence_options,
+                "selected_occurrence_date" => $selected_occurrence_date,
+                "rental_id" => $rental_id,
+                "resources" => $this->bookings->bookableResources("court"),
+                "timezone" => $this->time->timezoneName(),
+            ]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function reschedule_availability()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $this->json_success("", ["data" => $this->reschedules->availableSlots((int) $this->request->getPost("booking_id"), [
+                "occurrence_date" => $this->request->getPost("occurrence_date"),
+                "from_time" => $this->request->getPost("from_time"),
+                "until_time" => $this->request->getPost("until_time"),
+                "duration_minutes" => $this->request->getPost("duration_minutes"),
+                "resource_id" => $this->request->getPost("resource_id"),
+            ])]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function reschedule_resource_options()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $this->json_success("", ["data" => $this->reschedules->availableResourceOptions((int) $this->request->getPost("booking_id"), [
+                "occurrence_date" => $this->request->getPost("occurrence_date"),
+                "new_start_time" => $this->request->getPost("new_start_time"),
+            ])]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function reschedule()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $this->json_success(app_lang("gd_reschedule_success"), ["data" => $this->reschedules->reschedule((int) $this->request->getPost("booking_id"), [
+                "occurrence_date" => $this->request->getPost("occurrence_date"),
+                "new_start_time" => $this->request->getPost("new_start_time"),
+                "new_resource_id" => $this->request->getPost("new_resource_id"),
+                "reason" => $this->request->getPost("reason"),
+                "notes" => $this->request->getPost("notes"),
+            ])]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function revert_reschedule()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $this->json_success(app_lang("gd_reschedule_reverted"), ["data" => $this->reschedules->revert((int) $this->request->getPost("booking_id"), ["reason" => $this->request->getPost("reason")])]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function recurring_availability()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $series_id = (int) $this->request->getPost("series_id");
+            $this->json_success("", ["data" => (new BookingSeriesService($this->unit_id, $this->user_id(), $this->login_user))->recurringAvailability($series_id, $this->seriesInput())]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
 
     /**
      * Formulário único de locação. A rota antiga de mensalistas continua válida,
@@ -118,6 +211,7 @@ class Court_rentals extends Gd_Controller
                 $initial_mode = "single";
             }
             $resources = $this->bookings->bookableResources("court");
+            $barbecue_resources = $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE);
             $edit_data = null;
             $id = (int) ($this->request->getPost("id") ?: $this->request->getGet("id"));
             if ($id <= 0) {
@@ -163,6 +257,22 @@ class Court_rentals extends Gd_Controller
                         throw new \DomainException("gd_invalid_local_datetime");
                     }
                     $duration = max(1, (int) (($local_end->getTimestamp() - $local_start->getTimestamp()) / 60));
+                    $metadata = json_decode((string) ($rental->metadata ?? ""), true);
+                    $metadata = is_array($metadata) ? $metadata : [];
+                    $court_resource_id = 0;
+                    $barbecue_resource_id = 0;
+                    foreach (($booking->resources ?? []) as $booking_resource) {
+                        if ((string) ($booking_resource->resource_type ?? "") === "court") {
+                            $court_resource_id = (int) $booking_resource->resource_id;
+                        }
+                        if ((string) ($booking_resource->resource_type ?? "") === Constants::BARBECUE_RESOURCE_TYPE) {
+                            $barbecue_resource_id = (int) $booking_resource->resource_id;
+                        }
+                    }
+                    $is_combo = $barbecue_resource_id > 0;
+                    $stored_amount = DataNormalizationService::decimal((string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""), 2, true) ?? "0.00";
+                    $base_amount = $this->subtractMoney($stored_amount, $this->rentalAdditionTotal($rental));
+                    $metadata_court_amount = trim((string) ($metadata["court_amount"] ?? ""));
                     $edit_data = [
                         "id" => (int) $rental->id,
                         "rental_type" => "single",
@@ -177,9 +287,19 @@ class Court_rentals extends Gd_Controller
                         "starts_on" => $local_start->format("Y-m-d"),
                         "local_start_time" => $local_start->format("H:i"),
                         "duration_minutes" => $duration,
-                        "resource_id" => (int) (($booking->resources[0]->resource_id ?? 0)),
+                        "resource_id" => $court_resource_id,
+                        "barbecue_resource_id" => $barbecue_resource_id,
+                        "combo_enabled" => $is_combo,
+                        "court_amount" => $metadata_court_amount !== "" ? $metadata_court_amount : $base_amount,
+                        "barbecue_amount" => (string) ($metadata["barbecue_amount"] ?? ""),
+                        "combo_discount_amount" => (string) ($metadata["combo_discount_amount"] ?? ($rental->discount_amount ?? "")),
+                        "combo_discount_reason" => (string) ($metadata["combo_discount_reason"] ?? ($rental->discount_reason ?? "")),
+                        "has_vest" => (int) ($rental->has_vest ?? 0),
+                        "has_ball" => (int) ($rental->has_ball ?? 0),
+                        "vest_amount" => (string) ($rental->vest_amount ?? "0.00"),
+                        "ball_amount" => (string) ($rental->ball_amount ?? "0.00"),
                         "commercial_notes" => (string) ($rental->commercial_notes ?? ""),
-                        "amount" => (string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""),
+                        "amount" => $base_amount,
                     ];
                     $initial_mode = "single";
                 } elseif ((string) $rental->rental_type === "recurring") {
@@ -194,6 +314,8 @@ class Court_rentals extends Gd_Controller
                 if (!$series) { throw new \DomainException("gd_court_rental_series_not_found"); }
                 if (!in_array((string) $series->status, ["active", "paused"], true)) { throw new \DomainException("gd_court_rental_not_editable"); }
                 $duration = $this->seriesDurationMinutes($series);
+                $stored_amount = DataNormalizationService::decimal((string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""), 2, true) ?? "0.00";
+                $base_amount = $this->subtractMoney($stored_amount, $this->rentalAdditionTotal($rental));
                 $edit_data = [
                     "id" => (int) $rental->id,
                     "rental_type" => "recurring",
@@ -210,8 +332,12 @@ class Court_rentals extends Gd_Controller
                     "duration_minutes" => $duration,
                     "resource_id" => (int) (($series->resources[0]->resource_id ?? 0)),
                     "preferred_due_day" => (int) ($rental->preferred_due_day ?? 0),
+                    "has_vest" => (int) ($rental->has_vest ?? 0),
+                    "has_ball" => (int) ($rental->has_ball ?? 0),
+                    "vest_amount" => (string) ($rental->vest_amount ?? "0.00"),
+                    "ball_amount" => (string) ($rental->ball_amount ?? "0.00"),
                     "commercial_notes" => (string) ($rental->commercial_notes ?? ""),
-                    "amount" => (string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""),
+                    "amount" => $base_amount,
                 ];
                 $initial_mode = "recurring";
                 } else {
@@ -220,6 +346,7 @@ class Court_rentals extends Gd_Controller
             }
             return $this->gd_view("court_rentals/rental_modal", [
                 "resources" => $resources,
+                "barbecue_resources" => $barbecue_resources,
                 "timezone" => $this->time->timezoneName(),
                 "initial_mode" => $initial_mode,
                 "finance_accounts" => (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->accounts(),
@@ -306,6 +433,50 @@ class Court_rentals extends Gd_Controller
             }
 
             $resources = $this->bookings->bookableResources("court");
+            if (!$resources) { $this->json_success("", ["data" => []]); return; }
+            $input = [
+                "starts_at_local" => $starts,
+                "ends_at_local" => $ends,
+                "resources" => array_map(static fn(array $resource): array => [
+                    "resource_id" => (int) $resource["id"],
+                    "buffer_before_minutes" => 0,
+                    "buffer_after_minutes" => 0,
+                ], $resources),
+            ];
+            $result = $this->bookings->checkAvailability($input);
+            $conflicts = [];
+            foreach (($result["conflicts"] ?? []) as $conflict) {
+                $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
+            }
+            $rows = [];
+            foreach ($resources as $resource) {
+                $id = (int) $resource["id"];
+                $physical = $result["resources"][$id] ?? [];
+                $has_conflict = isset($conflicts[$id]);
+                $rows[] = [
+                    "id" => $id,
+                    "code" => (string) $resource["code"],
+                    "name" => (string) $resource["name"],
+                    "available" => !$has_conflict && (($physical["available"] ?? false) === true),
+                    "reason_code" => $has_conflict ? "booking_conflict" : (string) ($physical["reason_code"] ?? "resource_unavailable"),
+                ];
+            }
+            $this->json_success("", ["data" => $rows]);
+        } catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    /** Disponibilidade de todas as churrasqueiras para o combo quadra + churrasqueira. */
+    public function barbecue_availability_options()
+    {
+        try {
+            $this->access->require("gd_court_rentals_manage");
+            $starts = trim((string) $this->request->getPost("starts_at_local"));
+            $ends = trim((string) $this->request->getPost("ends_at_local"));
+            if (!$this->validLocalDateTime($starts) || !$this->validLocalDateTime($ends)) {
+                throw new \DomainException("gd_invalid_local_datetime");
+            }
+
+            $resources = $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE);
             if (!$resources) { $this->json_success("", ["data" => []]); return; }
             $input = [
                 "starts_at_local" => $starts,
@@ -438,7 +609,7 @@ class Court_rentals extends Gd_Controller
             $result = $this->service->singleRentalsList(append_server_side_filtering_commmon_params($this->filters()));
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
             $balances = $this->access->can("gd_rental_payments_view")
-                ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("court_rental", $ids)
+                ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("court_rental", $ids, "")
                 : [];
             $contacts = $this->batchContacts($result["data"]);
             $rows = [];
@@ -621,10 +792,19 @@ class Court_rentals extends Gd_Controller
             "discount_amount" => $this->request->getPost("discount_amount"), "discount_reason" => $this->request->getPost("discount_reason"),
             "product_id" => $this->request->getPost("product_id"), "price_list_id" => $this->request->getPost("price_list_id"), "price_id" => $this->request->getPost("price_id"),
             "commercial_notes" => $this->request->getPost("commercial_notes"), "metadata" => $this->request->getPost("metadata"),
+            "has_vest" => $this->request->getPost("has_vest"), "has_ball" => $this->request->getPost("has_ball"),
+            "vest_amount" => $this->request->getPost("vest_amount"), "ball_amount" => $this->request->getPost("ball_amount"),
+            "financial_status" => $this->request->getPost("financial_status"),
             "contact_phone" => $this->request->getPost("contact_phone"),
             "deposit_amount" => $this->request->getPost("deposit_amount"),
             "deposit_payment_method" => $this->request->getPost("deposit_payment_method"),
             "financial_account_id" => $this->request->getPost("financial_account_id"),
+            "combo_enabled" => $this->request->getPost("combo_enabled"),
+            "barbecue_resource_id" => $this->request->getPost("barbecue_resource_id"),
+            "court_amount" => $this->request->getPost("court_amount"),
+            "barbecue_amount" => $this->request->getPost("barbecue_amount"),
+            "combo_discount_amount" => $this->request->getPost("combo_discount_amount"),
+            "combo_discount_reason" => $this->request->getPost("combo_discount_reason"),
         ];
     }
 
@@ -656,10 +836,15 @@ class Court_rentals extends Gd_Controller
     private function requestResources(): array
     {
         $selected = (int) $this->request->getPost("selected_resource_id");
+        $resources = [];
         if ($selected > 0) {
-            return [["resource_id" => $selected, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]];
+            $resources[] = ["resource_id" => $selected, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
         }
-        return $this->normalizedResources($this->request->getPost("resources"));
+        $barbecue = (int) $this->request->getPost("barbecue_resource_id");
+        if ((string) $this->request->getPost("combo_enabled") === "1" && $barbecue > 0) {
+            $resources[] = ["resource_id" => $barbecue, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
+        }
+        return $resources ?: $this->normalizedResources($this->request->getPost("resources"));
     }
 
     private function normalizedResources($raw): array
@@ -675,43 +860,147 @@ class Court_rentals extends Gd_Controller
         $duration = (int) $this->request->getPost("duration_minutes");
         $resource_id = (int) $this->request->getPost("selected_resource_id");
         if ($resource_id <= 0) { throw new \DomainException("gd_select_at_least_one_court"); }
-        $resource_ok = db_connect()->table(db_connect()->prefixTable("gd_resources"))
+        $db = db_connect();
+        $resource_ok = $db->table($db->prefixTable("gd_resources"))
             ->where("id", $resource_id)->where("unit_id", $this->unit_id)->where("resource_type", "court")
             ->where("deleted", 0)->where("is_active", 1)->where("is_bookable", 1)->countAllResults() === 1;
         if (!$resource_ok) { throw new \DomainException("gd_invalid_booking_resources"); }
 
+        $barbecue_resource_id = (int) $this->request->getPost("barbecue_resource_id");
+        $combo_requested = (string) $this->request->getPost("combo_enabled") === "1";
+        if ($mode !== "single" && $combo_requested) {
+            throw new \DomainException("gd_combo_single_only");
+        }
+        $combo_enabled = $mode === "single" && $combo_requested;
+        if ($combo_enabled) {
+            $barbecue_ok = $db->table($db->prefixTable("gd_resources"))
+                ->where("id", $barbecue_resource_id)->where("unit_id", $this->unit_id)
+                ->where("resource_type", Constants::BARBECUE_RESOURCE_TYPE)
+                ->where("deleted", 0)->where("is_active", 1)->where("is_bookable", 1)
+                ->countAllResults() === 1;
+            if (!$barbecue_ok) { throw new \DomainException("gd_invalid_booking_resources"); }
+        } else {
+            $barbecue_resource_id = 0;
+        }
+
         $input["currency"] = $existing_rental ? (string) $existing_rental->currency : Constants::DEFAULT_CURRENCY;
-        $input["discount_amount"] = $existing_rental ? $existing_rental->discount_amount : null;
-        $input["discount_reason"] = $existing_rental ? $existing_rental->discount_reason : null;
+        $existing_metadata = $existing_rental ? json_decode((string) ($existing_rental->metadata ?? ""), true) : [];
+        $existing_metadata = is_array($existing_metadata) ? $existing_metadata : [];
+        $existing_combo = !empty($existing_metadata["combo_enabled"]);
+        $input["discount_amount"] = $existing_rental && !$existing_combo ? $existing_rental->discount_amount : null;
+        $input["discount_reason"] = $existing_rental && !$existing_combo ? $existing_rental->discount_reason : null;
         $input["product_id"] = $existing_rental ? $existing_rental->product_id : null;
         $input["price_list_id"] = $existing_rental ? $existing_rental->price_list_id : null;
         $input["price_id"] = $existing_rental ? $existing_rental->price_id : null;
         $input["resources"] = [["resource_id" => $resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]];
+        if ($combo_enabled) {
+            $input["resources"][] = ["resource_id" => $barbecue_resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
+        }
 
         $keeps_existing_duration = $existing_rental && $existing_duration > 0 && $duration === $existing_duration;
         if (!in_array($duration, [90, 120], true) && !$keeps_existing_duration) {
             throw new \DomainException("gd_invalid_rental_duration");
         }
 
-        $amount = DataNormalizationService::decimal($input["negotiated_amount"] ?? ($input["list_amount"] ?? ""), 2, true);
-        if ($amount === null && $keeps_existing_duration) {
-            $amount = DataNormalizationService::decimal((string) $existing_rental->negotiated_amount, 2, true);
+        $financial_status = strtolower(trim((string) ($input["financial_status"] ?? "")));
+        if ($financial_status !== "" && !in_array($financial_status, ["chargeable", "exempt"], true)) {
+            throw new \DomainException("gd_finance_invalid_rental_status");
         }
-        if ($amount === null) { throw new \DomainException("gd_court_rental_value_required"); }
-        $input["list_amount"] = $amount;
-        $input["negotiated_amount"] = $amount;
+        $is_exempt = $financial_status === "exempt";
+        $has_vest = filter_var($this->request->getPost("has_vest"), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        $has_ball = filter_var($this->request->getPost("has_ball"), FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        $vest_amount = $this->formMoney($this->request->getPost("vest_amount"), true) ?? "0.00";
+        $ball_amount = $this->formMoney($this->request->getPost("ball_amount"), true) ?? "0.00";
+        if (!$has_vest) { $vest_amount = "0.00"; }
+        if (!$has_ball) { $ball_amount = "0.00"; }
+        if (!$is_exempt) {
+            if ($has_vest && DataNormalizationService::decimalCompare($vest_amount, "0.00") <= 0) {
+                throw new \DomainException("gd_rental_addition_amount_required");
+            }
+            if ($has_ball && DataNormalizationService::decimalCompare($ball_amount, "0.00") <= 0) {
+                throw new \DomainException("gd_rental_addition_amount_required");
+            }
+        }
+        $addition_total = $this->addMoney($vest_amount, $ball_amount);
+        $input["has_vest"] = $has_vest;
+        $input["has_ball"] = $has_ball;
+        $input["vest_amount"] = $vest_amount;
+        $input["ball_amount"] = $ball_amount;
+        $amount = $this->formMoney($this->request->getPost("court_amount"), true);
+        if ($amount === null && !$is_exempt && $keeps_existing_duration && $existing_rental) {
+            $existing_total = DataNormalizationService::decimal((string) ($existing_rental->negotiated_amount ?? $existing_rental->list_amount ?? ""), 2, true) ?? "0.00";
+            $amount = $this->subtractMoney($existing_total, $this->rentalAdditionTotal($existing_rental));
+        }
+        $combo_data = ["combo_enabled" => $combo_enabled];
+        if ($combo_enabled) {
+            $combo_data["barbecue_resource_id"] = $barbecue_resource_id;
+        }
+        if ($combo_enabled && !$is_exempt) {
+            $court_amount = $this->formMoney($this->request->getPost("court_amount"), true);
+            $barbecue_amount = $this->formMoney($this->request->getPost("barbecue_amount"), true);
+            $combo_discount = $this->formMoney($this->request->getPost("combo_discount_amount"), true) ?? "0.00";
+            if ($court_amount === null || $barbecue_amount === null) {
+                throw new \DomainException("gd_combo_amount_required");
+            }
+            $combo_base = $this->addMoney($court_amount, $barbecue_amount);
+            if (DataNormalizationService::decimalCompare($combo_discount, $combo_base) > 0) {
+                throw new \DomainException("gd_combo_discount_exceeds_base");
+            }
+            $combo_reason = DataNormalizationService::text(strip_tags((string) $this->request->getPost("combo_discount_reason")));
+            if (DataNormalizationService::decimalCompare($combo_discount, "0.00") > 0 && $combo_reason === "") {
+                throw new \DomainException("gd_combo_discount_reason_required");
+            }
+            $combo_total = $this->addMoney($this->subtractMoney($combo_base, $combo_discount), $addition_total);
+            $input["list_amount"] = $this->addMoney($combo_base, $addition_total);
+            $input["negotiated_amount"] = $this->addMoney($combo_base, $addition_total);
+            $input["discount_amount"] = DataNormalizationService::decimalCompare($combo_discount, "0.00") > 0 ? $combo_discount : null;
+            $input["discount_reason"] = $combo_reason !== "" ? $combo_reason : null;
+            $combo_data += [
+                "court_amount" => $court_amount,
+                "barbecue_amount" => $barbecue_amount,
+                "combo_discount_amount" => $combo_discount,
+                "combo_discount_reason" => $combo_reason,
+                "total_amount" => $combo_total,
+                "vest_amount" => $vest_amount,
+                "ball_amount" => $ball_amount,
+                "addition_total" => $addition_total,
+            ];
+        } else {
+            if (!$is_exempt && $amount === null) { throw new \DomainException("gd_court_rental_value_required"); }
+            $final_amount = $amount === null ? null : $this->addMoney($amount, $addition_total);
+            $input["list_amount"] = $is_exempt ? null : $final_amount;
+            $input["negotiated_amount"] = $is_exempt ? null : $final_amount;
+            $combo_data["vest_amount"] = $vest_amount;
+            $combo_data["ball_amount"] = $ball_amount;
+            $combo_data["addition_total"] = $addition_total;
+            $combo_data["total_amount"] = $is_exempt ? null : $final_amount;
+            if ($is_exempt) {
+                $input["discount_amount"] = null;
+                $input["discount_reason"] = null;
+            }
+        }
         if (!$existing_rental) {
-            $input["discount_amount"] = null;
-            $input["discount_reason"] = null;
+            if (!$combo_enabled) {
+                $input["discount_amount"] = null;
+                $input["discount_reason"] = null;
+            }
             $input["product_id"] = null;
             $input["price_list_id"] = null;
             $input["price_id"] = null;
         }
-        $input["metadata"] = json_encode([
+        $metadata = [
             "rental_mode" => $mode,
             "duration_minutes" => $duration,
             "amount_source" => "manual",
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            "vest_amount" => $vest_amount,
+            "ball_amount" => $ball_amount,
+            "addition_total" => $addition_total,
+        ];
+        if ($combo_data["combo_enabled"]) { $metadata += $combo_data; }
+        if (!$combo_data["combo_enabled"]) { $metadata["total_amount"] = $is_exempt ? null : ($final_amount ?? null); }
+        if ($is_exempt) { $metadata["financial_status"] = "exempt"; }
+        $input["metadata"] = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $input["barbecue_resource_id"] = $barbecue_resource_id;
 
         if ($mode === "recurring") {
             $due_day_raw = trim((string) ($input["preferred_due_day"] ?? ""));
@@ -751,6 +1040,44 @@ class Court_rentals extends Gd_Controller
         $input["effective_from"] = $start->format("Y-m-d");
         $input["effective_until"] = $end->format("Y-m-d");
         return $input;
+    }
+
+    private function addMoney(string $left, string $right): string
+    {
+        return $this->centsToMoney($this->moneyToCents($left) + $this->moneyToCents($right));
+    }
+
+    private function subtractMoney(string $left, string $right): string
+    {
+        return $this->centsToMoney(max(0, $this->moneyToCents($left) - $this->moneyToCents($right)));
+    }
+
+    private function formMoney($value, bool $allowNull = false): ?string
+    {
+        $value = trim((string) $value);
+        if ($value !== "" && strpos($value, ",") !== false && strpos($value, ".") !== false) {
+            $value = str_replace(".", "", $value);
+            $value = str_replace(",", ".", $value);
+        }
+        return DataNormalizationService::decimal($value, 2, $allowNull);
+    }
+
+    private function rentalAdditionTotal(object $rental): string
+    {
+        $vest = DataNormalizationService::decimal((string) ($rental->vest_amount ?? "0.00"), 2, true) ?? "0.00";
+        $ball = DataNormalizationService::decimal((string) ($rental->ball_amount ?? "0.00"), 2, true) ?? "0.00";
+        return $this->addMoney($vest, $ball);
+    }
+
+    private function moneyToCents(string $value): int
+    {
+        [$whole, $fraction] = array_pad(explode(".", $value, 2), 2, "0");
+        return ((int) $whole * 100) + (int) str_pad(substr($fraction, 0, 2), 2, "0");
+    }
+
+    private function centsToMoney(int $cents): string
+    {
+        return intdiv($cents, 100) . "." . str_pad((string) ($cents % 100), 2, "0", STR_PAD_LEFT);
     }
 
     private function validYmd(string $value): bool
@@ -1272,7 +1599,16 @@ class Court_rentals extends Gd_Controller
     {
         if (!$this->access->can("gd_rental_payments_view")) { return "-"; }
         $info = $balances[(int) $row->id] ?? null;
-        if (!$info) { return '<span class="badge bg-secondary">' . app_lang("gd_finance_no_receivable") . "</span>"; }
+        if (!$info) {
+            $metadata = json_decode((string) ($row->metadata ?? ""), true);
+            if (is_array($metadata) && (string) ($metadata["financial_status"] ?? "") === "exempt") {
+                return '<span class="badge bg-secondary">' . app_lang("gd_finance_exempt") . "</span>";
+            }
+            $amount = $row->negotiated_amount ?? $row->list_amount ?? null;
+            $hasValue = $amount !== null && DataNormalizationService::decimalCompare((string) $amount, "0.00") > 0;
+            $label = $hasValue ? "gd_finance_pending_generation" : "gd_finance_no_receivable";
+            return '<span class="badge bg-secondary">' . app_lang($label) . "</span>";
+        }
         $bal = (string) ($info["balance"] ?? "0.00");
         $overdue = (string) ($info["overdue"] ?? "0.00");
         if (DataNormalizationService::decimalCompare($overdue, "0.00") > 0) {
@@ -1293,15 +1629,18 @@ class Court_rentals extends Gd_Controller
      */
     private function monthlyActions(object $row, array $balances): string
     {
-        return $this->rentalActions($row, $balances, "monthly-modal", "gd-court-renters-table", "mensalista");
+        return $this->rentalActions($row, $balances, "monthly-modal", "gd-court-renters-table", "mensalista", true);
     }
 
-    private function rentalActions(object $row, array $balances, string $modal, string $reload_target, string $edit_label): string
+    private function rentalActions(object $row, array $balances, string $modal, string $reload_target, string $edit_label, bool $allow_reschedule = false): string
     {
         $id = (int) $row->id; $lock = (int) ($row->lock_version ?? 0); $status = (string) $row->status;
         $html = anchor(get_uri("grupo_donato/court-rentals/view/" . $id), "<i data-feather='eye' class='icon-16'></i>", ["title" => app_lang("gd_view_details"), "class" => "me-2"]);
         if ($this->access->can("gd_court_rentals_manage") && !in_array($status, ["cancelled", "completed", "archived"], true)) {
             $html .= modal_anchor(get_uri("grupo_donato/court-rentals/" . $modal), "<i data-feather='edit' class='icon-16'></i>", ["title" => app_lang("edit") . " " . $edit_label, "class" => "edit me-2", "data-post-id" => $id]);
+            if ($allow_reschedule) {
+                $html .= modal_anchor(get_uri("grupo_donato/court-rentals/reschedule-modal"), "<i data-feather='shuffle' class='icon-16'></i>", ["title" => app_lang("gd_reschedule_rental"), "class" => "me-2", "data-modal-lg" => 1, "data-post-rental_id" => $id]);
+            }
         }
         if ($this->access->can("gd_court_rentals_status_manage")) {
             if ($status === "active") { $html .= '<a href="#" class="gd-cr-act me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="suspend" title="' . app_lang("gd_suspend") . '"><i data-feather="pause-circle" class="icon-16"></i></a>'; }
@@ -1362,7 +1701,7 @@ class Court_rentals extends Gd_Controller
 
     private function contractedAmount(object $row): string
     {
-        $amount = $row->negotiated_amount ?? $row->list_amount;
+        $amount = $row->contracted_total ?? $row->negotiated_amount ?? $row->list_amount;
         return $amount !== null ? $this->escape(to_currency($amount)) : "-";
     }
 }

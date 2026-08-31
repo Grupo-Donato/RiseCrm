@@ -62,6 +62,7 @@ class CourtRentalService extends CatalogDataService
         }
         $row->schedule = $this->scheduleSummary($row, $row->links);
         $row->price_difference = $this->priceDifference($row);
+        $row->contracted_total = $this->commercialTotal($this->commercialArray($row));
         return $row;
     }
 
@@ -131,6 +132,7 @@ class CourtRentalService extends CatalogDataService
         foreach ($rows as $row) {
             $row->links = $this->resolvedLinks((int) $row->id);
             $row->schedule = $this->scheduleSummary($row, $row->links);
+            $row->contracted_total = $this->commercialTotal($this->commercialArray($row));
         }
         return ["data" => $rows, "recordsTotal" => $total, "recordsFiltered" => $filtered];
     }
@@ -204,7 +206,7 @@ class CourtRentalService extends CatalogDataService
             $booking = (new BookingService($this->unit_id, $this->actor_id, $this->login_user))->save($booking_input, 0, true, true, true);
             $number = $this->nextNumber();
             $id = $this->insertRental($commercial, $number, "draft");
-            $primary_resource = $resource_ids ? min($resource_ids) : 0;
+            $primary_resource = $this->primaryCourtResource($resource_ids);
             $this->insertLink($id, (int) $booking["id"], null, "primary");
             $this->writeSnapshotIfPriced($id, $commercial, $primary_resource);
             $evt = new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user);
@@ -242,12 +244,17 @@ class CourtRentalService extends CatalogDataService
             $number = $this->nextNumber();
             $id = $this->insertRental($commercial, $number, "draft");
             $this->insertLink($id, null, (int) $series["id"], "primary");
-            $primary_resource = (int) ($series_input["resources"][0]["resource_id"] ?? 0);
+            $primary_resource = $this->primaryCourtResource(array_map(static fn($r): int => (int) $r["resource_id"], $series_input["resources"]));
             $this->writeSnapshotIfPriced($id, $commercial, $primary_resource);
             $evt = new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user);
             $evt->append($id, "created", null, "draft", null, ["rental_number" => $number, "mode" => "recurring", "series_id" => (int) $series["id"]]);
             $evt->append($id, "schedule_linked", null, "draft", null, ["booking_series_id" => (int) $series["id"], "link_kind" => "primary"]);
             $this->audit_change("court_rental_created", "court_rental", $id, null, ["rental_number" => $number] + $commercial, ["mode" => "recurring", "series_id" => (int) $series["id"]]);
+            // A série e a locação só ficam concluídas quando a primeira
+            // competência também está no ledger. A geração posterior continua
+            // idempotente, mas a tela de mensalistas não pode depender de o
+            // operador abrir o módulo financeiro para criar essa cobrança.
+            $finance = $this->createRecurringRentalFinance($id, $commercial);
             if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental recurring commit"); }
             $in_tx = false;
         } catch (\Throwable $e) {
@@ -256,7 +263,7 @@ class CourtRentalService extends CatalogDataService
         } finally {
             $lock->release();
         }
-        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "series_id" => (int) ($series["id"] ?? 0), "series_number" => (string) ($series["series_number"] ?? ""), "generation" => $series["generation"] ?? null];
+        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "series_id" => (int) ($series["id"] ?? 0), "series_number" => (string) ($series["series_number"] ?? ""), "generation" => $series["generation"] ?? null, "finance" => $finance ?? null];
     }
 
     /**
@@ -307,12 +314,11 @@ class CourtRentalService extends CatalogDataService
             $old_resource_ids = array_map(static fn($r): int => (int) $r->resource_id, $booking_before->resources ?? []);
             $new_resource_ids = array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $booking_input["resources"] ?? []);
             sort($old_resource_ids); sort($new_resource_ids);
-            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency"];
+            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency", "has_vest", "has_ball", "vest_amount", "ball_amount"];
             $price_changed = $old_resource_ids !== $new_resource_ids;
             foreach ($price_fields as $field) {
                 if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
             }
-
             $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $rlock->acquire($this->unit_id, array_values(array_unique(array_merge($old_resource_ids, $new_resource_ids))));
@@ -327,7 +333,7 @@ class CourtRentalService extends CatalogDataService
                 $this->db->table($this->db->prefixTable("gd_court_rental_price_items"))
                     ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)
                     ->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
-                $this->writeSnapshotIfPriced($rental_id, $commercial, (int) ($new_resource_ids[0] ?? 0));
+                $this->writeSnapshotIfPriced($rental_id, $commercial, $this->primaryCourtResource($new_resource_ids));
             }
             if (DataNormalizationService::decimalCompare($old_total, $new_total) !== 0) {
                 (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->syncCourtRentalReceivableAmount(
@@ -514,17 +520,21 @@ class CourtRentalService extends CatalogDataService
             $series_before = $series_service->get($series_id);
             if (!$series_before) { throw new \DomainException("gd_court_rental_series_not_found"); }
             $series_input["lock_version"] = (int) ($input["series_lock_version"] ?? 0);
+            $recurring_check = $series_service->recurringAvailability($series_id, $series_input);
+            if (!empty($recurring_check["has_conflict"])) { throw new \DomainException("gd_booking_series_future_conflict"); }
 
             $old_resource_ids = array_map(static fn($r): int => (int) $r->resource_id, $series_before->resources ?? []);
             sort($old_resource_ids);
             $new_resource_ids = array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $series_input["resources"] ?? []);
             sort($new_resource_ids);
-            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency"];
+            $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency", "has_vest", "has_ball", "vest_amount", "ball_amount"];
             $price_changed = $old_resource_ids !== $new_resource_ids;
             foreach ($price_fields as $field) {
                 if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
             }
 
+            $old_base_total = $this->commercialTotal($this->commercialArray($before));
+            $new_base_total = $this->commercialTotal($commercial);
             if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental monthly update transaction"); }
             $in_tx = true;
             $series_result = $series_service->updateEntire($series_id, $series_input);
@@ -536,6 +546,11 @@ class CourtRentalService extends CatalogDataService
                     ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("deleted", 0)
                     ->update(["deleted" => 1, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
                 $this->writeSnapshotIfPriced($rental_id, $commercial, (int) ($new_resource_ids[0] ?? 0));
+                if ($old_base_total !== null && $new_base_total !== null && DataNormalizationService::decimalCompare($old_base_total, $new_base_total) !== 0) {
+                    (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->syncCourtRentalRecurringReceivableAmount(
+                        $rental_id, $old_base_total, $new_base_total, "Mensalista — " . $commercial["title"]
+                    );
+                }
             }
             (new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
                 $rental_id,
@@ -613,7 +628,16 @@ class CourtRentalService extends CatalogDataService
             if (in_array((string) $before->status, ["cancelled", "completed", "archived"], true)) { throw new \DomainException("gd_court_rental_not_editable"); }
             $expected = (int) ($input["lock_version"] ?? 0);
             if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
-            $commercial = $this->normalizeCommercial(array_merge($this->commercialArray($before), $input), (string) $before->rental_type);
+            // A tela de reprecificação não edita adicionais. Quando o campo
+            // não existe no formulário, não deixe o POST nulo sobrescrever o
+            // valor já registrado na locação.
+            $reprice_input = $input;
+            foreach (["has_vest", "has_ball", "vest_amount", "ball_amount"] as $addition_field) {
+                if (!array_key_exists($addition_field, $reprice_input) || $reprice_input[$addition_field] === null) {
+                    unset($reprice_input[$addition_field]);
+                }
+            }
+            $commercial = $this->normalizeCommercial(array_merge($this->commercialArray($before), $reprice_input), (string) $before->rental_type);
             $this->assertCommercialValue($commercial);
             $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
@@ -710,7 +734,31 @@ class CourtRentalService extends CatalogDataService
 
         $notes = trim(strip_tags((string) ($input["commercial_notes"] ?? "")));
         if (mb_strlen($notes) > 5000) { throw new \DomainException("gd_court_rental_notes_too_large"); }
+        $has_vest = filter_var($input["has_vest"] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        $has_ball = filter_var($input["has_ball"] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        $vest_amount = DataNormalizationService::decimal($input["vest_amount"] ?? "0.00", 2, true) ?? "0.00";
+        $ball_amount = DataNormalizationService::decimal($input["ball_amount"] ?? "0.00", 2, true) ?? "0.00";
+        if (!$has_vest) { $vest_amount = "0.00"; }
+        if (!$has_ball) { $ball_amount = "0.00"; }
         $metadata = $this->metadata($input["metadata"] ?? null);
+        $financial_status = strtolower(trim((string) ($input["financial_status"] ?? "")));
+        if ($financial_status !== "" && !in_array($financial_status, ["chargeable", "exempt"], true)) {
+            throw new \DomainException("gd_finance_invalid_rental_status");
+        }
+        if ($financial_status !== "exempt") {
+            if ($has_vest && DataNormalizationService::decimalCompare($vest_amount, "0.00") <= 0) {
+                throw new \DomainException("gd_rental_addition_amount_required");
+            }
+            if ($has_ball && DataNormalizationService::decimalCompare($ball_amount, "0.00") <= 0) {
+                throw new \DomainException("gd_rental_addition_amount_required");
+            }
+        }
+        if ($financial_status === "exempt") {
+            $metadata_data = $metadata ? json_decode($metadata, true) : [];
+            if (!is_array($metadata_data)) { $metadata_data = []; }
+            $metadata_data["financial_status"] = "exempt";
+            $metadata = $this->metadata(json_encode($metadata_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
 
         return [
             "customer_account_id" => $customer, "contact_person_id" => $contact ?: null,
@@ -719,17 +767,26 @@ class CourtRentalService extends CatalogDataService
             "currency" => $currency, "list_amount" => $list_amount, "negotiated_amount" => $negotiated_amount,
             "discount_amount" => $discount_amount, "discount_reason" => $discount_reason ?: null,
             "product_id" => $product_id, "price_list_id" => $price_list_id, "price_id" => $price_id,
-            "commercial_notes" => $notes ?: null, "metadata" => $metadata,
+            "commercial_notes" => $notes ?: null, "has_vest" => $has_vest, "has_ball" => $has_ball,
+            "vest_amount" => $vest_amount, "ball_amount" => $ball_amount,
+            "metadata" => $metadata,
         ];
     }
 
     /** Locação operacional completa precisa ter um valor livremente informado. */
     private function assertCommercialValue(array $commercial): void
     {
+        if ($this->isExemptCommercial($commercial)) { return; }
         $total = $this->commercialTotal($commercial);
         if ($total === null || DataNormalizationService::decimalCompare($total, "0.00") <= 0) {
             throw new \DomainException("gd_court_rental_value_required");
         }
+    }
+
+    private function isExemptCommercial(array $commercial): bool
+    {
+        $metadata = json_decode((string) ($commercial["metadata"] ?? ""), true);
+        return is_array($metadata) && (string) ($metadata["financial_status"] ?? "") === "exempt";
     }
 
     /** Normaliza o sinal sem float e sem permitir valor acima do total. */
@@ -765,6 +822,27 @@ class CourtRentalService extends CatalogDataService
             "original_amount" => $total, "unit_amount" => $total, "quantity" => "1", "product_id" => (int) ($commercial["product_id"] ?? 0),
             "deposit_amount" => $deposit["amount"], "payment_method" => $deposit["payment_method"],
             "financial_account_id" => $deposit["financial_account_id"], "payment_date" => $issue,
+        ]);
+    }
+
+    /** Cria a primeira competência do contrato mensalista de forma idempotente. */
+    private function createRecurringRentalFinance(int $rental_id, array $commercial): ?array
+    {
+        $total = $this->commercialTotal($commercial);
+        if ($total === null || DataNormalizationService::decimalCompare($total, "0.00") <= 0) { return null; }
+
+        $effective = (string) ($commercial["effective_from"] ?? "");
+        $reference = preg_match('/^\d{4}-\d{2}-\d{2}$/', $effective) ? substr($effective, 0, 7) : gmdate("Y-m");
+        $day = (int) ($commercial["preferred_due_day"] ?? 10);
+        $max = (int) (new \DateTimeImmutable($reference . "-01"))->format("t");
+        $due = sprintf("%s-%02d", $reference, min(max($day, 1), $max));
+        $issue = min(gmdate("Y-m-d"), $due);
+
+        return (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->createReceivable([
+            "source_type" => "court_rental", "source_id" => $rental_id,
+            "reference_month" => $reference, "description" => "Mensalista — " . $commercial["title"],
+            "issue_date" => $issue, "due_date" => $due, "original_amount" => $total,
+            "unit_amount" => $total, "quantity" => "1", "product_id" => (int) ($commercial["product_id"] ?? 0),
         ]);
     }
 
@@ -869,6 +947,8 @@ class CourtRentalService extends CatalogDataService
             "list_amount" => $commercial["list_amount"], "negotiated_amount" => $commercial["negotiated_amount"],
             "discount_amount" => $commercial["discount_amount"], "discount_reason" => $commercial["discount_reason"],
             "product_id" => $commercial["product_id"], "price_list_id" => $commercial["price_list_id"], "price_id" => $commercial["price_id"],
+            "has_vest" => (int) ($commercial["has_vest"] ?? 0), "has_ball" => (int) ($commercial["has_ball"] ?? 0),
+            "vest_amount" => (string) ($commercial["vest_amount"] ?? "0.00"), "ball_amount" => (string) ($commercial["ball_amount"] ?? "0.00"),
             "currency" => $commercial["currency"], "captured_at" => gmdate("Y-m-d H:i:s"),
         ];
         $data = $this->stamp([
@@ -912,8 +992,12 @@ class CourtRentalService extends CatalogDataService
         $matching = $this->db->table($table . " br")
             ->join($resources . " r", "r.id=br.resource_id AND r.unit_id=br.unit_id", "inner", false)
             ->where("br.unit_id", $this->unit_id)->where("br." . $foreign, $target)->where("br.deleted", 0)
+            ->where("r.deleted", 0)->whereIn("r.resource_type", ["court", Constants::BARBECUE_RESOURCE_TYPE])->countAllResults();
+        $courts = $this->db->table($table . " br")
+            ->join($resources . " r", "r.id=br.resource_id AND r.unit_id=br.unit_id", "inner", false)
+            ->where("br.unit_id", $this->unit_id)->where("br." . $foreign, $target)->where("br.deleted", 0)
             ->where("r.deleted", 0)->where("r.resource_type", $resource_type)->countAllResults();
-        if ($total < 1 || $matching !== $total) { throw new \DomainException("gd_invalid_booking_resources"); }
+        if ($total < 1 || $matching !== $total || $courts < 1) { throw new \DomainException("gd_invalid_booking_resources"); }
     }
 
     /* ============================ Construção de input reaproveitado ============================ */
@@ -958,11 +1042,16 @@ class CourtRentalService extends CatalogDataService
         }
         if (!$out) { throw new \DomainException("gd_invalid_booking_resources"); }
         $ids = array_values(array_unique(array_map(static fn($r): int => (int) $r["resource_id"], $out)));
-        $valid = $this->db->table($this->db->prefixTable("gd_resources"))
-            ->select("id")->where("unit_id", $this->unit_id)->where("resource_type", "court")
+        $rows = $this->db->table($this->db->prefixTable("gd_resources"))
+            ->select("id,resource_type")->where("unit_id", $this->unit_id)
             ->where("deleted", 0)->where("is_active", 1)->where("is_bookable", 1)->whereIn("id", $ids)
-            ->countAllResults();
-        if ($valid !== count($ids)) { throw new \DomainException("gd_invalid_booking_resources"); }
+            ->get()->getResult();
+        if (count($rows) !== count($ids)) { throw new \DomainException("gd_invalid_booking_resources"); }
+        $types = array_map(static fn($row): string => (string) $row->resource_type, $rows);
+        if (count(array_filter($types, static fn(string $type): bool => $type === "court")) < 1
+            || count(array_filter($types, static fn(string $type): bool => $type === Constants::BARBECUE_RESOURCE_TYPE)) > 1
+            || count(array_filter($types, static fn(string $type): bool => !in_array($type, ["court", Constants::BARBECUE_RESOURCE_TYPE], true))) > 0
+        ) { throw new \DomainException("gd_invalid_booking_resources"); }
         return $out;
     }
 
@@ -1080,7 +1169,10 @@ class CourtRentalService extends CatalogDataService
             "currency" => $rental->currency, "list_amount" => $rental->list_amount, "negotiated_amount" => $rental->negotiated_amount,
             "discount_amount" => $rental->discount_amount, "discount_reason" => $rental->discount_reason,
             "product_id" => $rental->product_id ? (int) $rental->product_id : 0, "price_list_id" => $rental->price_list_id ? (int) $rental->price_list_id : 0, "price_id" => $rental->price_id ? (int) $rental->price_id : 0,
-            "commercial_notes" => $rental->commercial_notes, "metadata" => $rental->metadata,
+            "commercial_notes" => $rental->commercial_notes, "has_vest" => !empty($rental->has_vest) ? 1 : 0,
+            "has_ball" => !empty($rental->has_ball) ? 1 : 0,
+            "vest_amount" => (string) ($rental->vest_amount ?? "0.00"),
+            "ball_amount" => (string) ($rental->ball_amount ?? "0.00"), "metadata" => $rental->metadata,
         ];
     }
 
@@ -1091,6 +1183,22 @@ class CourtRentalService extends CatalogDataService
     }
 
     /** Recurso primário do snapshot anterior (preservado ao reprecificar). */
+    private function primaryCourtResource(array $resource_ids): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map("intval", $resource_ids), static fn(int $id): bool => $id > 0)));
+        if (!$ids) { return 0; }
+        $row = $this->db->table($this->db->prefixTable("gd_resources"))
+            ->select("id")
+            ->where("unit_id", $this->unit_id)
+            ->where("resource_type", "court")
+            ->where("deleted", 0)
+            ->whereIn("id", $ids)
+            ->orderBy("id", "ASC")
+            ->get(1)
+            ->getRow();
+        return (int) ($row->id ?? 0);
+    }
+
     private function primaryResource(int $rental_id): int
     {
         $ids = [];

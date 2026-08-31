@@ -48,6 +48,8 @@ $form_messages = [
                             <input name="negotiated_amount" class="form-control" inputmode="decimal" placeholder="0,00" required>
                         </div>
                     </div>
+                    <div class="form-check mt10"><input type="checkbox" class="form-check-input" id="gd-crm-exempt" name="financial_status" value="exempt"><label class="form-check-label" for="gd-crm-exempt"><?php echo app_lang("gd_finance_mark_exempt"); ?></label></div>
+                    <small class="text-muted"><?php echo app_lang("gd_finance_exempt_help"); ?></small>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label><?php echo app_lang("gd_preferred_due_day"); ?> <span class="text-danger">*</span></label>
@@ -346,6 +348,7 @@ $(document).ready(function(){
 
     $(document).off("change.gdMonthlyResource").on("change.gdMonthlyResource", ".gd-resource-toggle", syncResources);
     $("#gd-crm-ends-mode").on("change", syncEndsMode);
+    $("#gd-crm-exempt").on("change", function(){ $("input[name='negotiated_amount']").prop("required", !this.checked); }).trigger("change");
     syncResources();
     syncEndsMode();
 

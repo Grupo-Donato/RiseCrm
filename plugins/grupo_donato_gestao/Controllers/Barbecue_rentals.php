@@ -49,17 +49,7 @@ class Barbecue_rentals extends Gd_Controller
 
     public function monthly()
     {
-        return $this->gd_render("barbecue_rentals/monthly", [
-            "can_manage" => $this->access->can("gd_barbecue_rentals_manage"),
-            "can_calendar" => $this->access->can("gd_calendar_view"),
-            "can_barbecue_rentals" => true,
-            "can_bookings" => $this->access->can("gd_bookings_view"),
-            "can_series" => $this->access->can("gd_booking_series_view"),
-            "can_finance" => $this->access->can("gd_rental_payments_view"),
-            "statuses" => Constants::COURT_RENTAL_STATUSES,
-            "resources" => $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE),
-            "timezone" => $this->time->timezoneName(),
-        ]);
+        return redirect()->to(get_uri("grupo_donato/barbecue-rentals"));
     }
 
     public function list_data()
@@ -71,10 +61,12 @@ class Barbecue_rentals extends Gd_Controller
     {
         try {
             $result = $this->service->monthlyRentersList(append_server_side_filtering_commmon_params($this->filters()));
+            $reference = date("Y-m");
+            (new \grupo_donato_gestao\Services\ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user))->ensureMonth($reference, "barbecue_rental");
             // Situação financeira e contatos calculados EM LOTE (sem N+1 por linha).
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
             $balances = $this->access->can("gd_rental_payments_view")
-                ? (new \grupo_donato_gestao\Services\FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids)
+                ? (new \grupo_donato_gestao\Services\FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids, $reference)
                 : [];
             $contacts = $this->batchContacts($result["data"]);
             $rows = []; foreach ($result["data"] as $row) { $rows[] = $this->monthlyRow($row, $balances, $contacts); } $result["data"] = $rows;
@@ -123,11 +115,11 @@ class Barbecue_rentals extends Gd_Controller
             if ($id <= 0) {
                 $prefill_date = trim((string) $this->request->getPost("prefill_date"));
                 $prefill_time = trim((string) $this->request->getPost("prefill_start_time"));
-                $prefill_duration = (int) $this->request->getPost("prefill_duration_minutes");
+                $prefill_duration = $this->parseDurationMinutes($this->request->getPost("prefill_duration_minutes"));
                 $prefill_resource = (int) $this->request->getPost("prefill_resource_id");
                 $resource_ids = array_map("intval", array_column($resources, "id"));
                 if ($this->validYmd($prefill_date) && $this->validHm($prefill_time)
-                    && in_array($prefill_duration, [90, 120], true)
+                    && $prefill_duration > 0
                     && in_array($prefill_resource, $resource_ids, true)) {
                     $edit_data = [
                         "starts_on" => $prefill_date,
@@ -438,7 +430,7 @@ class Barbecue_rentals extends Gd_Controller
             $result = $this->service->singleRentalsList(append_server_side_filtering_commmon_params($this->filters()));
             $ids = array_map(static fn($row) => (int) $row->id, $result["data"]);
             $balances = $this->access->can("gd_rental_payments_view")
-                ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids)
+                ? (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->balancesBySource("barbecue_rental", $ids, "")
                 : [];
             $contacts = $this->batchContacts($result["data"]);
             $rows = [];
@@ -621,6 +613,7 @@ class Barbecue_rentals extends Gd_Controller
             "discount_amount" => $this->request->getPost("discount_amount"), "discount_reason" => $this->request->getPost("discount_reason"),
             "product_id" => $this->request->getPost("product_id"), "price_list_id" => $this->request->getPost("price_list_id"), "price_id" => $this->request->getPost("price_id"),
             "commercial_notes" => $this->request->getPost("commercial_notes"), "metadata" => $this->request->getPost("metadata"),
+            "financial_status" => $this->request->getPost("financial_status"),
             "contact_phone" => $this->request->getPost("contact_phone"),
             "deposit_amount" => $this->request->getPost("deposit_amount"),
             "deposit_payment_method" => $this->request->getPost("deposit_payment_method"),
@@ -669,10 +662,34 @@ class Barbecue_rentals extends Gd_Controller
         return $out;
     }
 
+    /** Aceita durações livres, em minutos ou nos formatos 1h30, 2h e 90 min. */
+    private function parseDurationMinutes($value): int
+    {
+        $raw = mb_strtolower(trim((string) $value));
+        if ($raw === "") { return 0; }
+        $raw = preg_replace('/\s+/', ' ', $raw) ?? $raw;
+        $minutes = 0;
+
+        if (preg_match('/^\d+$/', $raw)) {
+            $minutes = (int) $raw;
+        } elseif (preg_match('/^(\d+)\s*h\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/u', $raw, $match)) {
+            $hours = (int) $match[1];
+            $extra = isset($match[2]) ? (int) $match[2] : 0;
+            if ($extra < 60) { $minutes = ($hours * 60) + $extra; }
+        } elseif (preg_match('/^(\d+)\s*(?:m|min|minutos?)$/u', $raw, $match)) {
+            $minutes = (int) $match[1];
+        } elseif (preg_match('/^(\d+):(\d{2})$/', $raw, $match)) {
+            $extra = (int) $match[2];
+            if ($extra < 60) { $minutes = ((int) $match[1] * 60) + $extra; }
+        }
+
+        return $minutes > 0 && $minutes <= Constants::BOOKING_MAX_DURATION_MINUTES ? $minutes : 0;
+    }
+
     /** Normaliza duração e valor do formulário sem substituir o preço informado. */
     private function normalizeRentalFormInput(array $input, string $mode, ?object $existing_rental = null, int $existing_duration = 0): array
     {
-        $duration = (int) $this->request->getPost("duration_minutes");
+        $duration = $this->parseDurationMinutes($this->request->getPost("duration_minutes"));
         $resource_id = (int) $this->request->getPost("selected_resource_id");
         if ($resource_id <= 0) { throw new \DomainException("gd_select_at_least_one_court"); }
         $resource_ok = db_connect()->table(db_connect()->prefixTable("gd_resources"))
@@ -689,17 +706,22 @@ class Barbecue_rentals extends Gd_Controller
         $input["resources"] = [["resource_id" => $resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]];
 
         $keeps_existing_duration = $existing_rental && $existing_duration > 0 && $duration === $existing_duration;
-        if (!in_array($duration, [90, 120], true) && !$keeps_existing_duration) {
+        if ($duration < 1 || $duration > Constants::BOOKING_MAX_DURATION_MINUTES) {
             throw new \DomainException("gd_invalid_rental_duration");
         }
 
+        $financial_status = strtolower(trim((string) ($input["financial_status"] ?? "")));
+        if ($financial_status !== "" && !in_array($financial_status, ["chargeable", "exempt"], true)) {
+            throw new \DomainException("gd_finance_invalid_rental_status");
+        }
+        $is_exempt = $financial_status === "exempt";
         $amount = DataNormalizationService::decimal($input["negotiated_amount"] ?? ($input["list_amount"] ?? ""), 2, true);
-        if ($amount === null && $keeps_existing_duration) {
+        if (!$is_exempt && $amount === null && $keeps_existing_duration) {
             $amount = DataNormalizationService::decimal((string) $existing_rental->negotiated_amount, 2, true);
         }
-        if ($amount === null) { throw new \DomainException("gd_barbecue_rental_value_required"); }
-        $input["list_amount"] = $amount;
-        $input["negotiated_amount"] = $amount;
+        if (!$is_exempt && $amount === null) { throw new \DomainException("gd_barbecue_rental_value_required"); }
+        $input["list_amount"] = $is_exempt ? null : $amount;
+        $input["negotiated_amount"] = $is_exempt ? null : $amount;
         if (!$existing_rental) {
             $input["discount_amount"] = null;
             $input["discount_reason"] = null;
@@ -707,11 +729,13 @@ class Barbecue_rentals extends Gd_Controller
             $input["price_list_id"] = null;
             $input["price_id"] = null;
         }
-        $input["metadata"] = json_encode([
+        $metadata = [
             "rental_mode" => $mode,
             "duration_minutes" => $duration,
             "amount_source" => "manual",
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ];
+        if ($is_exempt) { $metadata["financial_status"] = "exempt"; }
+        $input["metadata"] = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         if ($mode === "recurring") {
             $due_day_raw = trim((string) ($input["preferred_due_day"] ?? ""));
@@ -761,7 +785,7 @@ class Barbecue_rentals extends Gd_Controller
 
     private function validHm(string $value): bool
     {
-        if (!preg_match('/^\d{2}:(00|30)$/', $value)) { return false; }
+        if (!preg_match('/^\d{2}:\d{2}$/', $value)) { return false; }
         $date = \DateTimeImmutable::createFromFormat("!H:i", $value);
         return $date instanceof \DateTimeImmutable && $date->format("H:i") === $value;
     }
@@ -1272,7 +1296,16 @@ class Barbecue_rentals extends Gd_Controller
     {
         if (!$this->access->can("gd_rental_payments_view")) { return "-"; }
         $info = $balances[(int) $row->id] ?? null;
-        if (!$info) { return '<span class="badge bg-secondary">' . app_lang("gd_finance_no_receivable") . "</span>"; }
+        if (!$info) {
+            $metadata = json_decode((string) ($row->metadata ?? ""), true);
+            if (is_array($metadata) && (string) ($metadata["financial_status"] ?? "") === "exempt") {
+                return '<span class="badge bg-secondary">' . app_lang("gd_finance_exempt") . "</span>";
+            }
+            $amount = $row->negotiated_amount ?? $row->list_amount ?? null;
+            $hasValue = $amount !== null && DataNormalizationService::decimalCompare((string) $amount, "0.00") > 0;
+            $label = $hasValue ? "gd_finance_pending_generation" : "gd_finance_no_receivable";
+            return '<span class="badge bg-secondary">' . app_lang($label) . "</span>";
+        }
         $bal = (string) ($info["balance"] ?? "0.00");
         $overdue = (string) ($info["overdue"] ?? "0.00");
         if (DataNormalizationService::decimalCompare($overdue, "0.00") > 0) {

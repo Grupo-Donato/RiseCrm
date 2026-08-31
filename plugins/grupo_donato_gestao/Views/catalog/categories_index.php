@@ -1,4 +1,5 @@
 <div id="page-content" class="page-wrapper clearfix">
+    <?php echo view("grupo_donato_gestao\\Views\\components\\catalog_nav", ["active_catalog_tab" => "categories", "can_categories" => $can_categories, "can_resources" => $can_resources, "can_pricing" => $can_pricing]); ?>
     <div class="card">
         <div class="page-title clearfix">
             <h4><?php echo app_lang("gd_product_categories"); ?></h4>

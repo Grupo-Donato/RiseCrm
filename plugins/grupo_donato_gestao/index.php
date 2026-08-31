@@ -171,8 +171,9 @@ if (!function_exists('gd_current_login_user')) {
         $can_barbecue_rentals = $can('gd_barbecue_rentals_view');
         $can_school = $can('gd_school_view');
         $can_finance = $can('gd_rental_payments_view');
+        $can_costs = $can('gd_costs_view');
 
-        if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_barbecue_rentals && !$can_school && !$can_finance) {
+        if (!$can_calendar && !$can_bookings && !$can_booking_series && !$can_court_rentals && !$can_barbecue_rentals && !$can_school && !$can_finance && !$can_costs) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
@@ -289,12 +290,6 @@ if (!function_exists('gd_current_login_user')) {
                 "is_custom_menu_item" => true,
                 "url" => get_uri("grupo_donato/barbecue-rentals"),
             ];
-            $barbecue_rental_submenu[] = [
-                "name" => "barbecue_monthly",
-                "language_key" => "gd_menu_barbecue_monthly",
-                "is_custom_menu_item" => true,
-                "url" => get_uri("grupo_donato/barbecue-rentals/monthly"),
-            ];
         }
         if ($can_finance) {
             $barbecue_rental_submenu[] = [
@@ -317,6 +312,24 @@ if (!function_exists('gd_current_login_user')) {
                 "url" => $barbecue_rental_submenu[0]["url"],
                 "position" => 14,
                 "submenu" => $barbecue_rental_submenu,
+            ];
+        }
+
+        if ($can_costs) {
+            $sidebar_menu['administrativo'] = [
+                "name" => "Administrativo",
+                "language_key" => "gd_menu_administrative",
+                "class" => "briefcase",
+                "is_custom_menu_item" => true,
+                "url" => get_uri("grupo_donato/finance/costs"),
+                "position" => 15,
+                "submenu" => [[
+                    "name" => "costs",
+                    "language_key" => "gd_costs",
+                    "class" => "arrow-down-circle",
+                    "is_custom_menu_item" => true,
+                    "url" => get_uri("grupo_donato/finance/costs"),
+                ]],
             ];
         }
 
@@ -380,6 +393,7 @@ if (!function_exists('gd_current_login_user')) {
             (new FoundationSeeder($actor))->run();
             (new \grupo_donato_gestao\Database\Seeds\CatalogSeeder($actor))->run();
             (new \grupo_donato_gestao\Database\Seeds\FinanceSeeder($actor))->run();
+            (new \grupo_donato_gestao\Database\Seeds\CostSeeder($actor))->run();
 
             // Módulo operacional embutido: cria/atualiza as tabelas do módulo Bombeiros (idempotente).
             if (function_exists('bombeiros_install_or_update')) {

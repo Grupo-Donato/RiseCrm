@@ -28,6 +28,9 @@ class Resources extends Gd_Controller
     {
         return $this->gd_render("resources/index", [
             "can_manage" => $this->access->can("gd_resources_manage"),
+            "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => true,
+            "can_pricing" => $this->access->can("gd_price_lists_view"),
             "type_options" => $this->type_options(),
         ]);
     }

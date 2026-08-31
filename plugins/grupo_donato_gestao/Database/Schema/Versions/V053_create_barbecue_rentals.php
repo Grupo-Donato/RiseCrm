@@ -7,7 +7,7 @@ namespace grupo_donato_gestao\Database\Schema\Versions;
 use CodeIgniter\Database\BaseConnection;
 use grupo_donato_gestao\Database\Schema\SchemaVersion;
 
-/** Estrutura comercial independente para aluguel das churrasqueiras 1–6. */
+/** Estrutura comercial independente para aluguel das churrasqueiras. */
 class V053_create_barbecue_rentals extends SchemaVersion
 {
     public function version(): string { return "053"; }

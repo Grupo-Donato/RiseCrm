@@ -111,6 +111,9 @@ class Prices extends Gd_Controller
             "product_options" => $this->product_options(),
             "resource_options" => $this->resource_options(),
             "list_options" => $this->list_options(),
+            "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => true,
         ]);
     }
 

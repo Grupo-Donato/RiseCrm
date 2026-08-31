@@ -3,6 +3,7 @@ $type_filter = array_merge([["id" => "", "text" => "- " . app_lang("gd_all_types
 $active_filter = [["id" => "", "text" => "- " . app_lang("gd_all_statuses") . " -"], ["id" => "1", "text" => app_lang("gd_status_active")], ["id" => "0", "text" => app_lang("gd_status_inactive")]];
 ?>
 <div id="page-content" class="page-wrapper clearfix">
+    <?php echo view("grupo_donato_gestao\\Views\\components\\catalog_nav", ["active_catalog_tab" => "resources", "can_categories" => $can_categories, "can_resources" => $can_resources, "can_pricing" => $can_pricing]); ?>
     <div class="card">
         <div class="page-title clearfix">
             <h4><?php echo app_lang("gd_menu_resources"); ?></h4>

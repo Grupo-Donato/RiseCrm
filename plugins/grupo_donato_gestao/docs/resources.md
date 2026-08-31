@@ -31,7 +31,7 @@ classifica se o recurso poderá participar desse fluxo.
 - `metadata` validada como JSON antes de persistir (TEXT/MEDIUMTEXT).
 - Não exclui logicamente com **preço específico ativo** vinculado.
 
-## Seeds reais Q2–Q6 e Churrasqueiras 1–6
+## Seeds reais Q2–Q6 e churrasqueiras
 
 `CatalogSeeder` cadastra, de forma **idempotente**, as quadras reais de
 infraestrutura na unidade padrão:
@@ -44,10 +44,12 @@ infraestrutura na unidade padrão:
 | Q5 | Quadra Q5 | court | sim | sim |
 | Q6 | Quadra Q6 | court | sim | sim |
 
-As churrasqueiras são mantidas de forma idempotente como `CH1` a `CH6`, com nomes
-`Churrasqueira 1` a `Churrasqueira 6`, tipo `barbecue_area`, ativas e reserváveis. Se
-um recurso com o mesmo código ou nome já existir na unidade padrão, ele é
-reaproveitado e classificado para o módulo em vez de ser duplicado.
+As churrasqueiras são mantidas de forma idempotente como `CH1` a `CH4` e `CH5-SL`,
+com nomes `Churrasqueira 1` a `Churrasqueira 4` e `Churrasqueira 5 / Salão`, tipo
+`barbecue_area`, ativas e reserváveis. A antiga `CH6` é retirada por exclusão lógica
+para preservar reservas e histórico. Se um recurso com o mesmo código ou nome já
+existir na unidade padrão, ele é reaproveitado e classificado para o módulo em vez
+de ser duplicado.
 
 Sem preço, sem capacidade inventada, sem dimensão inventada, sem descrição
 comercial e sem área/centro automáticos. Salão, bar, estacionamento e vestiários

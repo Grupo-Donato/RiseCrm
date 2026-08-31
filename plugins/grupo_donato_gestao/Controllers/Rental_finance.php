@@ -202,26 +202,9 @@ class Rental_finance extends Gd_Controller
      * automaticamente e de forma idempotente. */
     private function ensureMonthlyReceivables(string $reference): void
     {
-        $generator = new ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user);
-        $finance = new FinanceService($this->unit_id, $this->user_id(), $this->login_user);
-        foreach ($generator->preview($reference) as $row) {
-            if (($row['source_type'] ?? '') !== 'court_rental' || ($row['amount'] ?? null) === null || ($row['amount'] ?? '') === '') {
-                continue;
-            }
-
-            try {
-                $dueDate = (string) ($row['due_date'] ?? gmdate('Y-m-d'));
-                $finance->createReceivable($row + [
-                    'reference_month' => $reference,
-                    'issue_date' => min(gmdate('Y-m-d'), $dueDate),
-                    'due_date' => $dueDate,
-                    'original_amount' => $row['amount'],
-                    'unit_amount' => $row['amount'],
-                    'quantity' => '1',
-                ]);
-            } catch (\Throwable $e) {
-                log_message('warning', 'Rental monthly receivable sync skipped: ' . $e->getMessage());
-            }
+        $result = (new ReceivableGenerationService($this->unit_id, $this->user_id(), $this->login_user))->ensureMonth($reference, 'court_rental');
+        if (!empty($result['errors'])) {
+            log_message('critical', 'Rental monthly receivable sync has errors: ' . json_encode($result['errors'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         }
     }
 
@@ -251,7 +234,7 @@ class Rental_finance extends Gd_Controller
         $paymentAllocations = $this->db->prefixTable("gd_payment_allocations");
         $payments = $this->db->prefixTable("gd_payments");
         $depositOnly = "EXISTS (SELECT 1 FROM `$paymentAllocations` da JOIN `$payments` dp ON dp.id=da.payment_id AND dp.unit_id=da.unit_id AND dp.status='confirmed' AND dp.deleted=0 WHERE da.unit_id=r.unit_id AND da.receivable_id=r.id AND da.status='active' AND dp.payment_type='deposit') AND NOT EXISTS (SELECT 1 FROM `$paymentAllocations` ra JOIN `$payments` rp ON rp.id=ra.payment_id AND rp.unit_id=ra.unit_id AND rp.status='confirmed' AND rp.deleted=0 WHERE ra.unit_id=r.unit_id AND ra.receivable_id=r.id AND ra.status='active' AND rp.payment_type='regular')";
-        $displayStatus = "CASE WHEN r.id IS NULL THEN 'none' WHEN r.status IN ('open','partial') AND r.balance_amount > 0 AND r.due_date < CURDATE() THEN 'overdue' WHEN r.status='partial' AND r.paid_amount > 0 AND ($depositOnly) THEN 'deposit_only' ELSE r.status END";
+        $displayStatus = "CASE WHEN r.id IS NULL THEN 'none' WHEN r.status='cancelled' THEN 'cancelled' WHEN r.balance_amount<=0 THEN 'paid' WHEN r.due_date < CURDATE() THEN 'overdue' WHEN r.paid_amount > 0 AND ($depositOnly) THEN 'deposit_only' WHEN r.paid_amount > 0 THEN 'partial' ELSE 'open' END";
         $orderMap = [
             "rental_number" => "cr.rental_number",
             "customer" => "a.display_name",
@@ -265,7 +248,7 @@ class Rental_finance extends Gd_Controller
 
         $query = $this->baseQuery($options)
             ->select("r.id receivable_id,r.receivable_number,r.reference_month,r.description,r.due_date,r.original_amount,r.paid_amount,r.balance_amount,r.status receivable_status,r.notes", false)
-            ->select("cr.id rental_id,cr.rental_number,cr.title rental_title,cr.rental_type,cr.effective_from,cr.contact_person_id,cr.preferred_due_day,cr.negotiated_amount", false)
+            ->select("cr.id rental_id,cr.rental_number,cr.title rental_title,cr.rental_type,cr.effective_from,cr.contact_person_id,cr.preferred_due_day,cr.negotiated_amount,cr.metadata", false)
             ->select("a.display_name customer_name,a.phone account_phone,a.phone_normalized account_phone_normalized,a.whatsapp account_whatsapp,a.whatsapp_normalized account_whatsapp_normalized", false)
             ->select("ppl.full_name contact_name", false)
             ->select("$resourceNames resource_names", false)
@@ -307,11 +290,11 @@ class Rental_finance extends Gd_Controller
         $status = (string) ($options["status_pagamento"] ?? "");
         if ($status === "pago") {
             $query->where("r.id IS NOT NULL", null, false);
-            $query->where("r.status", "paid");
+            $query->where("r.status <>", "cancelled")->where("r.balance_amount <=", 0);
         } elseif ($status === "aberto") {
-            $query->where("r.id IS NOT NULL", null, false)->whereIn("r.status", ["open", "partial"])->where("r.balance_amount >", 0)->where("r.due_date >=", gmdate("Y-m-d"));
+            $query->where("r.id IS NOT NULL", null, false)->where("r.status <>", "cancelled")->where("r.balance_amount >", 0)->where("r.due_date >=", gmdate("Y-m-d"));
         } elseif ($status === "vencido") {
-            $query->where("r.id IS NOT NULL", null, false)->whereIn("r.status", ["open", "partial", "overdue"])->where("r.balance_amount >", 0)->where("r.due_date <", gmdate("Y-m-d"));
+            $query->where("r.id IS NOT NULL", null, false)->where("r.status <>", "cancelled")->where("r.balance_amount >", 0)->where("r.due_date <", gmdate("Y-m-d"));
         }
 
         $resourceId = (int) ($options["resource_id"] ?? 0);
@@ -353,17 +336,16 @@ class Rental_finance extends Gd_Controller
             }
 
             $status = (string) $row->status;
-            if ($status !== "cancelled") {
-                $total++;
+            if ($status === "cancelled") {
+                continue;
             }
-            if ($status === "paid") {
+            $total++;
+            if (DataNormalizationService::decimalCompare((string) $row->balance_amount, "0.00") <= 0) {
                 $paid++;
-            } elseif (in_array($status, ["open", "partial", "overdue"], true) && DataNormalizationService::decimalCompare((string) $row->balance_amount, "0.00") > 0) {
-                if ((string) $row->due_date < $today) {
-                    $overdue++;
-                } else {
-                    $open++;
-                }
+            } elseif ((string) $row->due_date < $today) {
+                $overdue++;
+            } else {
+                $open++;
             }
         }
 
@@ -380,7 +362,7 @@ class Rental_finance extends Gd_Controller
         $hasReceivable = (int) ($data->receivable_id ?? 0) > 0;
         $phoneDigits = $this->digits($data->contact_phone_normalized ?: $data->contact_phone ?: $data->account_whatsapp_normalized ?: $data->account_whatsapp ?: $data->account_phone_normalized ?: $data->account_phone);
         $whatsapp = $phoneDigits !== "" ? anchor("https://wa.me/55" . $phoneDigits, $this->escape($this->formatPhone($phoneDigits)), ["target" => "_blank", "title" => "Abrir WhatsApp"]) : "-";
-        $canPay = $hasReceivable && $this->access->can("gd_rental_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && !in_array((string) $data->receivable_status, ["paid", "cancelled"], true);
+        $canPay = $hasReceivable && $this->access->can("gd_rental_payments_manage") && DataNormalizationService::decimalCompare((string) $data->balance_amount, "0.00") > 0 && (string) ($data->display_status ?? $data->receivable_status) !== "cancelled";
         $lastPaymentId = (int) ($data->last_payment_id ?? 0);
         $options = [];
         if ($canPay) {
@@ -422,7 +404,13 @@ class Rental_finance extends Gd_Controller
             $hasReceivable && ($data->reference_month ?: ($data->rental_type === "single" ? substr((string) $data->effective_from, 0, 7) : "")) ? $this->escape($this->referenceLabel((string) ($data->reference_month ?: substr((string) $data->effective_from, 0, 7)))) : sprintf("%02d/%04d", $month, $year),
             $hasReceivable ? $this->escape($data->description ?: "-") : "-",
             $hasReceivable ? $this->dateBr((string) $data->due_date) : "-",
-            $this->statusBadge((string) $data->display_status),
+            $this->statusBadge($hasReceivable
+                ? (string) $data->display_status
+                : ((is_array(json_decode((string) ($data->metadata ?? ""), true)) && (string) (json_decode((string) ($data->metadata ?? ""), true)["financial_status"] ?? "") === "exempt")
+                    ? "exempt"
+                    : ((isset($data->negotiated_amount) && $data->negotiated_amount !== null && DataNormalizationService::decimalCompare((string) $data->negotiated_amount, "0.00") > 0)
+                        ? "pending_generation"
+                        : "none"))),
             $hasReceivable && $data->last_payment_date ? $this->dateBr((string) $data->last_payment_date) : "-",
             $hasReceivable && $data->last_payment_method ? $this->escape(app_lang("gd_finance_method_" . $data->last_payment_method)) : "-",
             $hasReceivable ? $this->escape($data->notes ?: "-") : "-",
@@ -432,6 +420,12 @@ class Rental_finance extends Gd_Controller
 
     private function statusBadge(string $status): string
     {
+        if ($status === "pending_generation") {
+            return '<span class="badge bg-secondary">' . app_lang("gd_finance_pending_generation") . '</span>';
+        }
+        if ($status === "exempt") {
+            return '<span class="badge bg-secondary">' . app_lang("gd_finance_exempt") . '</span>';
+        }
         $classes = ["none" => "bg-secondary", "open" => "bg-warning", "partial" => "bg-warning", "deposit_only" => "bg-warning", "paid" => "bg-success", "overdue" => "bg-danger", "cancelled" => "bg-secondary"];
         $labels = [
             "none" => "Sem cobrança",

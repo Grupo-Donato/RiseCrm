@@ -158,7 +158,7 @@ if (!function_exists("bombeiros_install_or_update")) {
     {
         return [
             "dashboard" => ["name" => "Dashboard", "class" => "bar-chart-2"],
-            "alunos" => ["name" => "Ativos", "class" => "users"],
+            "alunos" => ["name" => "Alunos", "class" => "users"],
             "responsaveis" => ["name" => "Responsáveis", "class" => "user"],
             "presenca" => ["name" => "Presença", "class" => "check-square"],
             "pagamentos" => ["name" => "Pagamentos", "class" => "credit-card"],
@@ -193,7 +193,9 @@ if (!function_exists("bombeiros_install_or_update")) {
 
             return [
                 "name" => $section[$key]["name"],
-                "url" => get_uri("grupo_donato/operacional?gd_tab=" . $key),
+                "url" => $key === "custos"
+                    ? get_uri("grupo_donato/finance/costs")
+                    : get_uri("grupo_donato/operacional?gd_tab=" . $key),
                 "is_custom_menu_item" => true,
                 "class" => $section[$key]["class"],
             ];
@@ -252,7 +254,7 @@ if (!function_exists("bombeiros_install_or_update")) {
 
         $group_items = [
             ["name" => "GD Academy"],
-            ["name" => "Ativos", "is_sub_menu" => "1"],
+            ["name" => "Alunos", "is_sub_menu" => "1"],
             ["name" => "Responsáveis", "is_sub_menu" => "1"],
             ["name" => "Presença", "is_sub_menu" => "1"],
             ["name" => "Pagamentos", "is_sub_menu" => "1"],
@@ -268,7 +270,7 @@ if (!function_exists("bombeiros_install_or_update")) {
         // Nomes usados antes da consolidação. Eles só servem para migrar
         // configurações persistidas; o menu atual nasce em
         // bombeiros_left_menu_native_items().
-        $legacy_menu_names = [];
+        $legacy_menu_names = ["Ativos", "SIAMESA Ativos"];
         foreach (bombeiros_left_menu_sections() as $item) {
             if ($item["name"] !== "Mensagens") {
                 $legacy_menu_names[] = $item["name"];
@@ -307,9 +309,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             ["name" => "Churrasqueiras"],
             ["name" => "barbecue_agenda", "is_sub_menu" => "1"],
             ["name" => "barbecue_reservas", "is_sub_menu" => "1"],
-            ["name" => "barbecue_monthly", "is_sub_menu" => "1"],
             ["name" => "barbecue_payments", "is_sub_menu" => "1"],
-            ["name" => "barbecue_charges", "is_sub_menu" => "1"],
         ];
         $rentals_items[0]["name"] = "rental_courts_menu";
         $rentals_names = array_map(function ($item) {

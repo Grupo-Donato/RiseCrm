@@ -53,7 +53,9 @@ class Dashboard extends Gd_Controller
 
         $recent_audit = [];
         if ($this->access->can("gd_audit_view")) {
-            $recent_audit = $this->gd_model("Gd_audit_logs_model")->get_details(["limit" => 6])->getResult();
+            $recent_audit = $unit_id
+                ? $this->gd_model("Gd_audit_logs_model")->get_details(["unit_id" => $unit_id, "limit" => 6])->getResult()
+                : [];
         }
 
         $view_data = array_merge($dashboard, [
@@ -66,12 +68,23 @@ class Dashboard extends Gd_Controller
             "can_students" => $this->access->can("gd_students_manage"),
             "can_classes" => $this->access->can("gd_classes_manage"),
             "can_attendance" => $this->access->can("gd_attendance_manage"),
+            "can_catalog" => $this->access->can("gd_catalog_view"),
+            "can_products" => $this->access->can("gd_products_manage"),
+            "can_product_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => $this->access->can("gd_price_lists_view"),
+            "can_settings" => $this->access->can("gd_settings_view"),
+            "can_customers" => $this->access->can("gd_customer_accounts_view"),
+            "can_people" => $this->access->can("gd_people_view"),
+            "can_calendar" => $this->access->can("gd_calendar_view"),
+            "can_booking_series" => $this->access->can("gd_booking_series_view"),
             "can_bookings" => $this->access->can("gd_bookings_manage"),
             "can_court_rentals" => $this->access->can("gd_court_rentals_manage"),
             "can_barbecue_rentals" => $this->access->can("gd_barbecue_rentals_manage"),
             "can_receivables" => $this->access->can("gd_receivables_manage"),
             "can_payments" => $this->access->can("gd_payments_manage"),
-            "can_expenses" => $this->access->can("gd_expenses_manage"),
+            "can_costs" => $this->access->can("gd_costs_view"),
+            "can_expenses" => $this->access->can("gd_costs_manage"),
             "plugin_version" => Constants::PLUGIN_VERSION,
             "schema_applied" => $applied ?: "-",
             "schema_target" => Constants::SCHEMA_TARGET,
@@ -105,15 +118,15 @@ class Dashboard extends Gd_Controller
         if ($exists("gd_receivables")) {
             $row = $db->query(
                 "SELECT
-                    COALESCE(SUM(CASE WHEN status IN ('open','partial','overdue') AND balance_amount > 0 THEN balance_amount ELSE 0 END), 0) AS open_amount,
+                    COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN balance_amount ELSE 0 END), 0) AS open_amount,
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN balance_amount ELSE 0 END), 0) AS overdue_amount,
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND issue_date BETWEEN ? AND ? THEN original_amount ELSE 0 END), 0) AS billed_amount,
                     SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN 1 ELSE 0 END) AS overdue_count,
-                    SUM(CASE WHEN status IN ('open','partial','overdue') AND balance_amount > 0 THEN 1 ELSE 0 END) AS open_count,
+                    SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN 1 ELSE 0 END) AS open_count,
                     SUM(CASE WHEN status <> 'cancelled' AND issue_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS charges
                  FROM `{$receivable_table}`
                  WHERE unit_id = ? AND deleted = 0",
-                [$today, $period_from, $period_to, $today, $period_from, $period_to, $unit_id]
+                [$today, $today, $period_from, $period_to, $today, $today, $period_from, $period_to, $unit_id]
             )->getRow();
             $summary["open"] = (float) ($row->open_amount ?? 0);
             $summary["overdue"] = (float) ($row->overdue_amount ?? 0);
@@ -135,7 +148,16 @@ class Dashboard extends Gd_Controller
             $summary["payments"] = (int) ($row->payments ?? 0);
         }
 
-        if ($exists("gd_expenses")) {
+        if ($exists("gd_expense_payments")) {
+            $row = $db->query(
+                "SELECT COALESCE(SUM(amount), 0) AS expenses
+                 FROM `{$table("gd_expense_payments")}`
+                 WHERE unit_id = ? AND deleted = 0 AND status IN ('confirmed', 'legacy_migrated')
+                   AND payment_date BETWEEN ? AND ?",
+                [$unit_id, $period_from, $period_to]
+            )->getRow();
+            $summary["expenses"] = (float) ($row->expenses ?? 0);
+        } elseif ($exists("gd_expenses")) {
             $row = $db->query(
                 "SELECT COALESCE(SUM(amount), 0) AS expenses
                  FROM `{$table("gd_expenses")}`
@@ -158,17 +180,17 @@ class Dashboard extends Gd_Controller
             $rows = $db->query(
                 "SELECT source_type,
                     COUNT(*) AS charges,
-                    SUM(CASE WHEN status = 'paid' OR balance_amount <= 0 THEN 1 ELSE 0 END) AS paid_count,
+                    SUM(CASE WHEN balance_amount <= 0 THEN 1 ELSE 0 END) AS paid_count,
                     SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN 1 ELSE 0 END) AS open_count,
                     SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN 1 ELSE 0 END) AS overdue_count,
                     COALESCE(SUM(original_amount), 0) AS billed_amount,
                     COALESCE(SUM(paid_amount), 0) AS paid_amount,
-                    COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 THEN balance_amount ELSE 0 END), 0) AS balance_amount,
+                    COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN balance_amount ELSE 0 END), 0) AS balance_amount,
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN balance_amount ELSE 0 END), 0) AS overdue_amount
                  FROM `{$receivable_table}`
                  WHERE unit_id = ? AND deleted = 0 AND status <> 'cancelled'
                  GROUP BY source_type",
-                [$today, $today, $today, $unit_id]
+                [$today, $today, $today, $today, $unit_id]
             )->getResult();
             foreach ($rows as $row) {
                 $source = (string) ($row->source_type ?? "other");
@@ -269,23 +291,92 @@ class Dashboard extends Gd_Controller
         $agenda = $this->agenda_today($db, $exists, $table, $unit_id, $today_local, $tomorrow_local, $timezone, $now_utc);
         $upcoming = $this->upcoming_receivables($db, $exists, $table, $unit_id, $today);
         $trend = $this->financial_trend($db, $exists, $table, $unit_id, $period_start, $period_end);
+        $catalog = $this->catalog_activity($db, $exists, $table, $unit_id, $timezone);
+        $finance_totals = $this->sum_finance($finance_by_source);
 
         return [
             "summary" => $summary,
             "finance_by_source" => $finance_by_source,
+            "finance_totals" => $finance_totals,
             "academy" => $academy,
             "courts" => $courts,
             "barbecues" => $barbecues,
             "agenda" => $agenda,
             "upcoming_receivables" => $upcoming,
             "trend" => $trend,
-            "catalog_products" => $exists("gd_products") ? $this->count($db, $table("gd_products"), "unit_id = ? AND status = 'active' AND deleted = 0", [$unit_id]) : 0,
+            "catalog" => $catalog,
+            // Mantido para compatibilidade com views/customizações antigas.
+            "catalog_products" => (int) $catalog["active_products"],
             "today_events" => count($agenda),
             "today_classes" => (int) $academy["classes_today"],
             "today_bookings" => (int) $booking_counts["court"]["today"] + (int) $booking_counts["barbecue_area"]["today"],
             "active_contracts" => (int) $courts["recurring"] + (int) $barbecues["recurring"],
             "active_resources" => (int) $courts["resources"] + (int) $barbecues["resources"],
         ];
+    }
+
+    /** Indicadores do catálogo usados pelo painel e pela navegação executiva. */
+    private function catalog_activity($db, callable $exists, callable $table, int $unit_id, \DateTimeZone $timezone): array
+    {
+        $data = [
+            "active_products" => 0,
+            "active_categories" => 0,
+            "active_variants" => 0,
+            "priced_products" => 0,
+        ];
+
+        if ($exists("gd_products")) {
+            $data["active_products"] = $this->count($db, $table("gd_products"), "unit_id = ? AND status = 'active' AND deleted = 0", [$unit_id]);
+        }
+        if ($exists("gd_product_categories")) {
+            $data["active_categories"] = $this->count($db, $table("gd_product_categories"), "unit_id = ? AND status = 'active' AND deleted = 0", [$unit_id]);
+        }
+        if ($exists("gd_product_variants") && $exists("gd_products")) {
+            $row = $db->query(
+                "SELECT COUNT(*) AS total
+                 FROM `{$table("gd_product_variants")}` v
+                 INNER JOIN `{$table("gd_products")}` p ON p.id = v.product_id AND p.unit_id = v.unit_id
+                 WHERE v.unit_id = ? AND v.status = 'active' AND v.deleted = 0
+                   AND p.status = 'active' AND p.deleted = 0",
+                [$unit_id]
+            )->getRow();
+            $data["active_variants"] = (int) ($row->total ?? 0);
+        }
+        if ($exists("gd_prices") && $exists("gd_products") && $exists("gd_price_lists")) {
+            $today = (new \DateTimeImmutable("now", $timezone))->format("Y-m-d");
+            $row = $db->query(
+                "SELECT COUNT(DISTINCT p.id) AS total
+                 FROM `{$table("gd_products")}` p
+                 INNER JOIN `{$table("gd_prices")}` pr ON pr.product_id = p.id AND pr.unit_id = p.unit_id
+                   AND pr.deleted = 0 AND pr.status = 'active'
+                   AND COALESCE(pr.valid_from, '0000-01-01') <= ?
+                   AND COALESCE(pr.valid_until, '9999-12-31') >= ?
+                 INNER JOIN `{$table("gd_price_lists")}` pl ON pl.id = pr.price_list_id AND pl.unit_id = pr.unit_id
+                   AND pl.deleted = 0 AND pl.status = 'active'
+                   AND COALESCE(pl.valid_from, '0000-01-01') <= ?
+                   AND COALESCE(pl.valid_until, '9999-12-31') >= ?
+                 WHERE p.unit_id = ? AND p.status = 'active' AND p.deleted = 0",
+                [$today, $today, $today, $today, $unit_id]
+            )->getRow();
+            $data["priced_products"] = (int) ($row->total ?? 0);
+        }
+
+        return $data;
+    }
+
+    /** Totaliza a posição financeira por origem, inclusive origens futuras. */
+    private function sum_finance(array $by_source): array
+    {
+        $total = $this->empty_product_finance();
+        foreach ($by_source as $row) {
+            foreach ($total as $field => $value) {
+                $total[$field] += (float) ($row[$field] ?? 0);
+            }
+        }
+        foreach (["charges", "paid_count", "open_count", "overdue_count", "payment_count"] as $field) {
+            $total[$field] = (int) $total[$field];
+        }
+        return $total;
     }
 
     private function rental_activity($db, callable $exists, callable $table, string $rental_table, string $resource_type, int $unit_id): array
@@ -429,7 +520,21 @@ class Dashboard extends Gd_Controller
                 }
             }
         }
-        if ($exists("gd_expenses")) {
+        if ($exists("gd_expense_payments")) {
+            $rows = $db->query(
+                "SELECT DATE_FORMAT(payment_date, '%Y-%m') AS month_key, COALESCE(SUM(amount), 0) AS amount
+                 FROM `{$table("gd_expense_payments")}`
+                 WHERE unit_id = ? AND deleted = 0 AND status IN ('confirmed', 'legacy_migrated') AND payment_date >= ? AND payment_date < ?
+                 GROUP BY month_key",
+                [$unit_id, $from, $to]
+            )->getResult();
+            foreach ($rows as $row) {
+                $key = (string) ($row->month_key ?? "");
+                if (isset($by_month[$key])) {
+                    $by_month[$key]["expenses"] = (float) ($row->amount ?? 0);
+                }
+            }
+        } elseif ($exists("gd_expenses")) {
             $rows = $db->query(
                 "SELECT DATE_FORMAT(paid_date, '%Y-%m') AS month_key, COALESCE(SUM(amount), 0) AS amount
                  FROM `{$table("gd_expenses")}`
@@ -470,10 +575,13 @@ class Dashboard extends Gd_Controller
         return [
             "summary" => ["received" => 0.0, "expenses" => 0.0, "result" => 0.0, "open" => 0.0, "overdue" => 0.0, "billed" => 0.0, "charges" => 0, "payments" => 0, "overdue_count" => 0, "open_count" => 0],
             "finance_by_source" => ["enrollment" => $this->empty_product_finance(), "court_rental" => $this->empty_product_finance(), "barbecue_rental" => $this->empty_product_finance(), "manual" => $this->empty_product_finance(), "other" => $this->empty_product_finance()],
+            "finance_totals" => $this->empty_product_finance(),
             "academy" => ["active_students" => 0, "active_classes" => 0, "classes_today" => 0, "attendance_today" => 0],
             "courts" => ["recurring" => 0, "single" => 0, "resources" => 0, "bookings_today" => 0, "next_7_days" => 0],
             "barbecues" => ["recurring" => 0, "single" => 0, "resources" => 0, "bookings_today" => 0, "next_7_days" => 0],
-            "agenda" => [], "upcoming_receivables" => [], "trend" => [], "catalog_products" => 0,
+            "agenda" => [], "upcoming_receivables" => [], "trend" => [],
+            "catalog" => ["active_products" => 0, "active_categories" => 0, "active_variants" => 0, "priced_products" => 0],
+            "catalog_products" => 0,
             "today_events" => 0, "today_classes" => 0, "today_bookings" => 0, "active_contracts" => 0, "active_resources" => 0,
         ];
     }

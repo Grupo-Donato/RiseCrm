@@ -2,7 +2,7 @@
 
 Plugin do Rise CRM para a gestão integrada do Grupo Donato.
 
-**Estado:** Fases 1 a 5 + módulo de locações de quadras (versão 0.9.8, schema 001–053). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico. As modalidades avulso e mensalista aceitam valor livremente editável; ambas integram recebível, sinal opcional, saldo, acréscimo de permanência e histórico ao financeiro existente. O módulo Churrasqueiras replica o fluxo comercial de Locações para os recursos CH1–CH6, com agenda, avulsos, mensalistas e pagamentos próprios. Estacionamento e bar permanecem fora deste módulo.
+**Estado:** Fases 1 a 5 + módulos de locações de quadras e churrasqueiras (versão 0.9.8, schema 001–066). O plugin entrega cadastro central, catálogo, agenda, locações, escola/personal e financeiro básico. As modalidades avulso e mensalista aceitam valor livremente editável; ambas integram recebível, sinal opcional, saldo, acréscimo de permanência e histórico ao financeiro existente. O módulo Churrasqueiras replica o fluxo comercial de Locações para os recursos CH1–CH4 e CH5-SL, com agenda, avulsos, mensalistas e pagamentos próprios. Estacionamento e bar permanecem fora deste módulo.
 
 > **Importação (Cenário 2):** as tabelas `gd_import_*` (046–049) existem mas o módulo está **oculto** e **não foi continuado** no protótipo. `import_selftest` está desligado da suíte.
 >
@@ -29,6 +29,7 @@ Este pacote do Rise não contém `spark`. Use o harness próprio:
 
 ```powershell
 php plugins/grupo_donato_gestao/Tests/cli.php install
+php plugins/grupo_donato_gestao/Tests/cli.php demo
 php plugins/grupo_donato_gestao/Tests/cli.php selftest
 php plugins/grupo_donato_gestao/Tests/cli.php uninstallcheck
 powershell -ExecutionPolicy Bypass -File plugins/grupo_donato_gestao/Tests/concurrency.ps1
@@ -36,6 +37,11 @@ powershell -ExecutionPolicy Bypass -File plugins/grupo_donato_gestao/Tests/booki
 powershell -ExecutionPolicy Bypass -File plugins/grupo_donato_gestao/Tests/series_concurrency.ps1
 php plugins/grupo_donato_gestao/Tests/cli.php expire-holds
 ```
+
+Para validar a tela integrada com dados comerciais de teste, execute `demo` depois
+do `install`. A carga é idempotente, usa códigos `DEMO-*` e cria produtos,
+variações, preços, uma turma/aluno com presença, uma cobrança parcial, um
+pagamento e uma despesa paga. Ela não é executada automaticamente na instalação.
 
 O script Bash equivalente é `Tests/concurrency.sh`. Consulte [docs/testing.md](docs/testing.md).
 
@@ -50,6 +56,8 @@ O script Bash equivalente é `Tests/concurrency.sh`. Consulte [docs/testing.md](
 - `docs/`: arquitetura, segurança, instalação, schema e homologação.
 
 ## Pacote operacional para agentes
+
+O módulo central de Custos está documentado em [docs/costs.md](docs/costs.md), com relatório em [docs/reports/costs-implementation.md](docs/reports/costs-implementation.md). Para validar somente esse domínio, execute `php plugins/grupo_donato_gestao/Tests/cli.php costs-selftest`.
 
 O ponto de entrada permanente para novas tarefas está em [`docs/agent/`](docs/agent/): contexto técnico, guardrails, estado atual, roadmap, critérios de aceite e handoff. Registre novas especificações em [`docs/tasks/`](docs/tasks/) e resultados em [`docs/reports/`](docs/reports/).
 

@@ -15,7 +15,6 @@ $buttons = [];
 if (!empty($can_calendar)) {
     $buttons[] = anchor(get_uri("grupo_donato/barbecue-calendar"), '<i data-feather="calendar" class="icon-16"></i> ' . app_lang("gd_open_agenda"), ["class" => "btn btn-default"]);
 }
-$buttons[] = anchor(get_uri("grupo_donato/barbecue-rentals/monthly"), '<i data-feather="repeat" class="icon-16"></i> ' . app_lang("gd_menu_barbecue_monthly"), ["class" => "btn btn-default"]);
 if (!empty($can_manage)) {
     $buttons[] = modal_anchor(get_uri("grupo_donato/barbecue-rentals/single-modal"), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang("gd_new_barbecue_rental_single"), ["class" => "btn btn-primary", "title" => app_lang("gd_new_barbecue_rental_single")]);
 }
@@ -25,7 +24,7 @@ if (!empty($can_manage)) {
     <div class="card">
         <div class="page-title clearfix gd-page-header">
             <div>
-                <h4><?php echo app_lang("gd_menu_barbecue_bookings"); ?></h4>
+                <h4><?php echo app_lang("gd_menu_barbecue_reservas"); ?></h4>
             </div>
             <?php if ($buttons) { ?><div class="title-button-group gd-toolbar"><?php echo implode(" ", $buttons); ?></div><?php } ?>
         </div>

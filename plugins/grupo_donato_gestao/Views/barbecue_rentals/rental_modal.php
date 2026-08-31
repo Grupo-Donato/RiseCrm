@@ -71,22 +71,12 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
 <input type="hidden" name="effective_until" id="gd-rental-effective-until">
 <input type="hidden" name="list_amount" id="gd-rental-list-amount">
 <input type="hidden" name="negotiated_amount" id="gd-rental-negotiated-amount">
+<input type="hidden" name="financial_status" id="gd-rental-financial-status" value="chargeable">
 <input type="hidden" name="currency" value="BRL">
 <input type="hidden" name="metadata" id="gd-rental-metadata">
 
 <div class="modal-body clearfix">
     <div class="container-fluid">
-        <div class="mb20"<?php echo $is_edit ? ' style="display:none"' : ""; ?>>
-            <h5 class="mb15"><?php echo app_lang("gd_rental_type_choice"); ?></h5>
-            <div class="form-group mb0">
-                <select name="rental_mode_choice" id="gd-rental-mode-choice" class="form-control"<?php echo $is_edit ? " disabled" : ""; ?>>
-                    <option value="single"<?php echo $initial_mode === "single" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_single"); ?></option>
-                    <option value="recurring"<?php echo $initial_mode === "recurring" ? " selected" : ""; ?>><?php echo app_lang("gd_rental_mode_recurring"); ?></option>
-                </select>
-                <div class="text-muted mt5"><small id="gd-rental-mode-help"></small></div>
-            </div>
-        </div>
-
         <div class="row">
             <div class="col-md-6">
                 <div class="mb20">
@@ -135,13 +125,8 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                     <div class="gd-regular-duration">
                         <div class="form-group">
                             <label for="gd-rental-duration"><?php echo app_lang("gd_rental_duration"); ?> <span class="text-danger">*</span></label>
-                            <select name="duration_minutes" id="gd-rental-duration" class="form-control">
-                                <?php if ($is_edit && $edit_duration > 0 && !in_array($edit_duration, [90, 120], true)) { ?>
-                                    <option value="<?php echo $edit_duration; ?>" selected><?php echo $edit_duration . " min"; ?></option>
-                                <?php } ?>
-                                <option value="90"<?php echo $edit_duration === 90 ? " selected" : ""; ?>>1h30</option>
-                                <option value="120"<?php echo $edit_duration === 120 ? " selected" : ""; ?>>2h</option>
-                            </select>
+                            <input type="text" name="duration_minutes" id="gd-rental-duration" class="form-control" inputmode="text" autocomplete="off" value="<?php echo $e($edit_duration > 0 ? $edit_duration : ""); ?>" placeholder="Ex.: 1h30, 2h ou 150 min" required>
+                            <small class="text-muted">Informe o tempo livremente. Use minutos ou formatos como 1h30.</small>
                         </div>
                     </div>
 
@@ -149,6 +134,11 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         <label for="gd-rental-amount" id="gd-rental-amount-label"><span id="gd-rental-amount-label-text"><?php echo app_lang("gd_rental_value"); ?></span> <span class="text-danger">*</span></label>
                         <input type="text" id="gd-rental-amount" class="form-control" inputmode="decimal" autocomplete="off" value="<?php echo $e($edit_data["amount"] ?? ""); ?>" placeholder="0,00" required>
                         <small class="text-muted"><?php echo app_lang("gd_rental_amount_help"); ?></small>
+                        <div class="form-check mt10">
+                            <input type="checkbox" class="form-check-input" id="gd-rental-exempt">
+                            <label class="form-check-label" for="gd-rental-exempt"><?php echo app_lang("gd_finance_mark_exempt"); ?></label>
+                        </div>
+                        <small class="text-muted"><?php echo app_lang("gd_finance_exempt_help"); ?></small>
                     </div>
 
                     <div class="gd-recurring-fields" style="display:none">
@@ -295,6 +285,8 @@ $(document).ready(function(){
         startTime = $("#gd-rental-start-time"),
         durationInput = $("#gd-rental-duration"),
         amountInput = $("#gd-rental-amount"),
+        exemptInput = $("#gd-rental-exempt"),
+        financialStatusInput = $("#gd-rental-financial-status"),
         depositInput = $("#gd-rental-deposit"),
         depositMethod = $("#gd-rental-deposit-method"),
         courtInput = $("#gd-rental-court"),
@@ -359,7 +351,26 @@ $(document).ready(function(){
     function brl(value) {
         return new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"}).format(Number(value || 0));
     }
-    function selectedDuration() { return parseInt(durationInput.val() || "0", 10); }
+    function parseDuration(value) {
+        var raw = String(value || "").trim().toLowerCase().replace(/\s+/g, " "), match, hours, minutes;
+        if (!raw) { return 0; }
+        if (/^\d+$/.test(raw)) { return parseInt(raw, 10); }
+        match = /^(\d+)\s*h\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/i.exec(raw);
+        if (match) {
+            hours = parseInt(match[1], 10);
+            minutes = match[2] ? parseInt(match[2], 10) : 0;
+            return minutes < 60 ? (hours * 60) + minutes : 0;
+        }
+        match = /^(\d+)\s*(?:m|min|minutos?)$/i.exec(raw);
+        if (match) { return parseInt(match[1], 10); }
+        match = /^(\d+):(\d{2})$/.exec(raw);
+        if (match) {
+            minutes = parseInt(match[2], 10);
+            return minutes < 60 ? (parseInt(match[1], 10) * 60) + minutes : 0;
+        }
+        return 0;
+    }
+    function selectedDuration() { return parseDuration(durationInput.val()); }
     function isHalfHour(value) { return /^\d{2}:(00|30)$/.test(value || ""); }
     function selectedCourt() {
         var selected = courtInput.find("option:selected");
@@ -407,7 +418,7 @@ $(document).ready(function(){
         if (typeof feather !== "undefined") { feather.replace(); }
     }
     function currentAmount() {
-        return normalizeMoney(amountInput.val());
+        return exemptInput.is(":checked") ? "" : normalizeMoney(amountInput.val());
     }
     function scheduleValues() {
         var date = dateInput.val(), start = startTime.val(), currentMode = mode(), duration = selectedDuration(), end = null;
@@ -452,6 +463,8 @@ $(document).ready(function(){
         }
 
         var metadata = {rental_mode: currentMode, duration_minutes: duration, amount_source: "manual"};
+        financialStatusInput.val(exemptInput.is(":checked") ? "exempt" : "chargeable");
+        if (exemptInput.is(":checked")) { metadata.financial_status = "exempt"; }
         $("#gd-rental-metadata").val(JSON.stringify(metadata));
 
         var titleBits = [$.trim(customer.val()), court.code];
@@ -469,6 +482,10 @@ $(document).ready(function(){
         $(".gd-recurring-fields").toggle(currentMode === "recurring");
         $(".gd-single-payment-fields").toggle(currentMode === "single");
         $("#gd-rental-amount-label-text").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_monthly_value")); ?> : <?php echo json_encode(app_lang("gd_rental_value")); ?>);
+        amountInput.prop("required", !exemptInput.is(":checked")).prop("disabled", exemptInput.is(":checked"));
+        $("#gd-rental-amount-label .text-danger").toggle(!exemptInput.is(":checked"));
+        depositInput.prop("disabled", exemptInput.is(":checked"));
+        depositMethod.prop("disabled", exemptInput.is(":checked"));
         dueDay.prop("required", currentMode === "recurring");
         $(".gd-date-label").text(currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_first_date")); ?> : <?php echo json_encode(app_lang("gd_rental_date")); ?>);
         submitButton.find("span").text(isEdit ? <?php echo json_encode(app_lang("save")); ?> : (currentMode === "recurring" ? <?php echo json_encode(app_lang("gd_create_recurring_rental")); ?> : <?php echo json_encode(app_lang("gd_create_single_rental")); ?>));
@@ -582,11 +599,11 @@ $(document).ready(function(){
         if (!dateInput.val()) { return messages.date_required; }
         if (!startTime.val()) { return messages.time_required; }
         if (!selectedCourt().id) { return messages.resource_required; }
-        var amountCents = moneyCents(currentAmount());
-        if (amountCents === null) { return messages.amount_required; }
+        var exempt = exemptInput.is(":checked"), amountCents = moneyCents(currentAmount());
+        if (!exempt && amountCents === null) { return messages.amount_required; }
         if (mode() === "recurring" && (!dueDay.val() || parseInt(dueDay.val(), 10) < 1 || parseInt(dueDay.val(), 10) > 31)) { return messages.due_day_required; }
-        if ([90, 120].indexOf(selectedDuration()) === -1 && !(isEdit && selectedDuration() === parseInt(editData.duration_minutes || "0", 10))) { return messages.duration_required; }
-        if (mode() === "single") {
+        if (selectedDuration() < 1 || selectedDuration() > 10080) { return messages.duration_required; }
+        if (!exempt && mode() === "single") {
             var depositCents = moneyCents(depositInput.val());
             if (depositCents === null || depositCents > amountCents) { return messages.deposit_invalid; }
             if (depositCents > 0 && !depositMethod.val()) { return messages.deposit_method_required; }
@@ -601,9 +618,10 @@ $(document).ready(function(){
         setPostValue(data, "customer_account_id", $("#gd-rental-customer-id").val());
         setPostValue(data, "contact_person_id", $("#gd-rental-contact-id").val());
         setPostValue(data, "contact_phone", digitsOnly(phone.val()).substring(0, 11));
+        setPostValue(data, "financial_status", exemptInput.is(":checked") ? "exempt" : "chargeable");
         setPostValue(data, "negotiated_amount", currentAmount());
         setPostValue(data, "list_amount", currentAmount());
-        setPostValue(data, "deposit_amount", mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
+        setPostValue(data, "deposit_amount", !exemptInput.is(":checked") && mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
         if (mode() === "recurring") {
             setPostValue(data, "weekdays[]", isoWeekday(dateInput.val()));
         }
@@ -657,8 +675,9 @@ $(document).ready(function(){
 
     form.on("input", "#gd-rental-phone", function(){ this.value = maskPhone(this.value); });
     form.on("input", "#gd-rental-amount, #gd-rental-deposit", function(){ this.value = maskMoney(this.value); updateSummary(); });
+    form.on("change", "#gd-rental-exempt", function(){ syncMode(); updateSummary(); });
     form.on("change", "#gd-rental-mode-choice", syncMode);
-    form.on("change", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
+    form.on("change input", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
     form.on("change", "#gd-rental-court", scheduleAutoCheck);
     form.on("change input", "#gd-rental-date, #gd-rental-start-time", function(){ scheduleAvailableCourts(); scheduleAutoCheck(); });
     form.on("change input", "#gd-rental-due-day", scheduleAutoCheck);

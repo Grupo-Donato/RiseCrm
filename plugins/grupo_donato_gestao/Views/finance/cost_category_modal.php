@@ -1,0 +1,5 @@
+<?php $roots = array_values(array_filter($categories, static fn($c) => !$c->parent_id)); ?>
+<?php echo form_open(get_uri("grupo_donato/finance/costs/categories/save"), ["id" => "gd-cost-category-form", "class" => "general-form"]); ?>
+<div class="modal-body"><div class="form-group"><label>Nome *</label><input required name="name" class="form-control"></div><div class="form-group"><label>Código técnico</label><input name="code" class="form-control" placeholder="ex.: equipment_maintenance"></div><div class="form-group"><label>Categoria pai</label><select name="parent_id" class="form-control"><option value="">-</option><?php foreach ($roots as $root): ?><option value="<?php echo (int) $root->id; ?>"><?php echo esc($root->name); ?></option><?php endforeach; ?></select></div></div>
+<div class="modal-footer"><button type="button" class="btn btn-default" data-bs-dismiss="modal"><?php echo app_lang("close"); ?></button><button type="submit" class="btn btn-primary"><?php echo app_lang("save"); ?></button></div>
+<?php echo form_close(); ?><script>$(document).ready(function(){ $("#gd-cost-category-form").appForm({onSuccess:function(){location.reload();}}); });</script>

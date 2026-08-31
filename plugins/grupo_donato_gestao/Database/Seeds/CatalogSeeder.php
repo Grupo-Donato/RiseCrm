@@ -10,7 +10,8 @@ use grupo_donato_gestao\Config\Constants;
  * Seeds do catálogo (Fase 2B) — idempotentes e SEM dados comerciais fictícios.
  *
  * Cria apenas:
- *  - os recursos físicos REAIS Q2–Q6 (quadras) e Churrasqueiras 1–6, sem preço/capacidade/área;
+ *  - os recursos físicos REAIS Q2–Q6 (quadras) e as cinco churrasqueiras ativas,
+ *    sem preço/capacidade/área;
  *  - uma tabela de preço padrão vazia por unidade (DEFAULT), necessária para a
  *    resolução mínima de preço.
  *
@@ -32,14 +33,13 @@ class CatalogSeeder
     ];
 
 
-    /** Churrasqueiras reais: code => nome. */
+    /** Churrasqueiras reais ativas: code => nome. */
     private const BARBECUES = [
         "CH1" => "Churrasqueira 1",
         "CH2" => "Churrasqueira 2",
         "CH3" => "Churrasqueira 3",
         "CH4" => "Churrasqueira 4",
-        "CH5" => "Churrasqueira 5",
-        "CH6" => "Churrasqueira 6",
+        "CH5-SL" => "Churrasqueira 5 / Salão",
     ];
 
     public function __construct(int $actor_id = 0)

@@ -19,9 +19,16 @@ $schedule_text = trim((string) ($rental->schedule_display ?? ""));
 if ($schedule_text === "") {
     $schedule_text = trim(implode(", ", $weekdays) . (!empty($rental->schedule["local_time"]) ? " · " . $rental->schedule["local_time"] : ""), " ·");
 }
-$primary_amount = $rental->negotiated_amount ?? $rental->list_amount;
+$primary_amount = $rental->contracted_total ?? $rental->negotiated_amount ?? $rental->list_amount;
 $extra_time_minutes = (int) ($rental->extra_time_minutes ?? 0);
 $extra_time_amount = (string) ($rental->extra_time_amount ?? "0.00");
+$rental_additions = [];
+$additionLabel = static function (string $label, $amount): string {
+    $amount = (string) ($amount ?? "0.00");
+    return $label . ((float) $amount > 0 ? " · " . to_currency($amount) : "");
+};
+if (!empty($rental->has_vest)) { $rental_additions[] = $additionLabel(app_lang("gd_rental_addition_vest"), $rental->vest_amount ?? "0.00"); }
+if (!empty($rental->has_ball)) { $rental_additions[] = $additionLabel(app_lang("gd_rental_addition_ball"), $rental->ball_amount ?? "0.00"); }
 $edit_modal = ($rental->rental_type ?? "single") === "recurring" ? "monthly-modal" : "single-modal";
 ?>
 <?php echo view("grupo_donato_gestao\\Views\\components\\rentals_styles"); ?>
@@ -36,6 +43,7 @@ $edit_modal = ($rental->rental_type ?? "single") === "recurring" ? "monthly-moda
         </div>
         <div class="title-button-group gd-toolbar">
             <?php if (!empty($can_manage) && !in_array($status, ["cancelled", "completed", "archived"], true)) { echo modal_anchor(get_uri("grupo_donato/court-rentals/" . $edit_modal), '<i data-feather="edit" class="icon-16"></i> ' . app_lang("edit"), ["class" => "btn btn-primary", "data-post-id" => (int) $rental->id, "title" => app_lang("edit")]); } ?>
+            <?php if (!empty($can_reschedule)) { echo modal_anchor(get_uri("grupo_donato/court-rentals/reschedule-modal"), '<i data-feather="shuffle" class="icon-16"></i> ' . app_lang("gd_reschedule_rental"), ["class" => "btn btn-warning", "data-modal-lg" => 1, "data-post-rental_id" => (int) $rental->id, "title" => app_lang("gd_reschedule_rental")]); } ?>
             <?php if (!empty($can_calendar)) { echo anchor(get_uri("grupo_donato/calendar"), '<i data-feather="calendar" class="icon-16"></i> ' . app_lang("gd_open_agenda"), ["class" => "btn btn-default"]); } ?>
             <?php echo anchor(get_uri("grupo_donato/court-rentals"), '<i data-feather="arrow-left" class="icon-16"></i> ' . app_lang("back"), ["class" => "btn btn-default"]); ?>
         </div>
@@ -54,6 +62,16 @@ $edit_modal = ($rental->rental_type ?? "single") === "recurring" ? "monthly-moda
                         <div class="gd-detail-item">
                             <small class="text-muted"><?php echo app_lang("gd_courts"); ?></small>
                             <strong><?php echo $e($rental->schedule["resource_names"] ?? "-"); ?></strong>
+                        </div>
+                        <div class="gd-detail-item">
+                            <small class="text-muted"><?php echo app_lang("gd_rental_additions"); ?></small>
+                            <?php if ($rental_additions) { ?>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <?php foreach ($rental_additions as $addition) { ?><span class="badge bg-primary"><?php echo $e($addition); ?></span><?php } ?>
+                                </div>
+                            <?php } else { ?>
+                                <strong class="text-muted"><?php echo app_lang("gd_rental_no_additions"); ?></strong>
+                            <?php } ?>
                         </div>
                         <div class="gd-detail-item">
                             <small class="text-muted"><?php echo app_lang("gd_day_and_time"); ?></small>
@@ -187,6 +205,31 @@ $edit_modal = ($rental->rental_type ?? "single") === "recurring" ? "monthly-moda
                     </table>
                 </div>
             </div>
+
+            <?php if (!empty($can_reschedule)) { ?>
+                <div class="card mb15">
+                    <div class="page-title"><h4><i data-feather="shuffle" class="icon-16"></i> <?php echo app_lang("gd_reschedule_history"); ?></h4></div>
+                    <div class="card-body">
+                        <p class="text-muted"><?php echo app_lang("gd_reschedule_history_help"); ?></p>
+                        <?php if (empty($reschedule_history)) { ?><div class="text-muted"><?php echo app_lang("gd_reschedule_history_empty"); ?></div><?php } else { ?>
+                            <div class="table-responsive"><table class="table table-sm table-hover mb0">
+                                <thead><tr><th><?php echo app_lang("gd_date"); ?></th><th><?php echo app_lang("gd_reschedule_original"); ?></th><th><?php echo app_lang("gd_reschedule_new"); ?></th><th><?php echo app_lang("gd_status"); ?></th><th></th></tr></thead>
+                                <tbody>
+                                <?php foreach ($reschedule_history as $item) { ?>
+                                    <tr>
+                                        <td><?php echo $e($item["occurrence_date"]); ?><br><small class="text-muted">#<?php echo (int) $item["revision"]; ?></small></td>
+                                        <td><?php echo $e($item["original_resource"]); ?><br><?php echo $e($item["original_start"] . " – " . $item["original_end"]); ?></td>
+                                        <td><?php echo $e($item["new_resource"]); ?><br><?php echo $e($item["new_start"] . " – " . $item["new_end"]); ?></td>
+                                        <td><span class="badge <?php echo $item["status"] === "active" ? "bg-warning" : "bg-secondary"; ?>"><?php echo app_lang("gd_reschedule_status_" . $item["status"]); ?></span><br><small class="text-muted"><?php echo $e($item["reason"]); ?></small><br><small class="text-muted"><?php echo $e($item["created_by_name"] ?: ("#" . $item["created_by"])); ?></small><?php if (!empty($item["reverted_by"])) { ?><br><small class="text-muted"><?php echo $e($item["reverted_by_name"] ?: ("#" . $item["reverted_by"])); ?></small><?php } ?></td>
+                                        <td class="text-end"><?php if ($item["status"] === "active" && (int) $item["booking_id"] > 0) { echo modal_anchor(get_uri("grupo_donato/court-rentals/reschedule-modal"), '<i data-feather="edit-2" class="icon-14"></i>', ["class" => "btn btn-default btn-sm", "data-modal-lg" => 1, "data-post-booking_id" => (int) $item["booking_id"], "title" => app_lang("gd_reschedule_point")]); } ?></td>
+                                    </tr>
+                                <?php } ?>
+                                </tbody>
+                            </table></div>
+                        <?php } ?>
+                    </div>
+                </div>
+            <?php } ?>
 
             <div class="card mb15">
                 <div class="page-title"><h4><i data-feather="dollar-sign" class="icon-16"></i> <?php echo app_lang("gd_commercial_terms"); ?></h4></div>

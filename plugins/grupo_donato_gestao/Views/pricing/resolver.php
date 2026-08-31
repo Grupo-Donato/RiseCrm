@@ -7,6 +7,7 @@ $render_select = static function (string $name, array $options, string $id_attr 
 };
 ?>
 <div id="page-content" class="page-wrapper clearfix">
+    <?php echo view("grupo_donato_gestao\\Views\\components\\catalog_nav", ["active_catalog_tab" => "resolver", "can_categories" => $can_categories, "can_resources" => $can_resources, "can_pricing" => $can_pricing]); ?>
     <div class="page-title clearfix">
         <h4><?php echo app_lang("gd_price_resolver"); ?></h4>
         <div class="title-button-group"><?php echo anchor(get_uri("grupo_donato/pricing/lists"), app_lang("back"), ["class" => "btn btn-default"]); ?></div>

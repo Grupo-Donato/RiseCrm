@@ -8,6 +8,7 @@ use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use grupo_donato_gestao\Database\Schema\SchemaRunner;
 use grupo_donato_gestao\Database\Seeds\FoundationSeeder;
+use grupo_donato_gestao\Database\Seeds\CostSeeder;
 
 /**
  * Comando de instalação/atualização da fundação (espelha gd_install do index.php).
@@ -41,6 +42,7 @@ class GdInstall extends BaseCommand
         }
 
         (new FoundationSeeder(0))->run();
+        (new CostSeeder(0))->run();
         CLI::write("Seeds aplicados.", "green");
         CLI::write("Instalação/atualização concluída.", "green");
     }

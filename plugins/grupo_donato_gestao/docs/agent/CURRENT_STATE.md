@@ -3,7 +3,7 @@
 ## Versão e schema
 
 - Versão: **0.9.8**.
-- Schema alvo do pacote: **053** (V053 cria as tabelas comerciais independentes de churrasqueiras).
+- Schema alvo do pacote: **066** (V053 cria as tabelas comerciais independentes de churrasqueiras; V066 ajusta o catálogo físico).
 - Tabelas `gd_*` previstas após V053: **53** (49 anteriores + 4 tabelas de churrasqueiras).
 - Uninstall permanece não destrutivo.
 
@@ -12,7 +12,7 @@
 - Fundação, cadastro central, catálogo e recursos.
 - Disponibilidade, reservas únicas, séries e calendário.
 - Locação comercial de quadras.
-- Aluguel comercial de churrasqueiras 1–6, isolado das quadras (agenda, avulsos, mensalistas e pagamentos).
+- Aluguel comercial de quatro churrasqueiras e do espaço CH5-SL, isolado das quadras (agenda, avulsos, mensalistas e pagamentos).
 - Escola de futebol e personal.
 - Financeiro básico integrado.
 - Locações avulsas com valor livre, recebível idempotente, sinal opcional, saldo e histórico de pagamentos.

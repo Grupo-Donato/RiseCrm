@@ -101,6 +101,12 @@ $reload_target = (string) ($reload_target ?? '');
 
 <script>
 $(document).ready(function () {
+    var ajaxModal = $('#ajaxModal');
+    ajaxModal.find('.modal-content > .modal-header').addClass('hide');
+    ajaxModal.off('hidden.bs.modal.gdPaymentHeader').one('hidden.bs.modal.gdPaymentHeader', function () {
+        $(this).find('.modal-content > .modal-header').removeClass('hide');
+    });
+
     var form = $('#gd-rental-payment-form');
     form.appForm({
         onSuccess: function (result) {

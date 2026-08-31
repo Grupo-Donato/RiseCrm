@@ -28,6 +28,9 @@ class Products extends Gd_Controller
         return $this->gd_render("catalog/products_index", [
             "can_manage" => $this->access->can("gd_products_manage"),
             "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => $this->access->can("gd_price_lists_view"),
+            "active_catalog_tab" => "products",
             "type_options" => $this->type_options(),
             "category_options" => $this->categories_dropdown(),
             "area_options" => $this->areas_dropdown(),
@@ -48,6 +51,9 @@ class Products extends Gd_Controller
             "prices" => $this->gd_model("Gd_prices_model")->active_for_product((int) $row->id, $this->unit_id),
             "audits" => $audits,
             "can_manage" => $this->access->can("gd_products_manage"),
+            "can_categories" => $this->access->can("gd_product_categories_manage"),
+            "can_resources" => $this->access->can("gd_resources_view"),
+            "can_pricing" => $this->access->can("gd_price_lists_view"),
             "can_audit" => $can_audit,
         ]);
     }

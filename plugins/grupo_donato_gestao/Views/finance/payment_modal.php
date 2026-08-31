@@ -162,6 +162,12 @@ echo form_open(get_uri("grupo_donato/finance/payments/save"), ["id" => "payment-
 <script>
 $(document).ready(function () {
     "use strict";
+    var ajaxModal = $("#ajaxModal");
+    ajaxModal.find(".modal-content > .modal-header").addClass("hide");
+    ajaxModal.off("hidden.bs.modal.gdPaymentHeader").one("hidden.bs.modal.gdPaymentHeader", function () {
+        $(this).find(".modal-content > .modal-header").removeClass("hide");
+    });
+
     var reloadTarget = "<?php echo addslashes($reload_target); ?>",
         form = $("#payment-form");
 

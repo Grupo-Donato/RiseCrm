@@ -20,7 +20,7 @@ final class BookingSeriesExceptionService extends CustomerDataService
     {
         if (!in_array($type, Constants::BOOKING_SERIES_EXCEPTION_TYPES, true)) { throw new \DomainException("gd_invalid_booking_series_exception"); }
         $table = $this->db->prefixTable("gd_booking_series_exceptions");
-        $existing = $this->db->table($table)->select("id")->where("series_id", $series_id)->where("occurrence_key", $occurrence_key)->where("exception_type", $type)->get(1)->getRow();
+        $existing = $this->db->table($table)->select("id")->where("unit_id", $this->unit_id)->where("series_id", $series_id)->where("occurrence_key", $occurrence_key)->where("exception_type", $type)->get(1)->getRow();
         if ($existing) { return (int) $existing->id; }
         $safe = DataPrivacyService::forAudit($payload);
         return $this->exceptions->add([

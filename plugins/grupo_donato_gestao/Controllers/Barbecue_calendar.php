@@ -25,6 +25,25 @@ class Barbecue_calendar extends Gd_Controller
         "can_finance"=>$this->access->can("gd_rental_payments_view"),
         "booking_statuses"=>Constants::BOOKING_STATUSES,
     ]);}
-    public function events(){try{$allowed=array_map(static fn($r)=>(int)$r["id"],$this->service->resources(Constants::BARBECUE_RESOURCE_TYPE));$requested=$this->csv((string)$this->request->getGet("resources"));$resources=$requested?array_values(array_intersect($requested,$allowed)):$allowed;$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));$duration=(int)$this->request->getGet("duration_minutes");return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses,$duration));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}
+    public function events(){try{$allowed=array_map(static fn($r)=>(int)$r["id"],$this->service->resources(Constants::BARBECUE_RESOURCE_TYPE));$requested=$this->csv((string)$this->request->getGet("resources"));$resources=$requested?array_values(array_intersect($requested,$allowed)):$allowed;$types=array_filter(explode(",",(string)$this->request->getGet("types")));$statuses=array_filter(explode(",",(string)$this->request->getGet("statuses")));$duration=$this->parseDuration((string)$this->request->getGet("duration_minutes")) ?: 90;return $this->response->setJSON($this->service->events((string)$this->request->getGet("start"),(string)$this->request->getGet("end"),$resources,$types,$statuses,$duration));}catch(\Throwable $e){$key=$e->getMessage();return $this->response->setStatusCode(400)->setJSON(["error"=>str_starts_with($key,"gd_")?app_lang($key):app_lang("error_occurred")]);}}
+    private function parseDuration(string $value): int
+    {
+        $raw = mb_strtolower(trim($value));
+        if ($raw === "") { return 0; }
+        $raw = preg_replace('/\s+/', ' ', $raw) ?? $raw;
+        $minutes = 0;
+        if (preg_match('/^\d+$/', $raw)) {
+            $minutes = (int) $raw;
+        } elseif (preg_match('/^(\d+)\s*h\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/u', $raw, $match)) {
+            $extra = isset($match[2]) ? (int) $match[2] : 0;
+            if ($extra < 60) { $minutes = ((int) $match[1] * 60) + $extra; }
+        } elseif (preg_match('/^(\d+)\s*(?:m|min|minutos?)$/u', $raw, $match)) {
+            $minutes = (int) $match[1];
+        } elseif (preg_match('/^(\d+):(\d{2})$/', $raw, $match)) {
+            $extra = (int) $match[2];
+            if ($extra < 60) { $minutes = ((int) $match[1] * 60) + $extra; }
+        }
+        return $minutes > 0 && $minutes <= Constants::BOOKING_MAX_DURATION_MINUTES ? $minutes : 0;
+    }
     private function csv(string $value):array{return array_values(array_filter(array_map("intval",explode(",",$value)),static fn($v)=>$v>0));}
 }

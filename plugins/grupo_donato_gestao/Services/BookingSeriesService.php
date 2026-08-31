@@ -13,10 +13,12 @@ class BookingSeriesService extends CustomerDataService
     private $series_events;
     private $series_exceptions;
     private TemporalService $time;
+    private ?object $login_user;
 
     public function __construct(int $unit_id, int $actor_id = 0, ?object $login_user = null)
     {
         parent::__construct($unit_id, $actor_id, $login_user);
+        $this->login_user = $login_user;
         $this->series = model("grupo_donato_gestao\\Models\\Gd_booking_series_model");
         $this->series_resources = model("grupo_donato_gestao\\Models\\Gd_booking_series_resources_model");
         $this->series_events = model("grupo_donato_gestao\\Models\\Gd_booking_series_events_model");
@@ -70,6 +72,60 @@ class BookingSeriesService extends CustomerDataService
     {
         $prepared = $this->normalize($input);
         return (new BookingSeriesOccurrenceService($this->unit_id, $this->actor_id))->preview($prepared["series"], $prepared["resources"]);
+    }
+
+    /**
+     * Valida o que seria materializado ao editar uma série, sem gravar nada.
+     * Reservas normais da própria série são excluídas da consulta; ocorrências
+     * destacadas continuam sendo consideradas, pois são alterações pontuais
+     * que devem permanecer protegidas contra uma nova colisão.
+     * @return array<string,mixed>
+     */
+    public function recurringAvailability(int $series_id, array $input): array
+    {
+        $current = $this->series->get_scoped($series_id, $this->unit_id);
+        if (!$current) { throw new \DomainException("gd_booking_series_not_found"); }
+        if (!in_array((string) $current->status, ["active", "paused"], true)) { throw new \DomainException("gd_booking_series_not_editable"); }
+        $prepared = $this->normalize($input);
+        $definition = $prepared["series"];
+        $resources = $prepared["resources"];
+        $today = new \DateTimeImmutable("today", new \DateTimeZone($this->time->timezoneName()));
+        $through = $today->modify("+" . max(1, min(Constants::BOOKING_SERIES_MAX_HORIZON_DAYS, (int) $definition["generation_horizon_days"])) . " days")->format("Y-m-d");
+        $candidates = (new RecurrenceGeneratorService($this->unit_id))->candidates($definition, $through);
+
+        $booking_table = $this->db->prefixTable("gd_bookings");
+        $excluded = array_map(static fn ($row): int => (int) $row->id, $this->db->table($booking_table)
+            ->select("id")->where("unit_id", $this->unit_id)->where("series_id", $series_id)->where("deleted", 0)
+            ->where("detached_from_series", 0)->get()->getResult());
+        $resource_ids = array_column($resources, "resource_id");
+        $availability = new AvailabilityService($this->unit_id);
+        $conflicts = new BookingConflictService($this->unit_id, $this->actor_id, $this->login_user);
+        $items = [];
+        $conflict_count = 0;
+        foreach ($candidates as $candidate) {
+            if ((string) $candidate["local_date"] < $today->format("Y-m-d")) { continue; }
+            $windows = [];
+            foreach ($resources as $resource) {
+                $before = (int) $resource["buffer_before_minutes"];
+                $after = (int) $resource["buffer_after_minutes"];
+                $start = $this->time->parseUtc($candidate["starts_at_utc"])->modify("-{$before} minutes")->format("Y-m-d H:i:s");
+                $end = $this->time->parseUtc($candidate["ends_at_utc"])->modify("+{$after} minutes")->format("Y-m-d H:i:s");
+                $windows[] = ["resource_id" => (int) $resource["resource_id"], "occupancy_starts_at_utc" => $start, "occupancy_ends_at_utc" => $end];
+            }
+            $physical = $availability->checkMany($resource_ids, $windows[0]["occupancy_starts_at_utc"], $windows[0]["occupancy_ends_at_utc"], $excluded);
+            $conflict = $conflicts->findConflicts($this->unit_id, $windows, $excluded);
+            $physical_blocked = array_values(array_filter($physical, static fn (array $row): bool => empty($row["available"])));
+            $has_conflict = (bool) $conflict["has_conflict"] || (bool) $physical_blocked;
+            if ($has_conflict) { $conflict_count++; }
+            $reason = $conflict["has_conflict"] ? "gd_booking_conflict" : ((string) ($physical_blocked[0]["reason_code"] ?? ""));
+            $items[] = [
+                "occurrence_key" => $candidate["occurrence_key"], "local_date" => $candidate["local_date"],
+                "starts_at_local" => $candidate["starts_at_local"], "ends_at_local" => $candidate["ends_at_local"],
+                "available" => !$has_conflict, "reason" => $reason ?: null,
+                "conflicts" => $conflict["conflicts"], "resources" => $physical,
+            ];
+        }
+        return ["series_id" => $series_id, "through" => $through, "checked_count" => count($items), "conflict_count" => $conflict_count, "has_conflict" => $conflict_count > 0, "occurrences" => $items];
     }
 
     public function create(array $input, bool $generate = true): array

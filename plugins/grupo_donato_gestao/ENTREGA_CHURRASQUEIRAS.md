@@ -2,7 +2,7 @@
 
 **Plugin:** Grupo Donato Gestão
 **Versão:** 0.9.8
-**Schema alvo:** 053
+**Schema alvo:** 066
 
 ## O que foi replicado
 
@@ -10,7 +10,11 @@ O módulo **Churrasqueiras** é um módulo irmão de **Locações**, com o mesmo
 
 ## Recursos
 
-O `CatalogSeeder` garante as seis churrasqueiras `CH1` a `CH6` (`Churrasqueira 1` a `Churrasqueira 6`). Caso recursos com esses nomes/códigos já existam na unidade padrão, eles são reaproveitados para evitar duplicação.
+O `CatalogSeeder` garante cinco churrasqueiras ativas: `CH1` a `CH4` e `CH5-SL`
+(`Churrasqueira 1` a `Churrasqueira 4` e `Churrasqueira 5 / Salão`). A antiga
+`CH6` é retirada por exclusão lógica, preservando referências históricas. Caso
+recursos com esses nomes/códigos já existam na unidade padrão, eles são
+reaproveitados para evitar duplicação.
 
 ## Isolamento
 
@@ -31,7 +35,10 @@ Foram adicionadas permissões próprias para visualizar, gerenciar, alterar stat
 
 ## Instalação/atualização
 
-O instalador do plugin executa o SchemaRunner e o CatalogSeeder de forma idempotente. Ao atualizar o plugin, V053 cria as tabelas novas e o seed cadastra/reaproveita CH1–CH6. Nenhuma tabela de locação de quadras é substituída.
+O instalador do plugin executa o SchemaRunner e o CatalogSeeder de forma idempotente.
+Ao atualizar o plugin, V053 cria as tabelas novas e V066 ajusta o catálogo para
+CH1–CH4 e CH5-SL, retirando logicamente a CH6. Nenhuma tabela de locação de
+quadras é substituída.
 
 ## QA desta entrega
 

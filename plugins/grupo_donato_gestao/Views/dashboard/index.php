@@ -6,6 +6,8 @@ $active_unit_name = $active_unit && isset($active_unit->name) && $active_unit->n
     : "Unidade não selecionada";
 $money = static fn ($value): string => "R$ " . number_format((float) $value, 2, ",", ".");
 $number = static fn ($value): string => number_format((float) $value, 0, ",", ".");
+$catalog = $catalog ?? ["active_products" => 0, "active_categories" => 0, "active_variants" => 0, "priced_products" => 0];
+$finance_totals = $finance_totals ?? ["charges" => 0, "paid_count" => 0, "open_count" => 0, "overdue_count" => 0, "billed_amount" => 0, "paid_amount" => 0, "balance_amount" => 0, "overdue_amount" => 0];
 $source_labels = [
     "enrollment" => "GD Academy",
     "court_rental" => "Locações de quadras",
@@ -27,7 +29,7 @@ $product_cards = [
             ["label" => "Aulas hoje", "value" => $academy["classes_today"] ?? 0],
             ["label" => "Presenças lançadas", "value" => $academy["attendance_today"] ?? 0],
         ],
-        "href" => get_uri("grupo_donato/school/students"),
+        "href" => get_uri($can_students ? "grupo_donato/school/students" : "grupo_donato/school/classes"),
         "can_link" => $can_students || $can_classes,
     ],
     [
@@ -42,7 +44,7 @@ $product_cards = [
             ["label" => "Reservas hoje", "value" => $courts["bookings_today"] ?? 0],
             ["label" => "Próximos 7 dias", "value" => $courts["next_7_days"] ?? 0],
         ],
-        "href" => get_uri("grupo_donato/court-rentals"),
+        "href" => get_uri($can_court_rentals ? "grupo_donato/court-rentals" : "grupo_donato/bookings"),
         "can_link" => $can_court_rentals || $can_bookings,
     ],
     [
@@ -57,12 +59,29 @@ $product_cards = [
             ["label" => "Reservas hoje", "value" => $barbecues["bookings_today"] ?? 0],
             ["label" => "Próximos 7 dias", "value" => $barbecues["next_7_days"] ?? 0],
         ],
-        "href" => get_uri("grupo_donato/barbecue-rentals"),
+        "href" => get_uri($can_barbecue_rentals ? "grupo_donato/barbecue-rentals" : "grupo_donato/bookings"),
         "can_link" => $can_barbecue_rentals || $can_bookings,
     ],
 ];
 
-$future_product_count = (int) ($catalog_products ?? 0);
+if (!empty($can_catalog)) {
+    $product_cards[] = [
+        "name" => "Produtos e servicos",
+        "description" => "Catalogo, variacoes e precos",
+        "icon" => "package",
+        "class" => "gd-product-catalog",
+        "finance" => ["charges" => 0, "paid_count" => 0, "open_count" => 0, "overdue_count" => 0, "billed_amount" => 0, "paid_amount" => 0, "balance_amount" => 0, "overdue_amount" => 0],
+        "stats" => [
+            ["label" => "Produtos ativos", "value" => $catalog["active_products"] ?? 0],
+            ["label" => "Categorias ativas", "value" => $catalog["active_categories"] ?? 0],
+            ["label" => "Variacoes ativas", "value" => $catalog["active_variants"] ?? 0],
+            ["label" => "Com preco vigente", "value" => $catalog["priced_products"] ?? 0],
+        ],
+        "href" => get_uri("grupo_donato/catalog/products"),
+        "can_link" => true,
+    ];
+}
+
 $product_rows = [
     ["label" => "GD Academy", "finance" => $finance_by_source["enrollment"] ?? []],
     ["label" => "Locações de quadras", "finance" => $finance_by_source["court_rental"] ?? []],
@@ -84,7 +103,28 @@ if ($can_students) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/school/st
 if ($can_bookings) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/bookings/modal"), '<i data-feather="calendar" class="icon-14"></i> Nova reserva', ["class" => "btn btn-default btn-sm me-2 mb-2", "title" => "Nova reserva"]); }
 if ($can_court_rentals) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/court-rentals/monthly-modal"), '<i data-feather="repeat" class="icon-14"></i> Novo mensalista', ["class" => "btn btn-default btn-sm me-2 mb-2", "title" => "Novo mensalista"]); }
 if ($can_payments) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/payment-modal"), '<i data-feather="check-circle" class="icon-14"></i> Registrar pagamento', ["class" => "btn btn-default btn-sm me-2 mb-2", "title" => "Registrar pagamento"]); }
-if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/expense-modal"), '<i data-feather="arrow-down-circle" class="icon-14"></i> Registrar despesa', ["class" => "btn btn-default btn-sm me-2 mb-2", "title" => "Registrar despesa"]); }
+if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/costs/modal"), '<i data-feather="arrow-down-circle" class="icon-14"></i> Registrar custo', ["class" => "btn btn-default btn-sm me-2 mb-2", "title" => "Registrar custo"]); }
+
+$module_links = [];
+$module_link = static function (string $label, string $url, string $icon) use (&$module_links): void {
+    $module_links[] = anchor(get_uri($url), '<i data-feather="' . esc($icon) . '" class="icon-14"></i> ' . esc($label), ["class" => "btn btn-default btn-sm me-2 mb-2"]);
+};
+if (!empty($can_customers)) { $module_link("Clientes", "grupo_donato/customers", "briefcase"); }
+if (!empty($can_people)) { $module_link("Pessoas", "grupo_donato/people", "users"); }
+if (!empty($can_students)) { $module_link("Alunos", "grupo_donato/school/students", "user"); }
+if (!empty($can_classes)) { $module_link("Turmas e personal", "grupo_donato/school/classes", "book-open"); }
+if (!empty($can_attendance)) { $module_link("Presenca", "grupo_donato/school/attendance", "check-square"); }
+if (!empty($can_calendar)) { $module_link("Agenda", "grupo_donato/calendar", "calendar"); }
+if (!empty($can_bookings)) { $module_link("Reservas", "grupo_donato/bookings", "clipboard"); }
+if (!empty($can_booking_series)) { $module_link("Recorrencias", "grupo_donato/booking-series", "repeat"); }
+if (!empty($can_court_rentals)) { $module_link("Locacoes de quadras", "grupo_donato/court-rentals", "grid"); }
+if (!empty($can_barbecue_rentals)) { $module_link("Churrasqueiras", "grupo_donato/barbecue-rentals", "sun"); }
+if (!empty($can_finance)) { $module_link("Financeiro", "grupo_donato/finance", "dollar-sign"); }
+if (!empty($can_costs)) { $module_link("Custos", "grupo_donato/finance/costs", "arrow-down-circle"); }
+if (!empty($can_catalog)) { $module_link("Produtos e servicos", "grupo_donato/catalog/products", "package"); }
+if (!empty($can_resources)) { $module_link("Recursos", "grupo_donato/resources", "map"); }
+if (!empty($can_pricing)) { $module_link("Tabelas de preco", "grupo_donato/pricing/lists", "tag"); }
+if (!empty($can_settings)) { $module_link("Configuracoes", "grupo_donato/settings/general", "settings"); }
 ?>
 
 <style>
@@ -239,7 +279,7 @@ if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/e
             ["label" => "Recebido no período", "value" => $money($summary["received"]), "meta" => $number($summary["payments"]) . " pagamento(s) confirmado(s)", "class" => "gd-positive"],
             ["label" => "Em aberto", "value" => $money($summary["open"]), "meta" => $number($summary["open_count"]) . " cobrança(s) pendente(s)", "class" => "gd-warning"],
             ["label" => "Vencido", "value" => $money($summary["overdue"]), "meta" => $number($summary["overdue_count"]) . " cobrança(s) vencida(s)", "class" => "gd-danger"],
-            ["label" => "Despesas pagas", "value" => $money($summary["expenses"]), "meta" => "Saídas no período", "class" => "gd-neutral"],
+            ["label" => "Saídas pagas", "value" => $money($summary["expenses"]), "meta" => "Saídas no período", "class" => "gd-neutral"],
             ["label" => "Resultado", "value" => $money($summary["result"]), "meta" => "Entradas menos despesas", "class" => $summary["result"] >= 0 ? "gd-positive" : "gd-danger"],
         ];
         foreach ($summary_cards as $summary_card) { ?>
@@ -292,14 +332,6 @@ if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/e
                 </div>
             </div>
         <?php } ?>
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="gd-future-card">
-                <i data-feather="plus-circle" class="icon-24 text-muted"></i>
-                <h4><?php echo $future_product_count > 0 ? "Novos produtos" : "Quarto produto"; ?></h4>
-                <p><?php echo $future_product_count > 0 ? $number($future_product_count) . " item(ns) ativo(s) no catálogo, pronto(s) para ganhar uma visão própria." : "A estrutura do painel já está preparada para receber o próximo negócio sem perder o total da empresa."; ?></p>
-                <span class="badge bg-light text-muted"><?php echo $future_product_count > 0 ? "No catálogo" : "Em breve"; ?></span>
-            </div>
-        </div>
     </div>
 
     <div class="gd-section-title">Acompanhamento do dia</div>
@@ -334,14 +366,14 @@ if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/e
     </div>
 
     <?php if ($can_finance) { ?>
-        <div class="gd-section-title">Financeiro por produto <small>posição atual das cobranças</small></div>
+        <div class="gd-section-title">Financeiro por produto <small>posição atual consolidada das cobranças</small></div>
         <div class="card mb-3"><div class="table-responsive"><table class="table gd-table">
             <thead><tr><th>Produto</th><th>Cobranças</th><th>Cobrado</th><th>Pago</th><th>Em aberto</th><th>Vencidos</th></tr></thead>
             <tbody>
                 <?php foreach ($product_rows as $product_row) { $row_finance = $product_row["finance"]; ?>
                     <tr><td><?php echo esc($product_row["label"]); ?></td><td><?php echo $number($row_finance["charges"] ?? 0); ?></td><td><?php echo esc($money($row_finance["billed_amount"] ?? 0)); ?></td><td class="text-success"><?php echo esc($money($row_finance["paid_amount"] ?? 0)); ?></td><td class="text-warning"><?php echo $number($row_finance["open_count"] ?? 0) . " · " . esc($money($row_finance["balance_amount"] ?? 0)); ?></td><td class="text-danger"><?php echo $number($row_finance["overdue_count"] ?? 0) . " · " . esc($money($row_finance["overdue_amount"] ?? 0)); ?></td></tr>
                 <?php } ?>
-                <tr class="gd-total-row"><td>Total da empresa</td><td><?php echo $number($summary["charges"]); ?></td><td><?php echo esc($money($summary["billed"])); ?></td><td class="text-success"><?php echo esc($money(array_sum(array_map(static fn ($row) => (float) ($row["paid_amount"] ?? 0), $product_rows)))); ?></td><td class="text-warning"><?php echo $number($summary["open_count"]) . " · " . esc($money($summary["open"])); ?></td><td class="text-danger"><?php echo $number($summary["overdue_count"]) . " · " . esc($money($summary["overdue"])); ?></td></tr>
+                <tr class="gd-total-row"><td>Total da empresa</td><td><?php echo $number($finance_totals["charges"] ?? 0); ?></td><td><?php echo esc($money($finance_totals["billed_amount"] ?? 0)); ?></td><td class="text-success"><?php echo esc($money($finance_totals["paid_amount"] ?? 0)); ?></td><td class="text-warning"><?php echo $number($finance_totals["open_count"] ?? 0) . " · " . esc($money($finance_totals["balance_amount"] ?? 0)); ?></td><td class="text-danger"><?php echo $number($finance_totals["overdue_count"] ?? 0) . " · " . esc($money($finance_totals["overdue_amount"] ?? 0)); ?></td></tr>
             </tbody>
         </table></div></div>
     <?php } ?>
@@ -373,6 +405,11 @@ if ($can_expenses) { $shortcuts[] = modal_anchor(get_uri("grupo_donato/finance/e
     </div>
 
     <?php if ($shortcuts) { ?><div class="gd-section-title">Acesso rápido</div><div class="card mb-3"><div class="card-body pb-1"><?php echo implode(" ", $shortcuts); ?></div></div><?php } ?>
+
+    <?php if ($module_links) { ?>
+        <div class="gd-section-title">Navegacao integrada <small>todas as telas desta unidade</small></div>
+        <div class="card mb-3"><div class="card-body pb-1"><?php echo implode(" ", $module_links); ?></div></div>
+    <?php } ?>
 
     <details class="gd-technical card mb-3">
         <summary class="card-body">Informações do sistema</summary>

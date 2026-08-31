@@ -20,7 +20,7 @@ class FinanceService extends CatalogDataService
         $seq=new SequenceService();$seq->ensure($this->unit_id,'receivable','REC-'.gmdate('Y').'-',6,true);$number=$seq->next($this->unit_id,'receivable');$this->db->transBegin();try{$data=$this->stamp(['unit_id'=>$this->unit_id,'receivable_number'=>$number,'customer_account_id'=>$account,'source_type'=>$source,'source_id'=>$sourceId?:null,'reference_month'=>$reference,'description'=>$description,'issue_date'=>$issue,'due_date'=>$due,'original_amount'=>$amount,'paid_amount'=>'0.00','balance_amount'=>$amount,'status'=>$due<gmdate('Y-m-d')?'overdue':'open','business_area_id'=>$area,'cost_center_id'=>$center,'notes'=>DataNormalizationService::text($in['notes']??'')?:null,'lock_version'=>1],true);$id=(int)$this->receivables->ci_save($data,0);$item=$this->stamp(['unit_id'=>$this->unit_id,'receivable_id'=>$id,'description'=>DataNormalizationService::text($in['item_description']??$description),'product_id'=>$product?:null,'quantity'=>$qty,'unit_amount'=>$unitAmount,'total_amount'=>$total],true);$this->items->ci_save($item,0);$this->audit_change('create','receivable',$id,null,$data,['source_type'=>$source,'source_id'=>$sourceId]);if($this->db->transCommit()===false)throw new \RuntimeException('save_failed');return ['created'=>true,'id'=>$id,'receivable_number'=>$number];}catch(\Throwable $e){$this->db->transRollback();if(str_contains($e->getMessage(),'uniq_receivable_source'))return ['created'=>false,'duplicate'=>true];throw $e;}
     }
     public function cancelReceivable(int $id,string $reason):void{$r=$this->receivables->get_scoped($id,$this->unit_id);if(!$r)throw new \DomainException('gd_record_not_found');if((string)$r->status==='paid'||DataNormalizationService::decimalCompare((string)$r->paid_amount,'0.00')>0)throw new \DomainException('gd_finance_paid_cannot_cancel');$reason=DataNormalizationService::text($reason);if($reason==='')throw new \DomainException('gd_reason_required');$before=(array)$r;$data=$this->stamp(['status'=>'cancelled','notes'=>trim((string)$r->notes."\nCancelamento: ".$reason),'lock_version'=>(int)$r->lock_version+1],false);$this->receivables->ci_save($data,$id);$this->audit_change('cancel','receivable',$id,$before,(array)$this->receivables->get_scoped($id,$this->unit_id),['reason'=>$reason]);}
-    public function getReceivable(int $id):?object{$r=$this->receivables->get_scoped($id,$this->unit_id);if(!$r)return null;$r->items=$this->items->for_receivable($id,$this->unit_id);$r->allocations=$this->db->query("SELECT a.*,p.payment_number,p.payment_date,p.payment_method,p.payment_type,p.status payment_status FROM `{$this->db->prefixTable('gd_payment_allocations')}` a JOIN `{$this->db->prefixTable('gd_payments')}` p ON p.id=a.payment_id AND p.unit_id=a.unit_id AND p.deleted=0 WHERE a.unit_id=? AND a.receivable_id=? ORDER BY a.id",[$this->unit_id,$id])->getResult();return $r;}
+    public function getReceivable(int $id):?object{$r=$this->receivables->get_scoped($id,$this->unit_id);if(!$r)return null;$r->items=$this->items->for_receivable($id,$this->unit_id);$r->allocations=$this->db->query("SELECT a.*,p.payment_number,p.payment_date,p.payment_method,p.payment_type,p.status payment_status FROM `{$this->db->prefixTable('gd_payment_allocations')}` a JOIN `{$this->db->prefixTable('gd_payments')}` p ON p.id=a.payment_id AND p.unit_id=a.unit_id AND p.deleted=0 WHERE a.unit_id=? AND a.receivable_id=? ORDER BY a.id",[$this->unit_id,$id])->getResult();$balance=DataNormalizationService::decimal((string)($r->balance_amount??'0.00'),2);$paid=DataNormalizationService::decimal((string)($r->paid_amount??'0.00'),2);$r->display_status=(string)$r->status==='cancelled'?'cancelled':(DataNormalizationService::decimalCompare($balance,'0.00')<=0?'paid':((string)$r->due_date<gmdate('Y-m-d')?'overdue':(DataNormalizationService::decimalCompare($paid,'0.00')>0?'partial':'open')));return $r;}
     /** Contexto da baixa de uma locaÃ§Ã£o, no mesmo formato operacional da Academy. */
     public function courtRentalPaymentContext(int $receivable_id):?array
     {
@@ -86,7 +86,7 @@ class FinanceService extends CatalogDataService
         }
 
         $receivable = $context['receivable'];
-        if (in_array((string) $receivable->status, ['paid', 'cancelled'], true)) {
+        if ((string) $receivable->status === 'cancelled' || DataNormalizationService::decimalCompare((string) $receivable->balance_amount, '0.00') <= 0) {
             throw new \DomainException('gd_finance_receivable_unavailable');
         }
 
@@ -145,13 +145,13 @@ class FinanceService extends CatalogDataService
 
     public function receivablesPage(array $o):array
     {
-        $t=$this->db->prefixTable('gd_receivables');$a=$this->db->prefixTable('gd_customer_accounts');$base=function()use($o,$t,$a){$q=$this->db->table($t)->join($a,"$a.id=$t.customer_account_id AND $a.unit_id=$t.unit_id AND $a.deleted=0",'inner',false)->where("$t.unit_id",$this->unit_id)->where("$t.deleted",0);foreach(['status','source_type','source_id','customer_account_id','business_area_id','cost_center_id'] as $f)if(($v=$o[$f]??'')!=='')$q->where("$t.$f",$v);if($v=$o['date_from']??'')$q->where("$t.due_date >=",$v);if($v=$o['date_to']??'')$q->where("$t.due_date <=",$v);if($v=trim((string)($o['search_by']??'')))$q->groupStart()->like("$t.receivable_number",$v)->orLike("$t.description",$v)->orLike("$a.display_name",$v)->groupEnd();return $q;};$total=$this->db->table($t)->where('unit_id',$this->unit_id)->where('deleted',0)->countAllResults();$filtered=$base()->countAllResults(false);$rows=$base()->select("$t.*,$a.display_name customer_name,CASE WHEN $t.status IN ('open','partial') AND $t.due_date<CURDATE() THEN 'overdue' ELSE $t.status END display_status",false)->orderBy("$t.due_date",'DESC')->limit(max(1,min(100,(int)($o['limit']??25))),max(0,(int)($o['skip']??0)))->get()->getResult();return ['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered];
+        $t=$this->db->prefixTable('gd_receivables');$a=$this->db->prefixTable('gd_customer_accounts');$base=function()use($o,$t,$a){$q=$this->db->table($t)->join($a,"$a.id=$t.customer_account_id AND $a.unit_id=$t.unit_id AND $a.deleted=0",'inner',false)->where("$t.unit_id",$this->unit_id)->where("$t.deleted",0);foreach(['status','source_type','source_id','customer_account_id','business_area_id','cost_center_id'] as $f)if(($v=$o[$f]??'')!=='')$q->where("$t.$f",$v);if($v=$o['date_from']??'')$q->where("$t.due_date >=",$v);if($v=$o['date_to']??'')$q->where("$t.due_date <=",$v);if($v=trim((string)($o['search_by']??'')))$q->groupStart()->like("$t.receivable_number",$v)->orLike("$t.description",$v)->orLike("$a.display_name",$v)->groupEnd();return $q;};$total=$this->db->table($t)->where('unit_id',$this->unit_id)->where('deleted',0)->countAllResults();$filtered=$base()->countAllResults(false);$rows=$base()->select("$t.*,$a.display_name customer_name,CASE WHEN $t.status='cancelled' THEN 'cancelled' WHEN $t.balance_amount<=0 THEN 'paid' WHEN $t.due_date<CURDATE() THEN 'overdue' WHEN $t.paid_amount>0 THEN 'partial' ELSE 'open' END display_status",false)->orderBy("$t.due_date",'DESC')->limit(max(1,min(100,(int)($o['limit']??25))),max(0,(int)($o['skip']??0)))->get()->getResult();return ['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$filtered];
     }
     public function registerPayment(array $in):array
     {
         $allocInput=(array)($in['allocations']??[]);$alloc=[];foreach($allocInput as $rid=>$allocationAmount){$rid=(int)$rid;if($rid<=0)continue;if(is_array($allocationAmount))$allocationAmount=$allocationAmount['amount']??'';$allocationAmount=trim((string)$allocationAmount);if($allocationAmount==='')continue;$value=DataNormalizationService::decimal($allocationAmount,2);if(DataNormalizationService::decimalCompare($value,'0.00')>0)$alloc[$rid]=$value;}if(!$alloc)throw new \DomainException('gd_finance_allocation_required');ksort($alloc);$amount=DataNormalizationService::decimal($in['amount']??'',2);$sum='0.00';foreach($alloc as $v)$sum=$this->add($sum,$v);if(DataNormalizationService::decimalCompare($amount,'0.00')<=0||DataNormalizationService::decimalCompare($sum,$amount)!==0)throw new \DomainException('gd_finance_allocation_total');$method=(string)($in['payment_method']??'');if(!in_array($method,Constants::PAYMENT_METHODS,true))throw new \DomainException('gd_invalid_value');$paymentType=(string)($in['payment_type']??'regular');if(!in_array($paymentType,Constants::PAYMENT_TYPES,true))throw new \DomainException('gd_invalid_value');$account=(int)($in['financial_account_id']??0);$this->activeAccount($account);$date=$this->valid_date($in['payment_date']??gmdate('Y-m-d'));
         if (!$date) throw new \DomainException('gd_finance_payment_date_required');
-        $locks=[];$this->db->transBegin();try{foreach(array_keys($alloc) as $rid){$lock="gd:receivable:{$this->unit_id}:$rid";if((int)$this->db->query('SELECT GET_LOCK(?,10) acquired',[$lock])->getRow()->acquired!==1)throw new \RuntimeException('gd_lock_timeout');$locks[]=$lock;$r=$this->db->query("SELECT * FROM `{$this->db->prefixTable('gd_receivables')}` WHERE id=? AND unit_id=? AND deleted=0 FOR UPDATE",[$rid,$this->unit_id])->getRow();if(!$r||in_array($r->status,['paid','cancelled'],true))throw new \DomainException('gd_finance_receivable_unavailable');if(DataNormalizationService::decimalCompare($alloc[$rid],(string)$r->balance_amount)>0)throw new \DomainException('gd_finance_overallocation');}
+        $locks=[];$this->db->transBegin();try{foreach(array_keys($alloc) as $rid){$lock="gd:receivable:{$this->unit_id}:$rid";if((int)$this->db->query('SELECT GET_LOCK(?,10) acquired',[$lock])->getRow()->acquired!==1)throw new \RuntimeException('gd_lock_timeout');$locks[]=$lock;$r=$this->db->query("SELECT * FROM `{$this->db->prefixTable('gd_receivables')}` WHERE id=? AND unit_id=? AND deleted=0 FOR UPDATE",[$rid,$this->unit_id])->getRow();if(!$r||(string)$r->status==='cancelled'||DataNormalizationService::decimalCompare((string)$r->balance_amount,'0.00')<=0)throw new \DomainException('gd_finance_receivable_unavailable');if(DataNormalizationService::decimalCompare($alloc[$rid],(string)$r->balance_amount)>0)throw new \DomainException('gd_finance_overallocation');}
             $seq=new SequenceService();$seq->ensure($this->unit_id,'payment','PAG-'.gmdate('Y').'-',6,true);$number=$seq->next($this->unit_id,'payment');$data=$this->stamp(['unit_id'=>$this->unit_id,'payment_number'=>$number,'financial_account_id'=>$account,'payment_date'=>$date,'amount'=>$amount,'payment_method'=>$method,'payment_type'=>$paymentType,'external_reference'=>DataNormalizationService::text($in['external_reference']??'')?:null,'notes'=>DataNormalizationService::text($in['notes']??'')?:null,'status'=>'confirmed'],true);$pid=(int)$this->payments->ci_save($data,0);foreach($alloc as $rid=>$value){$ad=$this->stamp(['unit_id'=>$this->unit_id,'payment_id'=>$pid,'receivable_id'=>$rid,'allocated_amount'=>$value,'status'=>'active'],true);$this->allocations->ci_save($ad,0);$this->recalculate($rid);} $this->movement($account,$date,'in','payment',$pid,'Pagamento '.$number,$amount,null);$this->audit_change('confirm','payment',$pid,null,$data,['allocations'=>$alloc,'payment_type'=>$paymentType]);if($this->db->transCommit()===false)throw new \RuntimeException('save_failed');return ['id'=>$pid,'payment_number'=>$number,'payment_type'=>$paymentType];}catch(\Throwable $e){$this->db->transRollback();throw $e;}finally{foreach(array_reverse($locks) as $lock)$this->db->query('SELECT RELEASE_LOCK(?)',[$lock]);}
     }
     public function reversePayment(int $id,string $reason):void
@@ -171,7 +171,24 @@ class FinanceService extends CatalogDataService
     }
     public function expensesPage(array $o):array{$t=$this->db->prefixTable('gd_expenses');$a=$this->db->prefixTable('gd_financial_accounts');$q=$this->db->table($t)->select("$t.*,$a.name account_name",false)->join($a,"$a.id=$t.financial_account_id AND $a.unit_id=$t.unit_id",'left',false)->where("$t.unit_id",$this->unit_id)->where("$t.deleted",0);if($v=$o['status']??'')$q->where("$t.status",$v);$total=$this->db->table($t)->where('unit_id',$this->unit_id)->where('deleted',0)->countAllResults();$rows=$q->orderBy("$t.expense_date",'DESC')->limit(max(1,min(100,(int)($o['limit']??25))),max(0,(int)($o['skip']??0)))->get()->getResult();return ['data'=>$rows,'recordsTotal'=>$total,'recordsFiltered'=>$total];}
     public function cashPage(array $o):array{$t=$this->db->prefixTable('gd_cash_movements');$a=$this->db->prefixTable('gd_financial_accounts');$q=$this->db->table($t)->select("$t.*,$a.name account_name",false)->join($a,"$a.id=$t.financial_account_id AND $a.unit_id=$t.unit_id",'inner',false)->where("$t.unit_id",$this->unit_id);if($v=$o['financial_account_id']??'')$q->where("$t.financial_account_id",$v);if($v=$o['date_from']??'')$q->where("$t.movement_date >=",$v);if($v=$o['date_to']??'')$q->where("$t.movement_date <=",$v);$rows=$q->orderBy("$t.movement_date",'ASC')->orderBy("$t.id",'ASC')->get()->getResult();$balance='0.00';foreach($rows as $r){$balance=$r->movement_type==='in'?$this->add($balance,(string)$r->amount):$this->sub($balance,(string)$r->amount);$r->running_balance=$balance;}return $rows;}
-    public function dashboard(string $from='',string $to=''):array{$from=$from?:gmdate('Y-m-01');$to=$to?:gmdate('Y-m-t');$r=$this->db->prefixTable('gd_receivables');$p=$this->db->prefixTable('gd_payments');$e=$this->db->prefixTable('gd_expenses');$sum=fn($sql,$params)=>DataNormalizationService::decimal((string)($this->db->query($sql,$params)->getRow()->total??'0'),2);$open=$sum("SELECT COALESCE(SUM(balance_amount),0) total FROM `$r` WHERE unit_id=? AND deleted=0 AND status IN ('open','partial','overdue')",[$this->unit_id]);$overdue=$sum("SELECT COALESCE(SUM(balance_amount),0) total FROM `$r` WHERE unit_id=? AND deleted=0 AND status IN ('open','partial','overdue') AND due_date<CURDATE()",[$this->unit_id]);$received=$sum("SELECT COALESCE(SUM(amount),0) total FROM `$p` WHERE unit_id=? AND deleted=0 AND status='confirmed' AND payment_date BETWEEN ? AND ?",[$this->unit_id,$from,$to]);$expenses=$sum("SELECT COALESCE(SUM(amount),0) total FROM `$e` WHERE unit_id=? AND deleted=0 AND status='paid' AND paid_date BETWEEN ? AND ?",[$this->unit_id,$from,$to]);$debtors=(int)$this->db->query("SELECT COUNT(DISTINCT customer_account_id) c FROM `$r` WHERE unit_id=? AND deleted=0 AND status IN ('open','partial','overdue') AND due_date<CURDATE()",[$this->unit_id])->getRow()->c;return ['open'=>$open,'overdue'=>$overdue,'received'=>$received,'expenses'=>$expenses,'balance'=>$this->sub($received,$expenses),'debtors'=>$debtors,'upcoming'=>$this->db->table($r)->where('unit_id',$this->unit_id)->whereIn('status',['open','partial'])->where('deleted',0)->where('due_date >=',gmdate('Y-m-d'))->orderBy('due_date')->limit(5)->get()->getResult(),'movements'=>array_slice(array_reverse($this->cashPage(['date_from'=>$from,'date_to'=>$to])),0,8)];}
+    public function dashboard(string $from='',string $to=''):array
+    {
+        $from = $from ?: gmdate('Y-m-01');
+        $to = $to ?: gmdate('Y-m-t');
+        $r = $this->db->prefixTable('gd_receivables');
+        $p = $this->db->prefixTable('gd_payments');
+        $e = $this->db->prefixTable('gd_expenses');
+        $ep = $this->db->prefixTable('gd_expense_payments');
+        $sum = fn($sql, $params) => DataNormalizationService::decimal((string) ($this->db->query($sql, $params)->getRow()->total ?? '0'), 2);
+        $open = $sum("SELECT COALESCE(SUM(balance_amount),0) total FROM `$r` WHERE unit_id=? AND deleted=0 AND status <> 'cancelled' AND balance_amount>0 AND due_date>=CURDATE()", [$this->unit_id]);
+        $overdue = $sum("SELECT COALESCE(SUM(balance_amount),0) total FROM `$r` WHERE unit_id=? AND deleted=0 AND status <> 'cancelled' AND balance_amount>0 AND due_date<CURDATE()", [$this->unit_id]);
+        $received = $sum("SELECT COALESCE(SUM(amount),0) total FROM `$p` WHERE unit_id=? AND deleted=0 AND status='confirmed' AND payment_date BETWEEN ? AND ?", [$this->unit_id, $from, $to]);
+        $expenses = $this->db->tableExists($ep)
+            ? $sum("SELECT COALESCE(SUM(amount),0) total FROM `$ep` WHERE unit_id=? AND deleted=0 AND status IN ('confirmed','legacy_migrated') AND payment_date BETWEEN ? AND ?", [$this->unit_id, $from, $to])
+            : $sum("SELECT COALESCE(SUM(amount),0) total FROM `$e` WHERE unit_id=? AND deleted=0 AND status='paid' AND paid_date BETWEEN ? AND ?", [$this->unit_id, $from, $to]);
+        $debtors = (int) $this->db->query("SELECT COUNT(DISTINCT customer_account_id) c FROM `$r` WHERE unit_id=? AND deleted=0 AND status <> 'cancelled' AND balance_amount>0 AND due_date<CURDATE()", [$this->unit_id])->getRow()->c;
+        return ['open'=>$open,'overdue'=>$overdue,'received'=>$received,'expenses'=>$expenses,'balance'=>$this->sub($received,$expenses),'debtors'=>$debtors,'upcoming'=>$this->db->table($r)->where('unit_id',$this->unit_id)->where('deleted',0)->where('status <>','cancelled')->where('balance_amount >',0)->where('due_date >=',gmdate('Y-m-d'))->orderBy('due_date')->limit(5)->get()->getResult(),'movements'=>array_slice(array_reverse($this->cashPage(['date_from'=>$from,'date_to'=>$to])),0,8)];
+    }
     /** Cria a cobrança de uma avulsa e, quando informado, lança o sinal. */
     public function createCourtRentalReceivableWithDeposit(array $in):array
     {
@@ -236,6 +253,25 @@ class FinanceService extends CatalogDataService
         }
 
         $paid = DataNormalizationService::decimal((string) $row->paid_amount, 2);
+        // Uma cobrança quitada é o histórico do que foi faturado/recebido.
+        // Edição posterior do contrato não pode transformá-la em nova dívida.
+        if ((string) $row->status === 'paid'
+            || DataNormalizationService::decimalCompare((string) $row->balance_amount, '0.00') <= 0
+            || DataNormalizationService::decimalCompare($paid, (string) $row->original_amount) >= 0
+        ) {
+            if (DataNormalizationService::decimalCompare($paid, $amount) > 0) {
+                throw new \DomainException('gd_finance_amount_below_paid');
+            }
+            return [
+                'created' => false,
+                'id' => (int) $row->id,
+                'amount' => (string) $row->original_amount,
+                'paid' => $paid,
+                'balance' => (string) $row->balance_amount,
+                'status' => 'paid',
+                'immutable' => true,
+            ];
+        }
         if (DataNormalizationService::decimalCompare($paid, $amount) > 0) {
             throw new \DomainException('gd_finance_amount_below_paid');
         }
@@ -321,6 +357,25 @@ class FinanceService extends CatalogDataService
         }
 
         $paid = DataNormalizationService::decimal((string) $row->paid_amount, 2);
+        // A cobrança quitada continua imutável mesmo quando o contrato é
+        // editado depois do recebimento.
+        if ((string) $row->status === 'paid'
+            || DataNormalizationService::decimalCompare((string) $row->balance_amount, '0.00') <= 0
+            || DataNormalizationService::decimalCompare($paid, (string) $row->original_amount) >= 0
+        ) {
+            if (DataNormalizationService::decimalCompare($paid, $amount) > 0) {
+                throw new \DomainException('gd_finance_amount_below_paid');
+            }
+            return [
+                'created' => false,
+                'id' => (int) $row->id,
+                'amount' => (string) $row->original_amount,
+                'paid' => $paid,
+                'balance' => (string) $row->balance_amount,
+                'status' => 'paid',
+                'immutable' => true,
+            ];
+        }
         if (DataNormalizationService::decimalCompare($paid, $amount) > 0) {
             throw new \DomainException('gd_finance_amount_below_paid');
         }
@@ -401,7 +456,10 @@ class FinanceService extends CatalogDataService
         foreach ($rows as $row) {
             // Uma competência paga não deve ser reescrita por uma alteração
             // posterior no contrato mensalista.
-            if ((string) $row->status === 'paid') {
+            if ((string) $row->status === 'paid'
+                || DataNormalizationService::decimalCompare((string) $row->balance_amount, '0.00') <= 0
+                || DataNormalizationService::decimalCompare((string) $row->paid_amount, (string) $row->original_amount) >= 0
+            ) {
                 continue;
             }
 
@@ -504,7 +562,10 @@ class FinanceService extends CatalogDataService
         foreach ($rows as $row) {
             // Uma competência paga não deve ser reescrita por uma alteração
             // posterior no contrato mensalista.
-            if ((string) $row->status === 'paid') {
+            if ((string) $row->status === 'paid'
+                || DataNormalizationService::decimalCompare((string) $row->balance_amount, '0.00') <= 0
+                || DataNormalizationService::decimalCompare((string) $row->paid_amount, (string) $row->original_amount) >= 0
+            ) {
                 continue;
             }
 
@@ -690,19 +751,91 @@ class FinanceService extends CatalogDataService
      * @param array<int> $ids
      * @return array<int,array<string,mixed>>
      */
-    public function balancesBySource(string $source_type,array $ids):array
+    public function balancesBySource(string $source_type, array $ids, ?string $reference_month = null): array
     {
-        $ids=array_values(array_unique(array_filter(array_map('intval',$ids),static fn($i)=>$i>0)));if(!$ids)return [];
-        $t=$this->db->prefixTable('gd_receivables');$ph=implode(',',array_fill(0,count($ids),'?'));
-        $rows=$this->db->query("SELECT source_id, COALESCE(SUM(original_amount),0) total, COALESCE(SUM(paid_amount),0) paid, COALESCE(SUM(balance_amount),0) bal, COALESCE(SUM(CASE WHEN due_date<CURDATE() AND balance_amount>0 THEN balance_amount ELSE 0 END),0) overdue, GROUP_CONCAT(CASE WHEN status IN ('open','partial','overdue') AND balance_amount>0 THEN id END ORDER BY due_date ASC) open_ids FROM `$t` WHERE unit_id=? AND source_type=? AND source_id IN ($ph) AND deleted=0 AND status<>'cancelled' GROUP BY source_id",array_merge([$this->unit_id,$source_type],$ids))->getResult();
-        $paymentRows=$this->db->query("SELECT r.source_id, MAX(CASE WHEN p.payment_type='deposit' THEN 1 ELSE 0 END) deposit_count, COALESCE(SUM(CASE WHEN p.payment_type='regular' THEN a.allocated_amount ELSE 0 END),0) regular_paid FROM `{$t}` r JOIN `{$this->db->prefixTable('gd_payment_allocations')}` a ON a.receivable_id=r.id AND a.unit_id=r.unit_id AND a.status='active' JOIN `{$this->db->prefixTable('gd_payments')}` p ON p.id=a.payment_id AND p.unit_id=a.unit_id AND p.status='confirmed' AND p.deleted=0 WHERE r.unit_id=? AND r.source_type=? AND r.source_id IN ($ph) AND r.deleted=0 AND r.status<>'cancelled' GROUP BY r.source_id",array_merge([$this->unit_id,$source_type],$ids))->getResult();
-        $payments=[];foreach($paymentRows as $row){$payments[(int)$row->source_id]=$row;}
-        $map=[];foreach($rows as $r){$sourceId=(int)$r->source_id;$open_ids=array_values(array_filter(array_map('intval',explode(',',(string)$r->open_ids))));$total=DataNormalizationService::decimal((string)$r->total,2);$paid=DataNormalizationService::decimal((string)$r->paid,2);$bal=DataNormalizationService::decimal((string)$r->bal,2);$overdue=DataNormalizationService::decimal((string)$r->overdue,2);$payment=$payments[$sourceId]??null;$regularPaid=DataNormalizationService::decimal((string)($payment->regular_paid??'0'),2);$depositOnly=$payment&&((int)$payment->deposit_count>0)&&DataNormalizationService::decimalCompare($regularPaid,'0.00')===0&&DataNormalizationService::decimalCompare($paid,'0.00')>0&&DataNormalizationService::decimalCompare($bal,'0.00')>0;$status=DataNormalizationService::decimalCompare($bal,'0.00')===0?'paid':(DataNormalizationService::decimalCompare($overdue,'0.00')>0?'overdue':(DataNormalizationService::decimalCompare($paid,'0.00')>0?($depositOnly?'deposit_only':'partial'):'unpaid'));$map[$sourceId]=['total'=>$total,'paid'=>$paid,'balance'=>$bal,'overdue'=>$overdue,'partial'=>$status==='partial','deposit_only'=>$depositOnly,'status'=>$status,'open_ids'=>$open_ids];}
-        foreach ($map as &$entry) {
-            $entry['partial'] = DataNormalizationService::decimalCompare($entry['paid'], '0.00') > 0
-                && DataNormalizationService::decimalCompare($entry['balance'], '0.00') > 0;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($i) => $i > 0)));
+        if (!$ids) { return []; }
+        if ($reference_month !== null) { $reference_month = $this->reference($reference_month); }
+
+        $t = $this->db->prefixTable('gd_receivables');
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $referenceSql = $reference_month === null ? '' : ' AND reference_month=?';
+        $contextSql = '';
+        if ($source_type === 'court_rental' || $source_type === 'barbecue_rental') {
+            $rentalTable = $this->db->prefixTable($source_type === 'barbecue_rental' ? 'gd_barbecue_rentals' : 'gd_court_rentals');
+            $accountTable = $this->db->prefixTable('gd_customer_accounts');
+            $contextSql = " AND EXISTS (SELECT 1 FROM `$rentalTable` cr JOIN `$accountTable` ca ON ca.id=cr.customer_account_id AND ca.unit_id=cr.unit_id AND ca.deleted=0 WHERE cr.id=source_id AND cr.unit_id=" . $this->unit_id . " AND cr.deleted=0)";
         }
-        unset($entry);
+        $sourceParams = [$this->unit_id, $source_type];
+        if ($reference_month !== null) { $sourceParams[] = $reference_month; }
+        $sourceParams = array_merge($sourceParams, $ids);
+
+        // Quando a lista é mensalista, reference_month restringe a leitura à
+        // competência exibida. Sem esse filtro o saldo histórico (por exemplo,
+        // uma dívida de R$ 1.800) contaminava a competência futura da linha.
+        $rows = $this->db->query(
+            "SELECT source_id,
+                    COALESCE(SUM(original_amount),0) total,
+                    COALESCE(SUM(paid_amount),0) paid,
+                    COALESCE(SUM(balance_amount),0) bal,
+                    COALESCE(SUM(CASE WHEN due_date<CURDATE() AND balance_amount>0 THEN balance_amount ELSE 0 END),0) overdue,
+                    GROUP_CONCAT(CASE WHEN status IN ('open','partial','overdue') AND balance_amount>0 THEN id END ORDER BY due_date ASC) open_ids
+               FROM `$t`
+              WHERE unit_id=? AND source_type=?{$referenceSql}{$contextSql}
+                AND source_id IN ($ph) AND deleted=0 AND status<>'cancelled'
+              GROUP BY source_id",
+            $sourceParams
+        )->getResult();
+
+        $paymentReferenceSql = $reference_month === null ? '' : ' AND r.reference_month=?';
+        $paymentParams = [$this->unit_id, $source_type];
+        if ($reference_month !== null) { $paymentParams[] = $reference_month; }
+        $paymentParams = array_merge($paymentParams, $ids);
+        $paymentRows = $this->db->query(
+            "SELECT r.source_id,
+                    MAX(CASE WHEN p.payment_type='deposit' THEN 1 ELSE 0 END) deposit_count,
+                    COALESCE(SUM(CASE WHEN p.payment_type='regular' THEN a.allocated_amount ELSE 0 END),0) regular_paid
+               FROM `{$t}` r
+               JOIN `{$this->db->prefixTable('gd_payment_allocations')}` a
+                 ON a.receivable_id=r.id AND a.unit_id=r.unit_id AND a.status='active'
+               JOIN `{$this->db->prefixTable('gd_payments')}` p
+                 ON p.id=a.payment_id AND p.unit_id=a.unit_id AND p.status='confirmed' AND p.deleted=0
+              WHERE r.unit_id=? AND r.source_type=?{$paymentReferenceSql}{$contextSql}
+                AND r.source_id IN ($ph) AND r.deleted=0 AND r.status<>'cancelled'
+              GROUP BY r.source_id",
+            $paymentParams
+        )->getResult();
+
+        $payments = [];
+        foreach ($paymentRows as $row) { $payments[(int) $row->source_id] = $row; }
+        $map = [];
+        foreach ($rows as $r) {
+            $sourceId = (int) $r->source_id;
+            $openIds = array_values(array_filter(array_map('intval', explode(',', (string) $r->open_ids))));
+            $total = DataNormalizationService::decimal((string) $r->total, 2);
+            $paid = DataNormalizationService::decimal((string) $r->paid, 2);
+            $balance = DataNormalizationService::decimal((string) $r->bal, 2);
+            $overdue = DataNormalizationService::decimal((string) $r->overdue, 2);
+            $payment = $payments[$sourceId] ?? null;
+            $regularPaid = DataNormalizationService::decimal((string) ($payment->regular_paid ?? '0'), 2);
+            $depositOnly = $payment
+                && (int) $payment->deposit_count > 0
+                && DataNormalizationService::decimalCompare($regularPaid, '0.00') === 0
+                && DataNormalizationService::decimalCompare($paid, '0.00') > 0
+                && DataNormalizationService::decimalCompare($balance, '0.00') > 0;
+            $status = DataNormalizationService::decimalCompare($balance, '0.00') === 0
+                ? 'paid'
+                : (DataNormalizationService::decimalCompare($overdue, '0.00') > 0
+                    ? 'overdue'
+                    : (DataNormalizationService::decimalCompare($paid, '0.00') > 0
+                        ? ($depositOnly ? 'deposit_only' : 'partial')
+                        : 'unpaid'));
+            $map[$sourceId] = [
+                'total' => $total, 'paid' => $paid, 'balance' => $balance,
+                'overdue' => $overdue, 'partial' => DataNormalizationService::decimalCompare($paid, '0.00') > 0 && DataNormalizationService::decimalCompare($balance, '0.00') > 0,
+                'deposit_only' => (bool) $depositOnly, 'status' => $status, 'open_ids' => $openIds,
+            ];
+        }
         return $map;
     }
 

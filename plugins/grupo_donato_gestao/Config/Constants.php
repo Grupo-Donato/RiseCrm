@@ -25,7 +25,7 @@ final class Constants
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
      * Corresponde ao maior arquivo em Database/Schema/Versions.
      */
-    public const SCHEMA_TARGET = "053";
+    public const SCHEMA_TARGET = "066";
 
     /** Prefixo lógico das tabelas (o Rise antepõe o DBPrefix 'rise_'). */
     public const TABLE_PREFIX = "gd_";
@@ -129,8 +129,8 @@ final class Constants
     public const BOOKING_SERIES_STATUSES = ["active", "paused", "completed", "cancelled", "archived"];
     public const BOOKING_SERIES_DEFAULT_STATUSES = ["pending_confirmation", "confirmed"];
     public const BOOKING_SERIES_CONFLICT_POLICIES = ["reject_series", "skip_conflicts"];
-    public const BOOKING_SERIES_EXCEPTION_TYPES = ["skip", "cancel", "detach", "override", "split", "conflict_skipped"];
-    public const BOOKING_SERIES_EVENT_TYPES = ["created", "updated", "generated", "paused", "resumed", "completed", "cancelled", "archived", "split", "occurrence_updated", "occurrence_cancelled", "conflict_skipped"];
+    public const BOOKING_SERIES_EXCEPTION_TYPES = ["skip", "cancel", "detach", "override", "reschedule", "split", "conflict_skipped"];
+    public const BOOKING_SERIES_EVENT_TYPES = ["created", "updated", "generated", "paused", "resumed", "completed", "cancelled", "archived", "split", "occurrence_updated", "occurrence_cancelled", "occurrence_rescheduled", "occurrence_reschedule_reverted", "conflict_skipped"];
     public const BOOKING_SERIES_MAX_OCCURRENCES_PER_OPERATION = 366;
     public const BOOKING_SERIES_DEFAULT_HORIZON_DAYS = 90;
     public const BOOKING_SERIES_MAX_HORIZON_DAYS = 730;
@@ -168,9 +168,17 @@ final class Constants
     public const RECEIVABLE_SOURCE_TYPES = ["enrollment", "court_rental", "barbecue_rental", "manual", "other"];
     public const RECEIVABLE_STATUSES = ["open", "partial", "paid", "overdue", "cancelled"];
     public const PAYMENT_METHODS = ["cash", "pix", "debit_card", "credit_card", "bank_transfer", "boleto", "other"];
-    public const PAYMENT_STATUSES = ["confirmed", "reversed"];
+    public const PAYMENT_STATUSES = ["confirmed", "reversed", "legacy_migrated"];
     public const PAYMENT_TYPES = ["regular", "deposit"];
-    public const EXPENSE_STATUSES = ["pending", "paid", "cancelled"];
+    public const EXPENSE_STATUSES = ["planned", "pending", "partial", "paid", "cancelled"];
+
+    /** Classificações independentes do módulo central de Custos. */
+    public const EXPENSE_NATURES = [
+        "operational_cost", "administrative_expense", "commercial_expense", "tax_fee",
+        "investment", "financial_expense", "reimbursement", "owner_withdrawal", "adjustment", "other",
+    ];
+    public const EXPENSE_COST_BEHAVIORS = ["fixed", "variable", "semi_variable", "unclassified"];
+    public const EXPENSE_RECURRENCE_FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "semiannual", "annual", "custom"];
 
     /* ---- Fase 6: importação assistida ---- */
 

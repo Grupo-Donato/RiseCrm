@@ -35,7 +35,7 @@ class Database extends Config
 		'hostname' => 'localhost',
 		'username' => 'root',
 		'password' => '',
-		'database' => 'rise_crm',
+		'database' => 'rise_crm_recovery_20260828',
 		'DBDriver' => 'MySQLi',
 		'DBPrefix' => 'rise_',
 		'pConnect' => false,

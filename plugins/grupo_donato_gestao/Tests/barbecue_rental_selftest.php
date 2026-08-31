@@ -22,8 +22,12 @@ $barbecueResources = $db->table($prefix . "gd_resources")
     ->getResult();
 $barbecueIds = array_map(static fn($row): int => (int) $row->id, $barbecueResources);
 $barbecueCodes = array_map(static fn($row): string => (string) $row->code, $barbecueResources);
-gd_assert("recursos CH1-CH6 pertencem ao tipo barbecue_area", $barbecueCodes === ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6"] && count($barbecueResources) === 6);
-gd_assert("seis churrasqueiras sao reservaveis", count($barbecueIds) === 6 && !array_filter($barbecueResources, static fn($row): bool => $row->resource_type !== $barbecueResourceType));
+gd_assert("recursos CH1-CH4 e CH5-SL pertencem ao tipo barbecue_area", $barbecueCodes === ["CH1", "CH2", "CH3", "CH4", "CH5-SL"] && count($barbecueResources) === 5);
+gd_assert("cinco churrasqueiras sao reservaveis", count($barbecueIds) === 5 && !array_filter($barbecueResources, static fn($row): bool => $row->resource_type !== $barbecueResourceType));
+$barbecueSalon = $db->table($prefix . "gd_resources")->where("unit_id", $unit_id)->where("code", "CH5-SL")->where("deleted", 0)->get(1)->getRow();
+$barbecueCh6 = $db->table($prefix . "gd_resources")->where("unit_id", $unit_id)->where("code", "CH6")->orderBy("id", "DESC")->get(1)->getRow();
+gd_assert("CH5-SL possui nome de churrasqueira/salao", $barbecueSalon && (string) $barbecueSalon->name === "Churrasqueira 5 / Salão");
+gd_assert("CH6 foi excluida logicamente", !$barbecueCh6 || ((int) $barbecueCh6->deleted === 1 && (int) $barbecueCh6->is_active === 0 && (int) $barbecueCh6->is_bookable === 0));
 
 $bookingService = new \grupo_donato_gestao\Services\BookingService($unit_id);
 $courtResources = $bookingService->bookableResources(\grupo_donato_gestao\Config\Constants::COURT_RESOURCE_TYPE);

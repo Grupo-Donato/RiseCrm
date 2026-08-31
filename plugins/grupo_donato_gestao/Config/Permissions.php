@@ -33,6 +33,7 @@ final class Permissions
         "gd_barbecue_rentals_view" => "gd_barbecue_rentals_manage",
         "gd_school_view" => "gd_students_manage",
         "gd_finance_view" => "gd_receivables_manage",
+        "gd_costs_view" => "gd_costs_manage",
         "gd_rental_payments_view" => "gd_rental_payments_manage",
         "gd_imports_view" => "gd_imports_manage",
     ];
@@ -61,7 +62,11 @@ final class Permissions
         "gd_court_rentals_view" => ["gd_court_rentals_status_manage", "gd_court_rentals_price_override"],
         "gd_barbecue_rentals_view" => ["gd_barbecue_rentals_status_manage", "gd_barbecue_rentals_price_override"],
         "gd_school_view" => ["gd_classes_manage", "gd_enrollments_manage", "gd_attendance_manage"],
-        "gd_finance_view" => ["gd_payments_manage", "gd_expenses_manage", "gd_cash_view"],
+        "gd_finance_view" => ["gd_payments_manage", "gd_expenses_manage", "gd_costs_view", "gd_costs_manage", "gd_costs_pay", "gd_costs_budget_manage", "gd_costs_categories_manage", "gd_cash_view"],
+        // Compatibilidade: a permissão legada continua abrindo Custos.
+        "gd_costs_view" => ["gd_expenses_manage"],
+        "gd_costs_manage" => ["gd_expenses_manage"],
+        "gd_costs_pay" => ["gd_expenses_manage"],
     ];
 
     /** Lista plana de todas as chaves de permissão da fundação. */
@@ -119,6 +124,11 @@ final class Permissions
         "gd_rental_payments_view",
         "gd_rental_payments_manage",
         "gd_expenses_manage",
+        "gd_costs_view",
+        "gd_costs_manage",
+        "gd_costs_pay",
+        "gd_costs_budget_manage",
+        "gd_costs_categories_manage",
         "gd_cash_view",
         "gd_imports_view",
         "gd_imports_manage",
@@ -206,6 +216,11 @@ final class Permissions
                 ["key" => "gd_rental_payments_view", "label_key" => "gd_perm_rental_payments_view"],
                 ["key" => "gd_rental_payments_manage", "label_key" => "gd_perm_rental_payments_manage"],
                 ["key" => "gd_expenses_manage", "label_key" => "gd_perm_expenses_manage"],
+                ["key" => "gd_costs_view", "label_key" => "gd_perm_costs_view"],
+                ["key" => "gd_costs_manage", "label_key" => "gd_perm_costs_manage"],
+                ["key" => "gd_costs_pay", "label_key" => "gd_perm_costs_pay"],
+                ["key" => "gd_costs_budget_manage", "label_key" => "gd_perm_costs_budget_manage"],
+                ["key" => "gd_costs_categories_manage", "label_key" => "gd_perm_costs_categories_manage"],
                 ["key" => "gd_cash_view", "label_key" => "gd_perm_cash_view"],
             ],
             "gd_permissions_imports" => [

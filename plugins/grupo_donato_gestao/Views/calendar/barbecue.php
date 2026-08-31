@@ -74,10 +74,8 @@ if (!empty($can_barbecue_rentals_view)) {
                         </div>
                         <div class="form-group" id="gd-calendar-free-duration-group">
                             <label for="gd-calendar-free-duration"><?php echo app_lang("gd_free_slot_duration"); ?></label>
-                            <select id="gd-calendar-free-duration" class="select2 form-control">
-                                <option value="90" selected>1h30</option>
-                                <option value="120">2h</option>
-                            </select>
+                            <input type="text" id="gd-calendar-free-duration" class="form-control" value="90" inputmode="text" autocomplete="off" placeholder="Ex.: 1h30 ou 150 min">
+                            <small class="text-muted">Informe em minutos ou use formatos como 1h30.</small>
                         </div>
                         <div class="form-group">
                             <label>&nbsp;</label>
@@ -171,6 +169,26 @@ $(document).ready(function(){
         return value || "";
     }
 
+    function parseDuration(value) {
+        var raw = String(value || "").trim().toLowerCase().replace(/\s+/g, " "), match, hours, minutes;
+        if (!raw) { return 0; }
+        if (/^\d+$/.test(raw)) { return parseInt(raw, 10); }
+        match = /^(\d+)\s*h\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/i.exec(raw);
+        if (match) {
+            hours = parseInt(match[1], 10);
+            minutes = match[2] ? parseInt(match[2], 10) : 0;
+            return minutes < 60 ? (hours * 60) + minutes : 0;
+        }
+        match = /^(\d+)\s*(?:m|min|minutos?)$/i.exec(raw);
+        if (match) { return parseInt(match[1], 10); }
+        match = /^(\d+):(\d{2})$/.exec(raw);
+        if (match) {
+            minutes = parseInt(match[2], 10);
+            return minutes < 60 ? (parseInt(match[1], 10) * 60) + minutes : 0;
+        }
+        return 0;
+    }
+
     function resourceValues() {
         return resourceFilters.filter(":checked").map(function(){ return this.value; }).get().join(",");
     }
@@ -194,8 +212,9 @@ $(document).ready(function(){
         if (typeof feather !== "undefined") { feather.replace(); }
     }
 
-    var filterFields = statusFilter.add(typeFilter).add(freeDuration);
+    var filterFields = statusFilter.add(typeFilter);
     filterFields.select2({width: "100%"}).on("change", refresh);
+    freeDuration.on("input change", refresh);
     resourceFilters.on("change", function(){ syncCourtSelection(true); refresh(); });
 
     var calendar = new FullCalendar.Calendar(calendarElement, {
@@ -243,7 +262,7 @@ $(document).ready(function(){
                     resources: resourceValues(),
                     statuses: values(statusFilter),
                     types: calendarTypes(),
-                    duration_minutes: values(freeDuration)
+                    duration_minutes: parseDuration(values(freeDuration)) || 90
                 },
                 dataType: "json"
             }).done(success).fail(failure);

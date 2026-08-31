@@ -5,6 +5,7 @@ namespace grupo_donato_gestao\Operacional\Controllers;
 use App\Controllers\Security_Controller;
 use grupo_donato_gestao\Services\RoleAccessService;
 use grupo_donato_gestao\Services\StudentPhotoService;
+use grupo_donato_gestao\Services\UnitContextService;
 
 class Bombeiros extends Security_Controller
 {
@@ -62,6 +63,14 @@ class Bombeiros extends Security_Controller
 
     public function index()
     {
+        if ((string) $this->request->getGet("gd_tab") === "custos") {
+            $unidade_legacy = $this->_active_unit();
+            if ($unidade_legacy && !empty($unidade_legacy->id)) {
+                (new UnitContextService($this->login_user))->set_active_unit((int) $unidade_legacy->id);
+            }
+            return redirect()->to(site_url("grupo_donato/finance/costs"));
+        }
+
         $unidade_atual = $this->_active_unit();
         $dashboard_periodo = $this->_dashboard_periodo();
         $gd_active_tab = $this->_gd_active_tab();

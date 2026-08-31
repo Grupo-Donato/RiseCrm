@@ -4,7 +4,7 @@ use grupo_donato_gestao\Config\Constants;use grupo_donato_gestao\Services\DataNo
 class Finance extends Gd_Controller
 {
     private FinanceService $service;private int $unit;
-    public function __construct(){parent::__construct();$this->access->require('gd_finance_view');$this->unit=(int)$this->active_unit_id();if(!$this->unit)throw new \RuntimeException('No active unit.');$this->service=new FinanceService($this->unit,$this->user_id(),$this->login_user);}
+    public function __construct(){parent::__construct();$method=strtolower((string)service('router')->methodName());$rentalPaymentMethods=['payment_modal','rental_payment_modal','save_rental_payment'];$this->access->require(in_array($method,$rentalPaymentMethods,true)?'gd_rental_payments_view':'gd_finance_view');$this->unit=(int)$this->active_unit_id();if(!$this->unit)throw new \RuntimeException('No active unit.');$this->service=new FinanceService($this->unit,$this->user_id(),$this->login_user);}
     public function index(){return $this->gd_render('finance/overview',['dashboard'=>$this->service->dashboard(),'can_receivables'=>$this->access->can('gd_receivables_manage'),'can_payments'=>$this->access->can('gd_payments_manage'),'can_expenses'=>$this->access->can('gd_expenses_manage')]);}
     public function account_modal(){try{$this->access->require('gd_receivables_manage');return $this->gd_view('finance/account_modal',['types'=>Constants::FINANCIAL_ACCOUNT_TYPES]);}catch(\Throwable $e){$this->gd_fail($e);}}
     public function save_account(){try{$this->access->require('gd_receivables_manage');$r=$this->service->saveAccount(['code'=>$this->request->getPost('code'),'name'=>$this->request->getPost('name'),'account_type'=>$this->request->getPost('account_type'),'status'=>'active','notes'=>$this->request->getPost('notes')]);$this->json_success(app_lang('record_saved'),$r);}catch(\Throwable $e){$this->gd_fail($e);}}
@@ -12,7 +12,7 @@ class Finance extends Gd_Controller
     public function receivables_data(){try{$r=$this->service->receivablesPage(append_server_side_filtering_commmon_params($this->filters(['status','source_type','source_id','customer_account_id','business_area_id','cost_center_id','date_from','date_to'])));$r['data']=array_map(fn($x)=>['number'=>anchor(get_uri('grupo_donato/finance/receivables/view/'.$x->id),$this->escape($x->receivable_number)),'customer'=>$this->escape($x->customer_name),'source'=>app_lang('gd_finance_source_'.$x->source_type),'description'=>$this->escape($x->description),'reference'=>$x->reference_month?:'-','due'=>format_to_date($x->due_date,false),'amount'=>$x->original_amount,'paid'=>$x->paid_amount,'balance'=>$x->balance_amount,'status'=>app_lang('gd_finance_receivable_status_'.$x->display_status),'options'=>$this->paymentAction($x)],$r['data']);return $this->response->setJSON($r);}catch(\Throwable $e){$this->gd_fail($e);}}
     public function receivable_modal(){try{$this->access->require('gd_receivables_manage');return $this->gd_view('finance/receivable_modal',['accounts'=>$this->options('gd_customer_accounts','display_name'),'areas'=>$this->options('gd_business_areas','name',true),'centers'=>$this->options('gd_cost_centers','name',true)]);}catch(\Throwable $e){$this->gd_fail($e);}}
     public function save_receivable(){try{$this->access->require('gd_receivables_manage');$keys=['customer_account_id','description','issue_date','due_date','original_amount','business_area_id','cost_center_id','notes'];$in=['source_type'=>'manual','reference_month'=>''];foreach($keys as $k)$in[$k]=$this->request->getPost($k);$in['unit_amount']=$in['original_amount'];$in['quantity']='1';$r=$this->service->createReceivable($in);$this->json_success(app_lang('record_saved'),$r);}catch(\Throwable $e){$this->gd_fail($e);}}
-    public function view_receivable($id){$r=$this->service->getReceivable((int)$id);if(!$r)return show_404();return $this->gd_render('finance/receivable_view',['receivable'=>$r,'can_payments'=>$this->access->can('gd_payments_manage'),'can_manage'=>$this->access->can('gd_receivables_manage')]);}
+    public function view_receivable($id){$r=$this->service->getReceivable((int)$id);if(!$r)return show_404();$isRental=in_array((string)($r->source_type??''),['court_rental','barbecue_rental'],true);return $this->gd_render('finance/receivable_view',['receivable'=>$r,'can_payments'=>$this->access->can($isRental?'gd_rental_payments_manage':'gd_payments_manage'),'payment_route'=>$isRental?'rental-payment-modal':'payment-modal','can_manage'=>$this->access->can('gd_receivables_manage')]);}
     public function cancel_receivable(){try{$this->access->require('gd_receivables_manage');$this->service->cancelReceivable((int)$this->request->getPost('id'),(string)$this->request->getPost('reason'));$this->json_success(app_lang('record_saved'));}catch(\Throwable $e){$this->gd_fail($e);}}
     public function generate(){return $this->gd_render('finance/generate',['can_manage'=>$this->access->can('gd_receivables_manage')]);}
     public function generation_preview(){try{$this->access->require('gd_receivables_manage');$r=(new ReceivableGenerationService($this->unit,$this->user_id(),$this->login_user))->preview((string)$this->request->getPost('reference_month'));return $this->response->setJSON(['success'=>true,'data'=>$r]);}catch(\Throwable $e){$this->gd_fail($e);}}
@@ -25,13 +25,23 @@ class Finance extends Gd_Controller
     {
         try {
             $rid=(int)$this->request->getPost('receivable_id');
-            $balance=(string)$this->request->getPost('balance');
-            if ($rid > 0) {
-                $rentalContext = $this->service->courtRentalPaymentContext($rid);
-                if ($rentalContext) {
-                    $this->access->require('gd_rental_payments_manage');
-                    return $this->gd_view('finance/rental_payment_modal', $rentalContext + ['methods' => Constants::PAYMENT_METHODS, 'reload_target' => (string) $this->request->getPost('reload_target')]);
+            if ($rid <= 0) { throw new \DomainException('gd_finance_receivable_required'); }
+            $rentalContext = $this->service->courtRentalPaymentContext($rid);
+            if ($rentalContext) {
+                $this->access->require('gd_rental_payments_manage');
+                $r = $rentalContext['receivable'];
+                if (in_array((string) ($r->status ?? ''), ['paid', 'cancelled'], true) || DataNormalizationService::decimalCompare((string) ($r->balance_amount ?? '0.00'), '0.00') <= 0) {
+                    throw new \DomainException('gd_finance_receivable_unavailable');
                 }
+                return $this->gd_view('finance/rental_payment_modal', $rentalContext + ['methods' => Constants::PAYMENT_METHODS, 'reload_target' => (string) $this->request->getPost('reload_target')]);
+            }
+            $selected = $this->service->getReceivable($rid);
+            if (!$selected) { throw new \DomainException('gd_finance_receivable_not_found'); }
+            if (in_array((string) ($selected->source_type ?? ''), ['court_rental', 'barbecue_rental'], true)) {
+                throw new \DomainException('gd_finance_rental_context_not_found');
+            }
+            if (in_array((string) ($selected->display_status ?? $selected->status ?? ''), ['paid', 'cancelled'], true) || DataNormalizationService::decimalCompare((string) ($selected->balance_amount ?? '0.00'), '0.00') <= 0) {
+                throw new \DomainException('gd_finance_receivable_unavailable');
             }
             $this->access->require('gd_payments_manage');
             $receivables=array_merge(
@@ -46,8 +56,9 @@ class Finance extends Gd_Controller
                     break;
                 }
             }
-            return $this->gd_view('finance/payment_modal',['receivable_id'=>$rid,'balance'=>$balance,'receivables'=>$receivables,'accounts'=>$this->service->accounts(),'methods'=>Constants::PAYMENT_METHODS,'reload_target'=>(string)$this->request->getPost('reload_target')]);
+            return $this->gd_view('finance/payment_modal',['receivable_id'=>$rid,'balance'=>(string) $selected->balance_amount,'receivables'=>$receivables,'accounts'=>$this->service->accounts(),'methods'=>Constants::PAYMENT_METHODS,'reload_target'=>(string)$this->request->getPost('reload_target')]);
         } catch (\Throwable $e) {
+            log_message('critical', 'Finance payment modal error [' . $this->request_id . ']: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString());
             $this->gd_fail($e);
         }
     }
@@ -57,10 +68,17 @@ class Finance extends Gd_Controller
             $this->access->require('gd_rental_payments_manage');
             $receivable_id = (int) $this->request->getPost('receivable_id');
             $context = $this->service->courtRentalPaymentContext($receivable_id);
-            if (!$context) return show_404();
+            if (!$context) throw new \DomainException('gd_finance_rental_context_not_found');
+            $receivable = $context['receivable'];
+            if (in_array((string) ($receivable->status ?? ''), ['paid', 'cancelled'], true) || DataNormalizationService::decimalCompare((string) ($receivable->balance_amount ?? '0.00'), '0.00') <= 0) {
+                throw new \DomainException('gd_finance_receivable_unavailable');
+            }
             $view = (($context['source_type'] ?? '') === 'barbecue_rental') ? 'finance/barbecue_payment_modal' : 'finance/rental_payment_modal';
             return $this->gd_view($view, $context + ['methods' => Constants::PAYMENT_METHODS, 'reload_target' => (string) $this->request->getPost('reload_target')]);
-        } catch (\Throwable $e) { $this->gd_fail($e); }
+        } catch (\Throwable $e) {
+            log_message('critical', 'Rental payment modal error [' . $this->request_id . ']: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString());
+            $this->gd_fail($e);
+        }
     }
     public function save_rental_payment()
     {
@@ -89,10 +107,18 @@ class Finance extends Gd_Controller
     public function cash_data(){try{$this->access->require('gd_cash_view');$rows=$this->service->cashPage($this->filters(['financial_account_id','date_from','date_to']));$data=array_map(fn($x)=>['date'=>format_to_date($x->movement_date,false),'account'=>$this->escape($x->account_name),'type'=>app_lang('gd_finance_movement_'.$x->movement_type),'source'=>app_lang('gd_finance_source_'.$x->source_type),'description'=>$this->escape($x->description),'in'=>$x->movement_type==='in'?$x->amount:'','out'=>$x->movement_type==='out'?$x->amount:'','balance'=>$x->running_balance],$rows);return $this->response->setJSON(['data'=>$data,'recordsTotal'=>count($data),'recordsFiltered'=>count($data)]);}catch(\Throwable $e){$this->gd_fail($e);}}
     private function paymentAction(object $receivable):string
     {
-        if (!$this->access->can('gd_payments_manage') || in_array((string) ($receivable->status ?? ''), ['paid', 'cancelled'], true) || DataNormalizationService::decimalCompare((string) ($receivable->balance_amount ?? '0.00'), '0.00') <= 0) {
+        $source = (string) ($receivable->source_type ?? '');
+        $isRental = in_array($source, ['court_rental', 'barbecue_rental'], true);
+        if (($isRental && !$this->access->can('gd_rental_payments_manage')) || (!$isRental && !$this->access->can('gd_payments_manage'))) {
             return '';
         }
-        $route = in_array((string) ($receivable->source_type ?? ''), ['court_rental', 'barbecue_rental'], true) ? 'rental-payment-modal' : 'payment-modal';
+        if ($isRental && !$this->service->courtRentalPaymentContext((int) ($receivable->id ?? 0))) {
+            return '';
+        }
+        if (in_array((string) ($receivable->display_status ?? $receivable->status ?? ''), ['paid', 'cancelled'], true) || DataNormalizationService::decimalCompare((string) ($receivable->balance_amount ?? '0.00'), '0.00') <= 0) {
+            return '';
+        }
+        $route = $isRental ? 'rental-payment-modal' : 'payment-modal';
         return modal_anchor(get_uri('grupo_donato/finance/' . $route), '<i data-feather="dollar-sign" class="icon-16"></i>', ['title' => app_lang('gd_finance_register_payment'), 'data-post-receivable_id' => (int) $receivable->id, 'data-post-balance' => (string) $receivable->balance_amount, 'data-modal-class' => 'gd-payment-modal']);
     }
     private function filters(array $keys):array{$o=[];foreach($keys as $k)$o[$k]=$this->request->getPost($k)??$this->request->getGet($k);return $o;}

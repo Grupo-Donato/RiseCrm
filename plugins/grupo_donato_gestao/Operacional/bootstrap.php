@@ -31,6 +31,9 @@ app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
     // menu nem ficar disponível como item salvo de menu.
     if ($user && ($user->user_type ?? '') === 'staff') {
         unset($sidebar_menu['grupo_donato_academy'], $sidebar_menu['grupo_donato_administrativos']);
+        // O módulo de mensagens não faz parte do Grupo Donato; o atalho
+        // nativo do Rise também não deve reaparecer no menu deste CRM.
+        unset($sidebar_menu['messages']);
 
         if (\grupo_donato_gestao\Services\RoleAccessService::can_view_dashboard_menu($user)) {
             $sidebar_menu['dashboard'] = [
@@ -298,6 +301,19 @@ if (!function_exists("bombeiros_install_or_update")) {
             "notes",
             "Notas",
         ]);
+        $obsolete_message_menu_names = [
+            "Mensagens",
+            "SIAMESA Mensagens",
+            "mensagens",
+            "messages",
+            "Templates",
+            "Conversas",
+            "Histórico",
+            "Templates de mensagem",
+            "Histórico de mensagens",
+            "templates_mensagem",
+            "historico_mensagens",
+        ];
 
         $rentals_items = [
             ["name" => "Locações"],
@@ -365,6 +381,9 @@ if (!function_exists("bombeiros_install_or_update")) {
 
             foreach ($original_items as $index => $item) {
                 $name = $item["name"] ?? "";
+                if (in_array($name, $obsolete_message_menu_names, true)) {
+                    continue;
+                }
                 $is_saved_group_item = $canonical_group_present
                     && in_array($name, $group_names, true)
                     && ($name === "GD Academy" || $name === "Administrativos" || !empty($item["is_sub_menu"]));
@@ -379,6 +398,10 @@ if (!function_exists("bombeiros_install_or_update")) {
 
             foreach ($original_items as $item) {
                 $name = $item["name"] ?? "";
+
+                if (in_array($name, $obsolete_message_menu_names, true)) {
+                    continue;
+                }
 
                 if (in_array($name, $rentals_names, true) || in_array($name, $legacy_rental_names, true)) {
                     $has_rentals = true;
@@ -396,10 +419,6 @@ if (!function_exists("bombeiros_install_or_update")) {
                     // Se houver itens antigos no mesmo menu, reconstrói os
                     // grupos para não deixar filhos órfãos ou fora de ordem.
                     continue;
-                }
-
-                if ($name === "SIAMESA Mensagens") {
-                    $item["name"] = "Mensagens";
                 }
 
                 $rebuilt[] = $item;

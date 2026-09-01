@@ -1,5 +1,8 @@
 <?php
 $custos_resumo = $custos_resumo ?? [];
+$dashboard_periodo = $dashboard_periodo ?? ["mes" => (int) date("m"), "ano" => (int) date("Y")];
+$dashboard_mes = (int) ($dashboard_periodo["mes"] ?? date("m"));
+$dashboard_ano = (int) ($dashboard_periodo["ano"] ?? date("Y"));
 ?>
 
 <div class="page-title clearfix">
@@ -151,6 +154,10 @@ $custos_resumo = $custos_resumo ?? [];
 
             $("#bombeiros-custos-table").appTable({
                 source: "<?php echo_uri("grupo_donato/operacional/custos_list_data"); ?>",
+                filterParams: {
+                    mes_referencia: "<?php echo $dashboard_mes; ?>",
+                    ano_referencia: "<?php echo $dashboard_ano; ?>"
+                },
                 order: [[2, "desc"]],
                 tableRefreshButton: true,
                 onRelaodCallback: function () {
@@ -217,7 +224,9 @@ $custos_resumo = $custos_resumo ?? [];
 
         return {
             status: filterParams.status || $("#bombeiros-custos-mobile-status").val() || "",
-            categoria: filterParams.categoria || $("#bombeiros-custos-mobile-categoria").val() || ""
+            categoria: filterParams.categoria || $("#bombeiros-custos-mobile-categoria").val() || "",
+            mes_referencia: filterParams.mes_referencia || "<?php echo $dashboard_mes; ?>",
+            ano_referencia: filterParams.ano_referencia || "<?php echo $dashboard_ano; ?>"
         };
     };
 

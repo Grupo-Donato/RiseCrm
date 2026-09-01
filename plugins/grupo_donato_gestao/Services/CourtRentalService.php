@@ -931,7 +931,13 @@ class CourtRentalService extends CatalogDataService
             "deleted" => 0,
         ], true);
         $id = (int) $this->links->ci_save($data);
-        if ($id <= 0) { throw new \RuntimeException("court rental link insert"); }
+        if ($id <= 0) {
+            $error = $this->db->error();
+            if ((int) ($error["code"] ?? 0) === 1062 || stripos((string) ($error["message"] ?? ""), "duplicate") !== false) {
+                throw new \DomainException("gd_court_rental_already_linked");
+            }
+            throw new \RuntimeException("court rental link insert");
+        }
         return $id;
     }
 

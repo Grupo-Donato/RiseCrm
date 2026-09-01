@@ -66,9 +66,12 @@ grep -Fq '$routes->post("court-rentals/availability-options"' "$PLUGIN/Config/Ro
 grep -Fq '$routes->get("booking-series"' "$PLUGIN/Config/Routes.php"
 grep -Fq '$routes->post("booking-series/preview"' "$PLUGIN/Config/Routes.php"
 grep -Fq '$routes->post("booking-series/update-this-and-future"' "$PLUGIN/Config/Routes.php"
-grep -Fq '$routes->get("school/students"' "$PLUGIN/Config/Routes.php"
-grep -Fq '$routes->post("school/classes/save"' "$PLUGIN/Config/Routes.php"
-grep -Fq '$routes->post("school/attendance/save"' "$PLUGIN/Config/Routes.php"
+grep -Fq '$routes->get("school/students", static function' "$PLUGIN/Config/Routes.php"
+grep -Fq 'grupo_donato/operacional?gd_tab=alunos' "$PLUGIN/Views/dashboard/index.php"
+if grep -Fq 'School_students::index' "$PLUGIN/Config/Routes.php"; then
+  echo "  FAIL legacy student screen is still registered"
+  exit 1
+fi
 grep -Fq '$routes->get("finance"' "$PLUGIN/Config/Routes.php"
 grep -Fq '$routes->post("finance/payments/save"' "$PLUGIN/Config/Routes.php"
 grep -Fq '$routes->post("finance/expenses/save"' "$PLUGIN/Config/Routes.php"
@@ -77,7 +80,7 @@ grep -Fq 'gd-rental-reverse-payment' "$PLUGIN/Controllers/Rental_finance.php"
 grep -Fq 'gd-rental-reverse-payment' "$PLUGIN/Views/finance/rental_payments.php"
 grep -Fq 'grupo_donato/finance/payments/reverse' "$PLUGIN/Views/finance/rental_payments.php"
 grep -Eq 'group\("grupo_donato".*"filter"[[:space:]]*=>[[:space:]]*"csrf"' "$PLUGIN/Config/Routes.php"
-echo "  PASS required routes, protected student photo route, rental payment reversal action and CSRF group"
+echo "  PASS required routes, official Academy target, protected student photo route, rental payment reversal action and CSRF group"
 
 echo "[FAST] Student photo implementation"
 test -f "$PLUGIN/Services/StudentPhotoService.php"

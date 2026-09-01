@@ -177,9 +177,9 @@ if (!function_exists('gd_current_login_user')) {
             return $sidebar_menu; // sem permissão → sem menu
         }
 
-        // O agrupamento "Grupo Donato" foi retirado da navegação. As telas
-        // modernas de escola continuam disponíveis pelas rotas próprias,
-        // enquanto o menu operacional exibe somente as áreas solicitadas.
+        // O agrupamento "Grupo Donato" foi retirado da navegação. A escola
+        // usa a operação oficial em grupo_donato/operacional, enquanto o menu
+        // operacional exibe somente as áreas solicitadas.
 
         // O Rise suporta um nível de submenu. Por isso Locações apresenta os
         // dois domínios (Quadras/Churrasqueiras), e cada domínio usa sua

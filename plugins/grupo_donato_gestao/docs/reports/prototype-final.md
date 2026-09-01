@@ -54,8 +54,9 @@ Nenhuma migration foi alterada; nenhuma exclusão de tabela; uninstall segue pre
 | Idioma | Novas chaves `gd_*` (menu, KPIs, atalhos, abas, ações); sem duplicatas. |
 
 Arquivos de domínio (services/models/migrations) **não** foram refatorados, salvo
-enriquecimentos read-only aditivos no controller (`School_classes::view`, `Court_rentals`
-helpers de contato/financeiro/ações) e no `Calendar`/`Settings` (flags de permissão).
+enriquecimentos read-only aditivos no controller operacional e nos helpers de
+contato/financeiro/ações de `Court_rentals`, além do `Calendar`/`Settings`
+(flags de permissão).
 
 ## Testes
 

@@ -14,7 +14,9 @@ final class BarbecueRentalLockService
     public function acquire(int $unit_id, string $rental_key, int $timeout = 15): void
     {
         $raw = "gd:barbecue_rental:$unit_id:$rental_key";
-        $name = strlen($raw) <= 64 ? $raw : "gd:barbecue_rental:" . hash("sha256", $raw);
+        // MySQL limita nomes de user-level locks a 64 bytes; o hash completo
+        // também preserva a separação entre chaves sem ultrapassar o limite.
+        $name = strlen($raw) <= 64 ? $raw : hash("sha256", $raw);
         $row = $this->db->query("SELECT GET_LOCK(?, ?) AS l", [$name, $timeout])->getRow();
         if (!$row || (int) $row->l !== 1) { throw new \DomainException("gd_court_rental_lock_unavailable"); }
         $this->held = $name;

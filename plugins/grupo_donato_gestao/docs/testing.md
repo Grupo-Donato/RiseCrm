@@ -45,7 +45,8 @@ Resultado atual: **328 PASS / 0 FAIL**, concorrência **100 total / 100 distinto
 - Abrir produtos, categorias, detalhe/variações, recursos, listas/grade de preços e resolver.
 - Confirmar menu/abas conforme papel.
 - Abrir, criar, editar e excluir logicamente os três cadastros.
-- Confirmar mensagens, atualização da DataTable e detalhe da auditoria.
+- Confirmar atualização da DataTable e detalhe da auditoria; verificar que a área
+  de mensagens não aparece no menu nem nas abas operacionais.
 - Enviar POST sem CSRF (rejeitado) e com CSRF (aceito).
 - Testar URL direta com papel sem permissão (redirect `forbidden`).
 - Desativar e reativar; conferir dados/versões.

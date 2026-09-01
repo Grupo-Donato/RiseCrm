@@ -64,6 +64,7 @@ use grupo_donato_gestao\Services\ContactMethodService;
 use grupo_donato_gestao\Services\AddressService;
 use grupo_donato_gestao\Services\DataNormalizationService;
 use grupo_donato_gestao\Services\DataPrivacyService;
+use grupo_donato_gestao\Services\RoleAccessService;
 
 $task = $argv[1] ?? "install";
 
@@ -682,6 +683,10 @@ if ($task === "selftest") {
     $contact_manager = (object) ["is_admin" => 0, "user_type" => "staff", "permissions" => ["gd_contacts_manage" => "1"]];
     $relation_manager = (object) ["is_admin" => 0, "user_type" => "staff", "permissions" => ["gd_customer_relations_manage" => "1"]];
     $denied = (object) ["is_admin" => 0, "user_type" => "staff", "permissions" => []];
+    $professores = array_map(static function ($job_title) {
+        return (object) ["is_admin" => 0, "user_type" => "staff", "job_title" => $job_title, "permissions" => []];
+    }, ["Professor", "Professora", "Teacher"]);
+    $locacao = (object) ["is_admin" => 0, "user_type" => "staff", "job_title" => "Locacao", "permissions" => []];
     gd_assert("admin possui acesso total", (new AccessService($admin))->can("gd_audit_view"));
     gd_assert("staff autorizado acessa permissão concedida", (new AccessService($viewer))->can("gd_dashboard_view"));
     gd_assert("manage implica view", (new AccessService($manager))->can("gd_units_view"));
@@ -689,6 +694,25 @@ if ($task === "selftest") {
     gd_assert("manage de contatos implica visualização de pessoas", (new AccessService($contact_manager))->can("gd_people_view"));
     gd_assert("manage de relações implica visualizar contas e pessoas", (new AccessService($relation_manager))->can("gd_customer_accounts_view") && (new AccessService($relation_manager))->can("gd_people_view"));
     gd_assert("staff sem permissão é bloqueado no backend", !(new AccessService($denied))->can("gd_dashboard_view"));
+    gd_assert(
+        "todos os professores acessam Pagamentos da GD Academy sem acessar Administrativos",
+        count(array_filter($professores, static function ($professor) {
+            return RoleAccessService::can_access_operational_section($professor, "pagamentos")
+                && RoleAccessService::operational_route_section("pagamentos_list_data") === "pagamentos"
+                && !RoleAccessService::can_access_operational_section($professor, "financeiro");
+        })) === count($professores)
+    );
+    gd_assert(
+        "cargo Locacao acessa todos os menus internos de Locações e Churrasqueiras",
+        RoleAccessService::is_rental_role($locacao)
+            && RoleAccessService::can_view_rentals_menu($locacao)
+            && (new AccessService($locacao))->can("gd_calendar_view")
+            && (new AccessService($locacao))->can("gd_court_rentals_manage")
+            && (new AccessService($locacao))->can("gd_barbecue_rentals_manage")
+            && (new AccessService($locacao))->can("gd_rental_payments_manage")
+            && !(new AccessService($locacao))->can("gd_finance_view")
+            && !(new AccessService($locacao))->can("gd_units_manage")
+    );
 
     $routes = service("routes");
     $get_routes = $routes->getRoutes("GET");

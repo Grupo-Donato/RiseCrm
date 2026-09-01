@@ -57,6 +57,11 @@ class AccessService
             return false;
         }
 
+        if (RoleAccessService::is_rental_role($this->login_user)
+            && RoleAccessService::can_access_rental_permission($permission_key)) {
+            return true;
+        }
+
         if (RoleAccessService::is_full_access_role($this->login_user)) {
             return true;
         }

@@ -57,6 +57,29 @@ final class RoleAccessService
         "rentals" => true,
     ];
 
+    /** Permissões completas dos menus internos de Locações e Churrasqueiras. */
+    private const RENTAL_PERMISSION_KEYS = [
+        "gd_calendar_view",
+        "gd_resource_availability_manage",
+        "gd_resource_blocks_manage",
+        "gd_bookings_view",
+        "gd_bookings_manage",
+        "gd_booking_status_manage",
+        "gd_booking_series_view",
+        "gd_booking_series_manage",
+        "gd_booking_series_status_manage",
+        "gd_court_rentals_view",
+        "gd_court_rentals_manage",
+        "gd_court_rentals_status_manage",
+        "gd_court_rentals_price_override",
+        "gd_barbecue_rentals_view",
+        "gd_barbecue_rentals_manage",
+        "gd_barbecue_rentals_status_manage",
+        "gd_barbecue_rentals_price_override",
+        "gd_rental_payments_view",
+        "gd_rental_payments_manage",
+    ];
+
     private const PROFESSOR_ROLE_KEYS = [
         "professor" => true,
         "professora" => true,
@@ -80,10 +103,12 @@ final class RoleAccessService
         "comprovantes",
     ];
 
+    /** Todos os professores têm acesso operacional à aba de Pagamentos. */
     private const OPERATIONAL_PROFESSOR_SECTIONS = [
         "alunos",
         "responsaveis",
         "presenca",
+        "pagamentos",
     ];
 
     private const OPERATIONAL_ROUTE_SECTIONS = [
@@ -226,6 +251,22 @@ final class RoleAccessService
         }
 
         return !empty($user->is_admin) || isset(self::RENTALS_MENU_ROLE_KEYS[self::title_key($user)]);
+    }
+
+    /** Cargo operacional de Locação, sem ampliar acesso administrativo. */
+    public static function is_rental_role(?object $user): bool
+    {
+        if (!$user || ($user->user_type ?? "") !== "staff") {
+            return false;
+        }
+
+        return !self::has_administrative_access($user)
+            && isset(self::RENTALS_MENU_ROLE_KEYS[self::title_key($user)]);
+    }
+
+    public static function can_access_rental_permission(string $permission_key): bool
+    {
+        return in_array($permission_key, self::RENTAL_PERMISSION_KEYS, true);
     }
 
     public static function is_professor(?object $user): bool

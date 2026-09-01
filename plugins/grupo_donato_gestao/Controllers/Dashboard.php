@@ -107,6 +107,8 @@ class Dashboard extends Gd_Controller
         };
         $period_from = $period_start->format("Y-m-d");
         $period_to = $period_end->modify("-1 day")->format("Y-m-d");
+        $period_key = $period_start->format("Y-m");
+        $receivable_period_sql = "COALESCE(NULLIF(reference_month, ''), DATE_FORMAT(due_date, '%Y-%m')) = ?";
 
         $summary = [
             "received" => 0.0, "expenses" => 0.0, "result" => 0.0,
@@ -120,13 +122,14 @@ class Dashboard extends Gd_Controller
                 "SELECT
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN balance_amount ELSE 0 END), 0) AS open_amount,
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN balance_amount ELSE 0 END), 0) AS overdue_amount,
-                    COALESCE(SUM(CASE WHEN status <> 'cancelled' AND issue_date BETWEEN ? AND ? THEN original_amount ELSE 0 END), 0) AS billed_amount,
+                    COALESCE(SUM(CASE WHEN status <> 'cancelled' THEN original_amount ELSE 0 END), 0) AS billed_amount,
                     SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN 1 ELSE 0 END) AS overdue_count,
                     SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date >= ? THEN 1 ELSE 0 END) AS open_count,
-                    SUM(CASE WHEN status <> 'cancelled' AND issue_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS charges
+                    COUNT(*) AS charges
                  FROM `{$receivable_table}`
-                 WHERE unit_id = ? AND deleted = 0",
-                [$today, $today, $period_from, $period_to, $today, $today, $period_from, $period_to, $unit_id]
+                 WHERE unit_id = ? AND deleted = 0 AND status <> 'cancelled'
+                   AND {$receivable_period_sql}",
+                [$today, $today, $today, $today, $unit_id, $period_key]
             )->getRow();
             $summary["open"] = (float) ($row->open_amount ?? 0);
             $summary["overdue"] = (float) ($row->overdue_amount ?? 0);
@@ -189,8 +192,9 @@ class Dashboard extends Gd_Controller
                     COALESCE(SUM(CASE WHEN status <> 'cancelled' AND balance_amount > 0 AND due_date < ? THEN balance_amount ELSE 0 END), 0) AS overdue_amount
                  FROM `{$receivable_table}`
                  WHERE unit_id = ? AND deleted = 0 AND status <> 'cancelled'
+                   AND {$receivable_period_sql}
                  GROUP BY source_type",
-                [$today, $today, $today, $today, $unit_id]
+                [$today, $today, $today, $today, $unit_id, $period_key]
             )->getResult();
             foreach ($rows as $row) {
                 $source = (string) ($row->source_type ?? "other");
@@ -281,6 +285,25 @@ class Dashboard extends Gd_Controller
             $academy["attendance_today"] = $this->count($db, $table("gd_attendance_sessions"), "unit_id = ? AND attendance_date = ? AND deleted = 0", [$unit_id, $today]);
         }
 
+        // A operação oficial da Academy vive nas tabelas grupo_donato_*.
+        // Quando elas estão disponíveis, seus indicadores substituem os dados
+        // da implementação escolar antiga para que o dashboard não apresente
+        // uma segunda base de alunos, turmas ou presença.
+        $official_academy = $this->official_academy_activity($db, $exists, $table, $unit_id, $today_local, $period_from, $period_end->format("Y-m-d"));
+        if ($official_academy !== null) {
+            $academy = $official_academy["academy"];
+            $finance_by_source["enrollment"] = $official_academy["finance"];
+            $summary["received"] += (float) ($official_academy["finance"]["received_period"] ?? 0);
+            $summary["payments"] += (int) ($official_academy["finance"]["payment_count"] ?? 0);
+            $summary["open"] += (float) ($official_academy["finance"]["balance_amount"] ?? 0);
+            $summary["overdue"] += (float) ($official_academy["finance"]["overdue_amount"] ?? 0);
+            $summary["billed"] += (float) ($official_academy["finance"]["billed_amount"] ?? 0);
+            $summary["charges"] += (int) ($official_academy["finance"]["charges"] ?? 0);
+            $summary["open_count"] += (int) ($official_academy["finance"]["open_count"] ?? 0);
+            $summary["overdue_count"] += (int) ($official_academy["finance"]["overdue_count"] ?? 0);
+        }
+        $summary["result"] = $summary["received"] - $summary["expenses"];
+
         $courts = $this->rental_activity($db, $exists, $table, "gd_court_rentals", "court", $unit_id);
         $barbecues = $this->rental_activity($db, $exists, $table, "gd_barbecue_rentals", "barbecue_area", $unit_id);
         $courts["bookings_today"] = $booking_counts["court"]["today"];
@@ -289,7 +312,7 @@ class Dashboard extends Gd_Controller
         $barbecues["next_7_days"] = $booking_counts["barbecue_area"]["next_7_days"];
 
         $agenda = $this->agenda_today($db, $exists, $table, $unit_id, $today_local, $tomorrow_local, $timezone, $now_utc);
-        $upcoming = $this->upcoming_receivables($db, $exists, $table, $unit_id, $today);
+        $upcoming = $this->upcoming_receivables($db, $exists, $table, $unit_id, max($today, $period_from), $period_end->format("Y-m-d"));
         $trend = $this->financial_trend($db, $exists, $table, $unit_id, $period_start, $period_end);
         $catalog = $this->catalog_activity($db, $exists, $table, $unit_id, $timezone);
         $finance_totals = $this->sum_finance($finance_by_source);
@@ -313,6 +336,175 @@ class Dashboard extends Gd_Controller
             "active_contracts" => (int) $courts["recurring"] + (int) $barbecues["recurring"],
             "active_resources" => (int) $courts["resources"] + (int) $barbecues["resources"],
         ];
+    }
+
+    /**
+     * Indicadores da fonte oficial da GD Academy (módulo Operacional).
+     *
+     * O dashboard novo usa `gd_units`, enquanto o módulo operacional mantém a
+     * unidade em `grupo_donato_unidades`. A resolução abaixo acompanha a
+     * unidade operacional escolhida, tenta casar pelo id/nome e, por último,
+     * usa a unidade operacional padrão.
+     */
+    private function official_academy_activity($db, callable $exists, callable $table, int $unit_id, \DateTimeImmutable $today_local, string $period_from, string $period_end): ?array
+    {
+        if (!$exists("grupo_donato_unidades") || !$exists("grupo_donato_alunos")) {
+            return null;
+        }
+
+        $official_unit_id = $this->official_unit_id($db, $exists, $table, $unit_id);
+        if ($official_unit_id <= 0) {
+            return null;
+        }
+
+        $students_table = $table("grupo_donato_alunos");
+        $schedule_expression = "NULLIF(TRIM(COALESCE(NULLIF(turma, ''), NULLIF(horario, ''))), '')";
+        $row = $db->query(
+            "SELECT COUNT(*) AS active_students,
+                    COUNT(DISTINCT {$schedule_expression}) AS active_classes
+             FROM `{$students_table}`
+             WHERE unidade_id = ? AND status = 'Ativo' AND deleted = 0",
+            [$official_unit_id]
+        )->getRow();
+
+        $academy = [
+            "active_students" => (int) ($row->active_students ?? 0),
+            "active_classes" => (int) ($row->active_classes ?? 0),
+            "classes_today" => 0,
+            "attendance_today" => 0,
+        ];
+
+        $day_prefix = [
+            1 => "Seg/Qua",
+            2 => "Ter/Qui",
+            3 => "Seg/Qua",
+            4 => "Ter/Qui",
+            6 => "Sábado",
+        ][(int) $today_local->format("N")] ?? null;
+        if ($day_prefix !== null) {
+            $row = $db->query(
+                "SELECT COUNT(DISTINCT {$schedule_expression}) AS total
+                 FROM `{$students_table}`
+                 WHERE unidade_id = ? AND status = 'Ativo' AND deleted = 0
+                   AND {$schedule_expression} LIKE ?",
+                [$official_unit_id, $day_prefix . "%"]
+            )->getRow();
+            $academy["classes_today"] = (int) ($row->total ?? 0);
+        }
+
+        if ($exists("grupo_donato_presenca")) {
+            $presence_table = $table("grupo_donato_presenca");
+            $row = $db->query(
+                "SELECT COUNT(*) AS total
+                 FROM `{$presence_table}` p
+                 INNER JOIN `{$students_table}` s ON s.id = p.aluno_id
+                 WHERE s.unidade_id = ? AND s.deleted = 0 AND p.data_aula = ?",
+                [$official_unit_id, $today_local->format("Y-m-d")]
+            )->getRow();
+            $academy["attendance_today"] = (int) ($row->total ?? 0);
+        }
+
+        return [
+            "academy" => $academy,
+            "finance" => $this->official_academy_finance($db, $exists, $table, $official_unit_id, $today_local->format("Y-m-d"), $period_from, $period_end),
+        ];
+    }
+
+    /** Posição financeira da Academy na competência selecionada. */
+    private function official_academy_finance($db, callable $exists, callable $table, int $official_unit_id, string $today, string $period_from, string $period_end): array
+    {
+        $finance = $this->empty_product_finance();
+        if (!$exists("grupo_donato_cobrancas")) {
+            return $finance;
+        }
+
+        $charges_table = $table("grupo_donato_cobrancas");
+        $students_table = $table("grupo_donato_alunos");
+        $row = $db->query(
+            "SELECT COUNT(*) AS charges,
+                    SUM(CASE WHEN c.status = 'Pago' THEN 1 ELSE 0 END) AS paid_count,
+                    SUM(CASE WHEN c.status = 'Pendente' AND c.vencimento >= ? THEN 1 ELSE 0 END) AS open_count,
+                    SUM(CASE WHEN c.status = 'Vencido' OR (c.status = 'Pendente' AND c.vencimento < ?) THEN 1 ELSE 0 END) AS overdue_count,
+                    COALESCE(SUM(c.valor), 0) AS billed_amount,
+                    COALESCE(SUM(CASE WHEN c.status = 'Pago' THEN c.valor ELSE 0 END), 0) AS paid_amount,
+                    COALESCE(SUM(CASE WHEN c.status = 'Pendente' AND c.vencimento >= ? THEN c.valor ELSE 0 END), 0) AS balance_amount,
+                    COALESCE(SUM(CASE WHEN c.status = 'Vencido' OR (c.status = 'Pendente' AND c.vencimento < ?) THEN c.valor ELSE 0 END), 0) AS overdue_amount,
+                    COALESCE(SUM(CASE WHEN c.status = 'Pago' AND c.data_pagamento >= ? AND c.data_pagamento < ? THEN c.valor ELSE 0 END), 0) AS received_period,
+                    SUM(CASE WHEN c.status = 'Pago' AND c.data_pagamento >= ? AND c.data_pagamento < ? THEN 1 ELSE 0 END) AS payment_count
+             FROM `{$charges_table}` c
+             INNER JOIN `{$students_table}` s ON s.id = c.aluno_id
+             WHERE s.unidade_id = ? AND s.deleted = 0 AND c.status <> 'Cancelado'
+               AND c.vencimento >= ? AND c.vencimento < ?",
+            [$today, $today, $today, $today, $period_from, $period_end, $period_from, $period_end, $official_unit_id, $period_from, $period_end]
+        )->getRow();
+
+        return [
+            "charges" => (int) ($row->charges ?? 0),
+            "paid_count" => (int) ($row->paid_count ?? 0),
+            "open_count" => (int) ($row->open_count ?? 0),
+            "overdue_count" => (int) ($row->overdue_count ?? 0),
+            "billed_amount" => (float) ($row->billed_amount ?? 0),
+            "paid_amount" => (float) ($row->paid_amount ?? 0),
+            "balance_amount" => (float) ($row->balance_amount ?? 0),
+            "overdue_amount" => (float) ($row->overdue_amount ?? 0),
+            "received_period" => (float) ($row->received_period ?? 0),
+            "payment_count" => (int) ($row->payment_count ?? 0),
+        ];
+    }
+
+    /** Resolve a unidade operacional para os indicadores da Academy. */
+    private function official_unit_id($db, callable $exists, callable $table, int $unit_id): int
+    {
+        $units_table = $table("grupo_donato_unidades");
+
+        try {
+            $slug = trim((string) (service("session")->get("grupo_donato_operacional_unidade_slug") ?? ""));
+            if ($slug !== "") {
+                $row = $db->query(
+                    "SELECT id FROM `{$units_table}` WHERE slug = ? AND status = 'Ativo' AND deleted = 0 LIMIT 1",
+                    [$slug]
+                )->getRow();
+                if ($row) {
+                    return (int) $row->id;
+                }
+            }
+        } catch (\Throwable $e) {
+            // CLI/instalação pode não ter o serviço de sessão disponível.
+        }
+
+        $row = $db->query(
+            "SELECT id FROM `{$units_table}` WHERE id = ? AND status = 'Ativo' AND deleted = 0 LIMIT 1",
+            [$unit_id]
+        )->getRow();
+        if ($row) {
+            return (int) $row->id;
+        }
+
+        if ($exists("gd_units")) {
+            $generic_units_table = $table("gd_units");
+            $generic = $db->query("SELECT name FROM `{$generic_units_table}` WHERE id = ? AND deleted = 0 LIMIT 1", [$unit_id])->getRow();
+            if ($generic && trim((string) ($generic->name ?? "")) !== "") {
+                $row = $db->query(
+                    "SELECT id FROM `{$units_table}` WHERE LOWER(TRIM(nome_unidade)) = LOWER(TRIM(?)) AND status = 'Ativo' AND deleted = 0 LIMIT 1",
+                    [(string) $generic->name]
+                )->getRow();
+                if ($row) {
+                    return (int) $row->id;
+                }
+            }
+        }
+
+        $row = $db->query(
+            "SELECT id FROM `{$units_table}` WHERE is_default = 1 AND status = 'Ativo' AND deleted = 0 ORDER BY id ASC LIMIT 1"
+        )->getRow();
+        if ($row) {
+            return (int) $row->id;
+        }
+
+        $row = $db->query(
+            "SELECT id FROM `{$units_table}` WHERE status = 'Ativo' AND deleted = 0 ORDER BY id ASC LIMIT 1"
+        )->getRow();
+        return (int) ($row->id ?? 0);
     }
 
     /** Indicadores do catálogo usados pelo painel e pela navegação executiva. */
@@ -474,7 +666,7 @@ class Dashboard extends Gd_Controller
         return array_slice($agenda, 0, 10);
     }
 
-    private function upcoming_receivables($db, callable $exists, callable $table, int $unit_id, string $today): array
+    private function upcoming_receivables($db, callable $exists, callable $table, int $unit_id, string $from, string $period_end): array
     {
         if (!$exists("gd_receivables")) {
             return [];
@@ -487,10 +679,10 @@ class Dashboard extends Gd_Controller
             "SELECT r.id, r.description, r.source_type, r.due_date, r.balance_amount, {$customer_name}
              FROM `{$table("gd_receivables")}` r {$customer_join}
              WHERE r.unit_id = ? AND r.deleted = 0 AND r.status <> 'cancelled'
-               AND r.balance_amount > 0 AND r.due_date >= ?
+               AND r.balance_amount > 0 AND r.due_date >= ? AND r.due_date < ?
              ORDER BY r.due_date, r.id
              LIMIT 6",
-            [$unit_id, $today]
+            [$unit_id, $from, $period_end]
         )->getResult();
     }
 

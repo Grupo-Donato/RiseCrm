@@ -264,22 +264,26 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("barbecue-rentals/(:num)/complete", "Barbecue_rentals::complete/$1");
 
 
-    /* ---- Fase 4: escola e personal ---- */
-    $routes->get("school/students", "School_students::index");
-    $routes->post("school/students/list-data", "School_students::list_data");
-    $routes->get("school/students/view/(:num)", "School_students::view/$1");
-    $routes->match(["get", "post"], "school/students/modal", "School_students::modal");
-    $routes->post("school/students/save", "School_students::save");
-    $routes->get("school/classes", "School_classes::index");
-    $routes->post("school/classes/list-data", "School_classes::list_data");
-    $routes->get("school/classes/view/(:num)", "School_classes::view/$1");
-    $routes->match(["get", "post"], "school/classes/modal", "School_classes::modal");
-    $routes->post("school/classes/save", "School_classes::save");
-    $routes->post("school/classes/enrollment-modal", "School_classes::enrollment_modal");
-    $routes->post("school/classes/enroll", "School_classes::enroll");
-    $routes->get("school/attendance", "School_attendance::index");
-    $routes->get("school/attendance/roster", "School_attendance::roster");
-    $routes->post("school/attendance/save", "School_attendance::save");
+    /*
+     * As telas escolares da implementação anterior foram descontinuadas.
+     * Mantemos somente redirecionamentos GET para não deixar favoritos antigos
+     * abrirem uma segunda base de alunos; nenhuma operação nova usa esses paths.
+     */
+    $routes->get("school/students", static function () {
+        return redirect()->to(site_url("grupo_donato/operacional?gd_tab=alunos"));
+    });
+    $routes->get("school/students/view/(:num)", static function () {
+        return redirect()->to(site_url("grupo_donato/operacional?gd_tab=alunos"));
+    });
+    $routes->get("school/classes", static function () {
+        return redirect()->to(site_url("grupo_donato/operacional?gd_tab=presenca"));
+    });
+    $routes->get("school/classes/view/(:num)", static function () {
+        return redirect()->to(site_url("grupo_donato/operacional?gd_tab=presenca"));
+    });
+    $routes->get("school/attendance", static function () {
+        return redirect()->to(site_url("grupo_donato/operacional?gd_tab=presenca"));
+    });
 
     /* ---- Fase 5: financeiro básico ---- */
     $routes->get("finance", "Finance::index");

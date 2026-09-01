@@ -1390,8 +1390,6 @@ return [
     "gd_combo_add_barbecue" => "Adicionar churrasqueira ao combo",
     "gd_combo_same_schedule_help" => "A churrasqueira sera reservada no mesmo dia, horario e duracao da quadra.",
     "gd_available_barbecues_for_time" => "Churrasqueiras disponiveis neste horario",
-    "gd_available_barbecues_help" => "Clique em uma churrasqueira disponivel para inclui-la na reserva.",
-    "gd_no_barbecues_available_for_time" => "Nenhuma churrasqueira esta disponivel neste horario.",
     "gd_no_barbecues_registered" => "Nenhuma churrasqueira reservavel foi cadastrada nesta unidade.",
     "gd_combo_court_amount" => "Valor da quadra",
     "gd_combo_barbecue_amount" => "Valor da churrasqueira",

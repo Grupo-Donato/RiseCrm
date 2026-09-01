@@ -233,14 +233,16 @@ final class RoleAccessService
         return self::has_administrative_access($user);
     }
 
-    /** GD Academy fica disponível para gestão e para professores. */
+    /** GD Academy fica disponível para gestão, secretaria e professores. */
     public static function can_view_academy_menu(?object $user): bool
     {
         if (!$user || ($user->user_type ?? "") !== "staff") {
             return false;
         }
 
-        return self::has_administrative_access($user) || self::is_professor($user);
+        return self::has_administrative_access($user)
+            || self::is_full_access_role($user)
+            || self::is_professor($user);
     }
 
     /** Locações e Churrasqueiras ficam disponíveis para gestão e locação. */

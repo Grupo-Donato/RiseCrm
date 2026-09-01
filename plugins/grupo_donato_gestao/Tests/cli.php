@@ -686,6 +686,7 @@ if ($task === "selftest") {
     $professores = array_map(static function ($job_title) {
         return (object) ["is_admin" => 0, "user_type" => "staff", "job_title" => $job_title, "permissions" => []];
     }, ["Professor", "Professora", "Teacher"]);
+    $secretaria = (object) ["is_admin" => 0, "user_type" => "staff", "job_title" => "Secretaria", "permissions" => []];
     $locacao = (object) ["is_admin" => 0, "user_type" => "staff", "job_title" => "Locacao", "permissions" => []];
     gd_assert("admin possui acesso total", (new AccessService($admin))->can("gd_audit_view"));
     gd_assert("staff autorizado acessa permissão concedida", (new AccessService($viewer))->can("gd_dashboard_view"));
@@ -701,6 +702,18 @@ if ($task === "selftest") {
                 && RoleAccessService::operational_route_section("pagamentos_list_data") === "pagamentos"
                 && !RoleAccessService::can_access_operational_section($professor, "financeiro");
         })) === count($professores)
+    );
+    gd_assert(
+        "secretaria acessa todos os menus internos da GD Academy sem acessar Administrativos",
+        RoleAccessService::can_view_academy_menu($secretaria)
+            && RoleAccessService::can_access_operational_section($secretaria, "alunos")
+            && RoleAccessService::can_access_operational_section($secretaria, "cancelados")
+            && RoleAccessService::can_access_operational_section($secretaria, "concluidos")
+            && RoleAccessService::can_access_operational_section($secretaria, "responsaveis")
+            && RoleAccessService::can_access_operational_section($secretaria, "presenca")
+            && RoleAccessService::can_access_operational_section($secretaria, "pagamentos")
+            && RoleAccessService::can_access_operational_section($secretaria, "comprovantes")
+            && !RoleAccessService::can_access_operational_section($secretaria, "financeiro")
     );
     gd_assert(
         "cargo Locacao acessa todos os menus internos de Locações e Churrasqueiras",

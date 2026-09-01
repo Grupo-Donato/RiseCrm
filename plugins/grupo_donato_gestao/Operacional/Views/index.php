@@ -708,7 +708,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
             <?php if ($gd_can_render_tab("pagamentos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("pagamentos"); ?>" id="bombeiros-tab-pagamentos">
-                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_pagamentos'); ?>
+                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_pagamentos', ["dashboard_periodo" => $dashboard_periodo]); ?>
             </div>
             <?php endif; ?>
 
@@ -722,7 +722,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
             <?php if ($gd_can_render_tab("custos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("custos"); ?>" id="bombeiros-tab-custos">
-                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_custos', ["custos_resumo" => $custos_resumo ?? []]); ?>
+                <?php echo view('grupo_donato_gestao\Operacional\Views\lista_custos', ["custos_resumo" => $custos_resumo ?? [], "dashboard_periodo" => $dashboard_periodo]); ?>
             </div>
             <?php endif; ?>
 
@@ -1033,6 +1033,10 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             appAjaxRequest({
                 url: "<?php echo_uri("grupo_donato/operacional/financeiro_resumo"); ?>",
                 type: "GET",
+                data: {
+                    dashboard_mes: $("#gd-dashboard-mes").val() || "<?php echo $dashboard_mes; ?>",
+                    dashboard_ano: $("#gd-dashboard-ano").val() || "<?php echo $dashboard_ano; ?>"
+                },
                 success: function (html) {
                     $pane.html(html);
                     appLoader.hide();

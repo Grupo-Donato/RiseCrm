@@ -83,8 +83,11 @@ class Bombeiros extends Security_Controller
         $view_data["dashboard_periodo"] = $dashboard_periodo;
         $view_data["dashboard_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_dashboard_resumo_data($dashboard_periodo["mes"], $dashboard_periodo["ano"]) : [];
         $view_data["qualidade_resumo"] = $this->_gd_can_access_section("dashboard") ? $this->_qualidade_resumo_data() : [];
-        $view_data["financeiro_resumo"] = $this->_gd_can_access_section("financeiro") ? $this->_financeiro_resumo_data() : [];
-        $view_data["custos_resumo"] = $this->_gd_can_access_section("custos") ? $this->_custos_resumo_data() : [];
+        $view_data["financeiro_resumo"] = $this->_gd_can_access_section("financeiro") ? $this->_financeiro_resumo_data($dashboard_periodo["mes"], $dashboard_periodo["ano"]) : [];
+        $view_data["custos_resumo"] = $this->_gd_can_access_section("custos") ? $this->_custos_resumo_data([
+            "mes_referencia" => $dashboard_periodo["mes"],
+            "ano_referencia" => $dashboard_periodo["ano"]
+        ]) : [];
         return $this->template->render('grupo_donato_gestao\Operacional\Views\index', $view_data);
     }
 
@@ -171,7 +174,8 @@ class Bombeiros extends Security_Controller
 
     public function financeiro_resumo()
     {
-        $view_data = $this->_financeiro_resumo_data();
+        $periodo = $this->_dashboard_periodo();
+        $view_data = $this->_financeiro_resumo_data($periodo["mes"], $periodo["ano"]);
         return $this->template->view('grupo_donato_gestao\Operacional\Views\financeiro_resumo', $view_data);
     }
 
@@ -316,7 +320,13 @@ class Bombeiros extends Security_Controller
             return;
         }
 
-        $list_data = $this->Bombeiros_cobrancas_model->get_details(["overdue" => true, "unidade_id" => $this->_active_unit_id()])->getResult();
+        $periodo = $this->_dashboard_periodo();
+        $list_data = $this->Bombeiros_cobrancas_model->get_details([
+            "overdue" => true,
+            "unidade_id" => $this->_active_unit_id(),
+            "mes_referencia" => $periodo["mes"],
+            "ano_referencia" => $periodo["ano"]
+        ])->getResult();
         $result = [];
 
         foreach ($list_data as $data) {
@@ -391,7 +401,14 @@ class Bombeiros extends Security_Controller
             return;
         }
 
-        $options = ["unit_id" => $this->_active_unit_id()];
+        $periodo = $this->_dashboard_periodo();
+        $mes_referencia = (int) ($this->request->getPost("mes_referencia") ?: $periodo["mes"]);
+        $ano_referencia = (int) ($this->request->getPost("ano_referencia") ?: $periodo["ano"]);
+        $options = [
+            "unit_id" => $this->_active_unit_id(),
+            "mes_referencia" => $mes_referencia,
+            "ano_referencia" => $ano_referencia
+        ];
         $status = $this->request->getPost("status");
         if ($status) {
             $options["status"] = $status;
@@ -418,13 +435,14 @@ class Bombeiros extends Security_Controller
             return;
         }
 
+        $periodo = $this->_dashboard_periodo();
         echo json_encode([
             "success" => true,
             "data" => $this->_custos_resumo_data([
                 "status" => $this->request->getPost("status"),
                 "categoria" => $this->request->getPost("categoria"),
-                "mes_referencia" => $this->request->getPost("mes_referencia"),
-                "ano_referencia" => $this->request->getPost("ano_referencia")
+                "mes_referencia" => $this->request->getPost("mes_referencia") ?: $periodo["mes"],
+                "ano_referencia" => $this->request->getPost("ano_referencia") ?: $periodo["ano"]
             ])
         ]);
     }
@@ -2916,11 +2934,19 @@ class Bombeiros extends Security_Controller
         ];
     }
 
-    private function _financeiro_resumo_data()
+    private function _financeiro_resumo_data($mes_referencia = 0, $ano_referencia = 0)
     {
+        $periodo = $this->_dashboard_periodo();
+        $mes_referencia = (int) $mes_referencia ?: $periodo["mes"];
+        $ano_referencia = (int) $ano_referencia ?: $periodo["ano"];
         $unidade_id = $this->_active_unit_id();
-        $totais = $this->Bombeiros_cobrancas_model->get_totals($unidade_id);
-        $inadimplentes = $this->Bombeiros_cobrancas_model->get_details(["overdue" => true, "unidade_id" => $unidade_id])->getResult();
+        $totais = $this->Bombeiros_cobrancas_model->get_totals($unidade_id, $mes_referencia, $ano_referencia);
+        $inadimplentes = $this->Bombeiros_cobrancas_model->get_details([
+            "overdue" => true,
+            "unidade_id" => $unidade_id,
+            "mes_referencia" => $mes_referencia,
+            "ano_referencia" => $ano_referencia
+        ])->getResult();
         $total_inadimplencia = 0;
 
         foreach ($inadimplentes as $inadimplente) {
@@ -2931,7 +2957,9 @@ class Bombeiros extends Security_Controller
             "total_pago" => (float) ($totais->total_pago ?? 0),
             "total_pendente" => (float) ($totais->total_pendente ?? 0),
             "total_inadimplencia" => $total_inadimplencia,
-            "total_parcelas_atraso" => count($inadimplentes)
+            "total_parcelas_atraso" => count($inadimplentes),
+            "mes_referencia" => $mes_referencia,
+            "ano_referencia" => $ano_referencia
         ];
     }
 
@@ -3413,7 +3441,11 @@ class Bombeiros extends Security_Controller
 
     private function _deny_operational_access()
     {
-        $is_ajax_or_post = $this->request->isAJAX() || strtolower((string) $this->request->getMethod()) === "post";
+        // O método também pode ser chamado durante o construtor, antes de o
+        // CodeIgniter injetar a request na propriedade do controller.
+        $request = function_exists("service") ? service("request") : null;
+        $request_method = $request ? $request->getMethod() : ($_SERVER["REQUEST_METHOD"] ?? "GET");
+        $is_ajax_or_post = ($request && $request->isAJAX()) || strtolower((string) $request_method) === "post";
         if ($is_ajax_or_post) {
             http_response_code(403);
             header("Content-Type: application/json; charset=UTF-8");

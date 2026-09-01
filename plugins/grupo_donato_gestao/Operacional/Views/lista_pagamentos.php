@@ -1,4 +1,7 @@
 <?php
+$dashboard_periodo = $dashboard_periodo ?? ["mes" => (int) date("m"), "ano" => (int) date("Y")];
+$dashboard_mes = (int) ($dashboard_periodo["mes"] ?? date("m"));
+$dashboard_ano = (int) ($dashboard_periodo["ano"] ?? date("Y"));
 $meses_pagamento = [
     ["id" => "1", "text" => "Janeiro"],
     ["id" => "2", "text" => "Fevereiro"],
@@ -54,11 +57,11 @@ $pagamento_select_options = function ($items) {
         <div class="row">
             <div class="col-sm-6">
                 <label for="bombeiros-pagamentos-mobile-mes">Mês</label>
-                <?php echo form_dropdown("bombeiros_pagamentos_mobile_mes", $pagamento_select_options($meses_pagamento), (string) (int) date("m"), ["id" => "bombeiros-pagamentos-mobile-mes", "class" => "form-control"]); ?>
+                <?php echo form_dropdown("bombeiros_pagamentos_mobile_mes", $pagamento_select_options($meses_pagamento), (string) $dashboard_mes, ["id" => "bombeiros-pagamentos-mobile-mes", "class" => "form-control"]); ?>
             </div>
             <div class="col-sm-6">
                 <label for="bombeiros-pagamentos-mobile-ano">Ano</label>
-                <?php echo form_dropdown("bombeiros_pagamentos_mobile_ano", $pagamento_select_options($anos_pagamento), (string) $ano_atual, ["id" => "bombeiros-pagamentos-mobile-ano", "class" => "form-control"]); ?>
+                <?php echo form_dropdown("bombeiros_pagamentos_mobile_ano", $pagamento_select_options($anos_pagamento), (string) $dashboard_ano, ["id" => "bombeiros-pagamentos-mobile-ano", "class" => "form-control"]); ?>
             </div>
             <div class="col-sm-6">
                 <label for="bombeiros-pagamentos-mobile-status">Status</label>
@@ -202,13 +205,13 @@ $pagamento_select_options = function ($items) {
                     {
                         name: "mes_referencia",
                         class: "w150",
-                        value: "<?php echo (int) date("m"); ?>",
+                        value: "<?php echo $dashboard_mes; ?>",
                         options: <?php echo json_encode($meses_pagamento); ?>
                     },
                     {
                         name: "ano_referencia",
                         class: "w120",
-                        value: "<?php echo $ano_atual; ?>",
+                        value: "<?php echo $dashboard_ano; ?>",
                         options: <?php echo json_encode($anos_pagamento); ?>
                     },
                     {
@@ -277,8 +280,8 @@ $pagamento_select_options = function ($items) {
                 type: "POST",
                 dataType: "json",
                 data: {
-                    mes_referencia: getPagamentoFilterValue("mes_referencia", "<?php echo (int) date("m"); ?>"),
-                    ano_referencia: getPagamentoFilterValue("ano_referencia", "<?php echo $ano_atual; ?>"),
+                    mes_referencia: getPagamentoFilterValue("mes_referencia", "<?php echo $dashboard_mes; ?>"),
+                    ano_referencia: getPagamentoFilterValue("ano_referencia", "<?php echo $dashboard_ano; ?>"),
                     turma: getPagamentoFilterValue("turma", "")
                 },
                 success: function (result) {
@@ -312,8 +315,8 @@ $pagamento_select_options = function ($items) {
         });
 
         $("body").off("click", "#bombeiros-pagamentos-mobile-limpar").on("click", "#bombeiros-pagamentos-mobile-limpar", function () {
-            $("#bombeiros-pagamentos-mobile-mes").val("<?php echo (int) date("m"); ?>");
-            $("#bombeiros-pagamentos-mobile-ano").val("<?php echo $ano_atual; ?>");
+            $("#bombeiros-pagamentos-mobile-mes").val("<?php echo $dashboard_mes; ?>");
+            $("#bombeiros-pagamentos-mobile-ano").val("<?php echo $dashboard_ano; ?>");
             $("#bombeiros-pagamentos-mobile-status,#bombeiros-pagamentos-mobile-turma").val("");
             applyBombeirosPagamentosMobileFilters();
         });
@@ -326,8 +329,8 @@ $pagamento_select_options = function ($items) {
                 type: "POST",
                 dataType: "json",
                 data: {
-                    mes_referencia: getPagamentoFilterValue("mes_referencia", "<?php echo (int) date("m"); ?>"),
-                    ano_referencia: getPagamentoFilterValue("ano_referencia", "<?php echo $ano_atual; ?>")
+                    mes_referencia: getPagamentoFilterValue("mes_referencia", "<?php echo $dashboard_mes; ?>"),
+                    ano_referencia: getPagamentoFilterValue("ano_referencia", "<?php echo $dashboard_ano; ?>")
                 },
                 success: function (result) {
                     $button.removeAttr("disabled");

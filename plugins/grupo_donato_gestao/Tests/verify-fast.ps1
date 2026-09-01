@@ -52,6 +52,7 @@ if ($mysql -and -not $env:GD_SKIP_DB_CHECK) {
 
 Write-Host "[FAST] Routes"
 $routes = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Config\Routes.php")
+$dashboard = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Views\dashboard\index.php")
 $requiredRoutes = @(
     '$routes->get("bookings"',
     '$routes->post("bookings/save"',
@@ -66,16 +67,16 @@ $requiredRoutes = @(
     '$routes->get("booking-series"',
     '$routes->post("booking-series/preview"',
     '$routes->post("booking-series/update-this-and-future"',
-    '$routes->get("school/students"',
-    '$routes->post("school/classes/save"',
-    '$routes->post("school/attendance/save"',
+    '$routes->get("school/students", static function',
     '$routes->get("finance"',
     '$routes->post("finance/payments/save"',
     '$routes->post("finance/expenses/save"'
 )
 foreach ($route in $requiredRoutes) { Assert-True $routes.Contains($route) "Required route missing: $route" }
+Assert-True $dashboard.Contains('grupo_donato/operacional?gd_tab=alunos') "The Academy dashboard target is not the official operational tab."
+Assert-True (-not $routes.Contains('School_students::index')) "The legacy student screen is still registered."
 Assert-True ($routes -match 'group\("grupo_donato"[\s\S]*?"filter"\s*=>\s*"csrf"') "The plugin route group is not protected by CSRF."
-Write-Host "  PASS required routes and CSRF group"
+Write-Host "  PASS required routes, official Academy target and CSRF group"
 
 Write-Host "[FAST] Language catalog"
 $languagePath = Join-Path $plugin "Language\portuguese\default_lang.php"

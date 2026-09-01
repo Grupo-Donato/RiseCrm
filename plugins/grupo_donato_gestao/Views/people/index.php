@@ -6,7 +6,7 @@ foreach (\grupo_donato_gestao\Config\Constants::PERSON_STATUSES as $value) {
 ?>
 <div id="page-content" class="page-wrapper clearfix">
     <?php echo view("grupo_donato_gestao\\Views\\components\\tabs_nav", ["active" => "people", "items" => [
-        ["key" => "students", "url" => "grupo_donato/school/students", "label" => app_lang("gd_tab_students"), "icon" => "user"],
+        ["key" => "students", "url" => "grupo_donato/operacional?gd_tab=alunos", "label" => app_lang("gd_tab_students"), "icon" => "user"],
         ["key" => "customers", "url" => "grupo_donato/customers", "label" => app_lang("gd_tab_customers"), "icon" => "briefcase"],
         ["key" => "people", "url" => "grupo_donato/people", "label" => app_lang("gd_tab_people"), "icon" => "users"],
     ]]); ?>

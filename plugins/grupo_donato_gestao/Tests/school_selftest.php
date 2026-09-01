@@ -39,6 +39,6 @@ if($otherUnit){$foreign=$db->table($prefix.'gd_school_profiles')->where('unit_id
 $schoolAccess=new \grupo_donato_gestao\Services\AccessService($pm('gd_attendance_manage'));
 gd_assert("permissões filhas implicam visão escolar",$schoolAccess->can('gd_school_view')&&!$schoolAccess->can('gd_classes_manage'));
 $getRoutes=$routes->getRoutes('GET');$postRoutes=$routes->getRoutes('POST');
-gd_assert("rotas escolares separam leitura e escrita",isset($getRoutes['grupo_donato/school/students'],$getRoutes['grupo_donato/school/attendance/roster'])&&isset($postRoutes['grupo_donato/school/students/save'],$postRoutes['grupo_donato/school/classes/save'],$postRoutes['grupo_donato/school/attendance/save']));
-gd_assert("escritas escolares estão sob CSRF",in_array('csrf',(array)get_array_value($routes->getRoutesOptions('grupo_donato/school/attendance/save','POST'),'filter'),true));
+gd_assert("tela escolar legada redireciona para a operação oficial",isset($getRoutes['grupo_donato/school/students'])&&is_callable($getRoutes['grupo_donato/school/students'])&&isset($getRoutes['grupo_donato/operacional']));
+gd_assert("escritas escolares legadas foram removidas",!isset($postRoutes['grupo_donato/school/students/save'])&&!isset($postRoutes['grupo_donato/school/classes/save'])&&!isset($postRoutes['grupo_donato/school/attendance/save']));
 gd_assert("auditoria registra operações escolares",$db->table($prefix.'gd_audit_logs')->where('unit_id',$unit_id)->whereIn('entity_type',['school_profile','school_class','school_enrollment','school_attendance_session'])->countAllResults()>=5);

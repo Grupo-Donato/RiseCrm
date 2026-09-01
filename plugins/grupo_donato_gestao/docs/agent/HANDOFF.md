@@ -21,8 +21,9 @@
 - `index.php` — `gd_left_menu()` reduzido a 9 itens; importação e telas avançadas fora do menu.
 - `Controllers/Dashboard.php` + `Views/dashboard/index.php` — KPIs reais + atalhos.
 - `Views/components/` — `tabs_nav.php`, `empty_state.php`, `finance_nav.php`, `cash_nav.php`.
-- Telas com abas/botões/links: `school_students/*`, `school_classes/*` (+ controller),
-  `school_attendance/index.php`, `calendar/index.php` (+ controller), `court_rentals/monthly.php`
+- A operação oficial da Academy fica em `Operacional/` (`grupo_donato/operacional?gd_tab=alunos`);
+  as telas escolares antigas foram removidas e seus favoritos redirecionam para lá.
+  As demais telas do plugin incluem `calendar/index.php` (+ controller), `court_rentals/monthly.php`
   (+ controller), `finance/*`, `settings/general.php` (+ controller).
 - `Language/portuguese/default_lang.php` — novas chaves `gd_*` (menu/KPIs/atalhos/abas).
 - `Services/CourtRentalLifecycleService.php` — pausa reversível e cancelamento definitivo com liberação futura/auditoria.

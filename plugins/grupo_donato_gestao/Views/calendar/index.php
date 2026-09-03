@@ -78,10 +78,8 @@ if (!empty($can_court_rentals_view)) {
                         </div>
                         <div class="form-group" id="gd-calendar-free-duration-group">
                             <label for="gd-calendar-free-duration"><?php echo app_lang("gd_free_slot_duration"); ?></label>
-                            <select id="gd-calendar-free-duration" class="select2 form-control">
-                                <option value="90" selected>1h30</option>
-                                <option value="120">2h</option>
-                            </select>
+                            <input type="text" id="gd-calendar-free-duration" class="form-control" value="90" inputmode="text" autocomplete="off" placeholder="Ex.: 60, 1h ou 1h30">
+                            <small class="text-muted">Digite minutos ou use <strong>h</strong> para horas. Ex.: 3h.</small>
                         </div>
                         <div class="form-group">
                             <label>&nbsp;</label>
@@ -198,8 +196,8 @@ $(document).ready(function(){
         if (typeof feather !== "undefined") { feather.replace(); }
     }
 
-    var filterFields = statusFilter.add(typeFilter).add(freeDuration);
-    filterFields.select2({width: "100%"}).on("change", refresh);
+    statusFilter.add(typeFilter).select2({width: "100%"}).on("change", refresh);
+    freeDuration.on("input change", refresh);
     resourceFilters.on("change", function(){ syncCourtSelection(true); refresh(); });
 
     var calendar = new FullCalendar.Calendar(calendarElement, {
@@ -301,7 +299,7 @@ $(document).ready(function(){
         resourceFilters.prop("checked", false);
         statusFilter.val("hold,pending_confirmation,confirmed,in_progress").trigger("change.select2");
         typeFilter.val("booking,block,closed_exception").trigger("change.select2");
-        freeDuration.val("90").trigger("change.select2");
+        freeDuration.val("90").trigger("change");
         syncCourtSelection(false);
         refresh();
     });

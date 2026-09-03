@@ -13,6 +13,7 @@ use grupo_donato_gestao\Services\CourtRentalLifecycleService;
 use grupo_donato_gestao\Services\CourtRentalService;
 use grupo_donato_gestao\Services\CustomerAccountService;
 use grupo_donato_gestao\Services\DataNormalizationService;
+use grupo_donato_gestao\Services\DurationService;
 use grupo_donato_gestao\Services\FinanceService;
 use grupo_donato_gestao\Services\MonthlyRescheduleService;
 use grupo_donato_gestao\Services\PersonService;
@@ -218,11 +219,11 @@ class Court_rentals extends Gd_Controller
             if ($id <= 0) {
                 $prefill_date = trim((string) $this->request->getPost("prefill_date"));
                 $prefill_time = trim((string) $this->request->getPost("prefill_start_time"));
-                $prefill_duration = (int) $this->request->getPost("prefill_duration_minutes");
+                $prefill_duration = DurationService::parseMinutes($this->request->getPost("prefill_duration_minutes"));
                 $prefill_resource = (int) $this->request->getPost("prefill_resource_id");
                 $resource_ids = array_map("intval", array_column($resources, "id"));
                 if ($this->validYmd($prefill_date) && $this->validHm($prefill_time)
-                    && in_array($prefill_duration, [90, 120], true)
+                    && $prefill_duration > 0
                     && in_array($prefill_resource, $resource_ids, true)) {
                     $edit_data = [
                         "starts_on" => $prefill_date,
@@ -522,7 +523,7 @@ class Court_rentals extends Gd_Controller
             // A prévia do formulário simplificado não deve criar cliente apenas
             // para testar agenda. Usa tipo interno, mantendo a mesma grade.
             if ((string) $this->request->getPost("rental_mode") === "recurring") {
-                if (!$this->validHm((string) ($input["local_start_time"] ?? "")) || !$this->validHm((string) ($input["local_end_time"] ?? ""))) {
+                if (!$this->validTime((string) ($input["local_start_time"] ?? "")) || !$this->validTime((string) ($input["local_end_time"] ?? ""))) {
                     throw new \DomainException("gd_invalid_local_datetime");
                 }
                 $input["booking_type"] = "internal";
@@ -899,7 +900,7 @@ class Court_rentals extends Gd_Controller
     /** Normaliza duração e valor do formulário sem substituir o preço informado. */
     private function normalizeRentalFormInput(array $input, string $mode, ?object $existing_rental = null, int $existing_duration = 0): array
     {
-        $duration = (int) $this->request->getPost("duration_minutes");
+        $duration = DurationService::parseMinutes($this->request->getPost("duration_minutes"));
         $resource_id = (int) $this->request->getPost("selected_resource_id");
         if ($resource_id <= 0) { throw new \DomainException("gd_select_at_least_one_court"); }
         $db = db_connect();
@@ -940,7 +941,7 @@ class Court_rentals extends Gd_Controller
         }
 
         $keeps_existing_duration = $existing_rental && $existing_duration > 0 && $duration === $existing_duration;
-        if (!in_array($duration, [90, 120], true) && !$keeps_existing_duration) {
+        if ($duration < 1 || $duration > Constants::BOOKING_MAX_DURATION_MINUTES) {
             throw new \DomainException("gd_invalid_rental_duration");
         }
 
@@ -1135,11 +1136,18 @@ class Court_rentals extends Gd_Controller
         return $date instanceof \DateTimeImmutable && $date->format("H:i") === $value;
     }
 
+    private function validTime(string $value): bool
+    {
+        if (!preg_match('/^\d{2}:\d{2}$/', $value)) { return false; }
+        $date = \DateTimeImmutable::createFromFormat("!H:i", $value);
+        return $date instanceof \DateTimeImmutable && $date->format("H:i") === $value;
+    }
+
     private function validLocalDateTime(string $value): bool
     {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $value)) { return false; }
         [$date, $time] = explode("T", $value, 2);
-        return $this->validYmd($date) && $this->validHm($time);
+        return $this->validYmd($date) && $this->validTime($time);
     }
 
     /** Título operacional automático; elimina digitação redundante no formulário. */
@@ -1439,7 +1447,7 @@ class Court_rentals extends Gd_Controller
     {
         $start = trim(substr((string) ($series->local_start_time ?? ""), 0, 5));
         $end = trim(substr((string) ($series->local_end_time ?? ""), 0, 5));
-        if (!$this->validHm($start) || !$this->validHm($end)) { return 0; }
+        if (!$this->validTime($start) || !$this->validTime($end)) { return 0; }
         $start_at = new \DateTimeImmutable("2000-01-01 " . $start);
         $end_at = new \DateTimeImmutable("2000-01-01 " . $end);
         if ($end_at <= $start_at) { $end_at = $end_at->modify("+1 day"); }

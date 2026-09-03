@@ -2,6 +2,11 @@
 
 echo "# Fase 3C — operação comercial de locação de quadras\n";
 
+$durationParser = static fn($value): int => \grupo_donato_gestao\Services\DurationService::parseMinutes($value);
+gd_assert("duração digitada sem unidade usa minutos", $durationParser("60") === 60 && $durationParser("45") === 45);
+gd_assert("duração com h usa horas", $durationParser("1h") === 60 && $durationParser("3h") === 180);
+gd_assert("duração composta preserva minutos extras", $durationParser("1h30") === 90 && $durationParser("150 min") === 150);
+
 // A camada comercial de quadras exige resource_type=court. Os testes de
 // reservas genéricas usam salas, então aqui selecionamos três quadras reais do
 // catálogo para manter os domínios explicitamente isolados.

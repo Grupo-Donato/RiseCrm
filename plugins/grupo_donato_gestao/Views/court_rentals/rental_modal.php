@@ -159,13 +159,8 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                     <div class="gd-regular-duration">
                         <div class="form-group">
                             <label for="gd-rental-duration"><?php echo app_lang("gd_rental_duration"); ?> <span class="text-danger">*</span></label>
-                            <select name="duration_minutes" id="gd-rental-duration" class="form-control">
-                                <?php if ($is_edit && $edit_duration > 0 && !in_array($edit_duration, [90, 120], true)) { ?>
-                                    <option value="<?php echo $edit_duration; ?>" selected><?php echo $edit_duration . " min"; ?></option>
-                                <?php } ?>
-                                <option value="90"<?php echo $edit_duration === 90 ? " selected" : ""; ?>>1h30</option>
-                                <option value="120"<?php echo $edit_duration === 120 ? " selected" : ""; ?>>2h</option>
-                            </select>
+                            <input type="text" name="duration_minutes" id="gd-rental-duration" class="form-control" inputmode="text" autocomplete="off" value="<?php echo $e($edit_duration > 0 ? $edit_duration : ""); ?>" placeholder="Ex.: 60, 1h ou 1h30" required>
+                            <small class="text-muted">Digite apenas números para minutos ou use <strong>h</strong> para horas. Ex.: 60 = 60 minutos; 1h = 1 hora.</small>
                         </div>
                     </div>
 
@@ -505,7 +500,26 @@ $(document).ready(function(){
     function brl(value) {
         return new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"}).format(Number(value || 0));
     }
-    function selectedDuration() { return parseInt(durationInput.val() || "0", 10); }
+    function parseDuration(value) {
+        var raw = String(value || "").trim().toLowerCase().replace(/\s+/g, " "), match, hours, minutes;
+        if (!raw) { return 0; }
+        if (/^\d+$/.test(raw)) { return parseInt(raw, 10); }
+        match = /^(\d+)\s*h\s*(?:(\d{1,2})\s*(?:m|min|minutos?)?)?$/i.exec(raw);
+        if (match) {
+            hours = parseInt(match[1], 10);
+            minutes = match[2] ? parseInt(match[2], 10) : 0;
+            return minutes < 60 ? (hours * 60) + minutes : 0;
+        }
+        match = /^(\d+)\s*(?:m|min|minutos?)$/i.exec(raw);
+        if (match) { return parseInt(match[1], 10); }
+        match = /^(\d+):(\d{2})$/.exec(raw);
+        if (match) {
+            minutes = parseInt(match[2], 10);
+            return minutes < 60 ? (parseInt(match[1], 10) * 60) + minutes : 0;
+        }
+        return 0;
+    }
+    function selectedDuration() { return parseDuration(durationInput.val()); }
     function isHalfHour(value) { return /^\d{2}:(00|30)$/.test(value || ""); }
     function selectedCourt() {
         var selected = courtInput.find("option:selected");
@@ -526,7 +540,7 @@ $(document).ready(function(){
     function mode() { return modeInput.val(); }
     function pad(value) { return String(value).padStart(2, "0"); }
     function addMinutes(date, time, minutes) {
-        if (!date || !time) { return null; }
+        if (!date || !time || minutes < 1) { return null; }
         var parts = time.split(":"), base = new Date(date + "T" + time + ":00");
         if (isNaN(base.getTime()) || parts.length < 2) { return null; }
         base.setMinutes(base.getMinutes() + minutes);
@@ -890,7 +904,7 @@ $(document).ready(function(){
         }
         if (!exempt && amountCents === null) { return messages.amount_required; }
         if (mode() === "recurring" && (!dueDay.val() || parseInt(dueDay.val(), 10) < 1 || parseInt(dueDay.val(), 10) > 31)) { return messages.due_day_required; }
-        if ([90, 120].indexOf(selectedDuration()) === -1 && !(isEdit && selectedDuration() === parseInt(editData.duration_minutes || "0", 10))) { return messages.duration_required; }
+        if (selectedDuration() < 1 || selectedDuration() > 10080) { return messages.duration_required; }
         if (!exempt && mode() === "single") {
             var depositCents = moneyCents(depositInput.val());
             if (depositCents === null || depositCents > amountCents) { return messages.deposit_invalid; }
@@ -969,7 +983,7 @@ $(document).ready(function(){
     form.on("change", "#gd-rental-with-barbecue", function(){ syncCombo(); updateSummary(); scheduleAutoCheck(); });
     form.on("change", "#gd-rental-addition-vest, #gd-rental-addition-ball", function(){ syncAdditions(); updateSummary(); scheduleAutoCheck(); });
     form.on("change", "#gd-rental-mode-choice", syncMode);
-    form.on("change", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAvailableBarbecues(); scheduleAutoCheck(); });
+    form.on("input change", "#gd-rental-duration", function(){ scheduleAvailableCourts(); scheduleAvailableBarbecues(); scheduleAutoCheck(); });
     form.on("change", "#gd-rental-court", scheduleAutoCheck);
     form.on("change", "#gd-rental-barbecue", scheduleAutoCheck);
     form.on("change input", "#gd-rental-date, #gd-rental-start-time", function(){ scheduleAvailableCourts(); scheduleAvailableBarbecues(); scheduleAutoCheck(); });

@@ -40,6 +40,46 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->get("custos", "Bombeiros::custos");
     $routes->get("unidades", "Bombeiros::unidades");
 
+    // GD Academy: a entrada continua no shell; o detalhe usa telas profundas.
+    $routes->get("evento-novo", "Bombeiros::academy_event_new");
+    $routes->get("evento/(:num)/categoria/(:num)/partida/(:num)/(:segment)", "Bombeiros::academy_match_section/$1/$2/$3/$4");
+    $routes->get("evento/(:num)/categoria/(:num)/partida/(:num)", "Bombeiros::academy_match/$1/$2/$3");
+    $routes->get("evento/(:num)/categoria/(:num)/avaliacao/(:num)", "Bombeiros::academy_evaluation/$1/$2/$3");
+    $routes->get("evento/(:num)/categoria/(:num)/(:segment)", "Bombeiros::academy_category_section/$1/$2/$3");
+    $routes->get("evento/(:num)/categoria/(:num)", "Bombeiros::academy_category/$1/$2");
+    $routes->get("evento/(:num)/(:segment)", "Bombeiros::academy_event_section/$1/$2");
+    $routes->get("evento/(:num)", "Bombeiros::academy_event/$1");
+
+    // Compatibilidade: Eventos permanece acessível pela entrada operacional.
+    $routes->post("eventos_list_data", "Bombeiros::eventos_list_data");
+    $routes->post("evento_modal_form", "Bombeiros::evento_modal_form");
+    $routes->post("save_event", "Bombeiros::save_event");
+    $routes->post("save_event_category", "Bombeiros::save_event_category");
+    $routes->post("save_event_match", "Bombeiros::save_event_match");
+    $routes->post("save_event_match_score", "Bombeiros::save_event_match_score");
+    $routes->post("save_event_staff", "Bombeiros::save_event_staff");
+    $routes->post("academy_student_search", "Bombeiros::academy_student_search");
+    $routes->post("add_event_participant", "Bombeiros::add_event_participant");
+    $routes->post("update_event_participant", "Bombeiros::update_event_participant");
+    $routes->post("save_event_confirmation", "Bombeiros::save_event_confirmation");
+    $routes->post("event_charge", "Bombeiros::event_charge");
+    $routes->post("event_payment", "Bombeiros::event_payment");
+    $routes->post("event_financial_status", "Bombeiros::event_financial_status");
+    $routes->post("event_finance_list_data", "Bombeiros::event_finance_list_data");
+    $routes->post("event_charge_modal", "Bombeiros::event_charge_modal");
+    $routes->post("event_payment_modal", "Bombeiros::event_payment_modal");
+    $routes->post("event_reverse_payment", "Bombeiros::event_reverse_payment");
+    $routes->get("event_payment_receipt/(:num)", "Bombeiros::event_payment_receipt/$1");
+    $routes->post("save_event_evaluation", "Bombeiros::save_event_evaluation");
+    $routes->post("save_event_stat", "Bombeiros::save_event_stat");
+    $routes->post("save_event_checklist", "Bombeiros::save_event_checklist");
+    $routes->post("toggle_event_checklist", "Bombeiros::toggle_event_checklist");
+    $routes->post("cancel_event", "Bombeiros::cancel_event");
+    $routes->post("finalize_event", "Bombeiros::finalize_event");
+    $routes->post("event_family_account", "Bombeiros::event_family_account");
+    $routes->post("student_sport_history", "Bombeiros::student_sport_history");
+    $routes->post("student_sport_report", "Bombeiros::student_sport_report");
+
     $routes->post("trocar_unidade", "Bombeiros::trocar_unidade");
 
     $routes->post("alunos_list_data", "Bombeiros::alunos_list_data");

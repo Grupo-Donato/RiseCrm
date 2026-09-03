@@ -19,13 +19,13 @@ final class Constants
     public const ROUTE_PREFIX = "grupo_donato";
 
     /** Versão do plugin (deve bater com o cabeçalho de metadados do index.php). */
-    public const PLUGIN_VERSION = "0.9.8";
+    public const PLUGIN_VERSION = "0.10.0";
 
     /**
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
      * Corresponde ao maior arquivo em Database/Schema/Versions.
      */
-    public const SCHEMA_TARGET = "066";
+    public const SCHEMA_TARGET = "067";
 
     /** Prefixo lógico das tabelas (o Rise antepõe o DBPrefix 'rise_'). */
     public const TABLE_PREFIX = "gd_";
@@ -165,7 +165,7 @@ final class Constants
     public const SCHOOL_ATTENDANCE_SESSION_STATUSES = ["open", "completed"];
     public const FINANCIAL_ACCOUNT_TYPES = ["cash", "bank", "digital_wallet", "other"];
     public const FINANCIAL_ACCOUNT_STATUSES = ["active", "inactive"];
-    public const RECEIVABLE_SOURCE_TYPES = ["enrollment", "court_rental", "barbecue_rental", "manual", "other"];
+    public const RECEIVABLE_SOURCE_TYPES = ["enrollment", "court_rental", "barbecue_rental", "academy_event_participation", "manual", "other"];
     public const RECEIVABLE_STATUSES = ["open", "partial", "paid", "overdue", "cancelled"];
     public const PAYMENT_METHODS = ["cash", "pix", "debit_card", "credit_card", "bank_transfer", "boleto", "other"];
     public const PAYMENT_STATUSES = ["confirmed", "reversed", "legacy_migrated"];

@@ -6,7 +6,7 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 Plugin Name: Grupo Donato — Gestão
 Plugin URL: https://grupodonato.local
 Description: Gestão integrada de cadastro, agenda, locações, escola, personal e financeiro básico (até a Fase 5).
-Version: 0.9.8
+Version: 0.10.0
 Requires at least: 3.9.6
 Author: Grupo Donato
 */

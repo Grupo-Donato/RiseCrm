@@ -99,6 +99,7 @@ final class RoleAccessService
         "materiais",
         "leads",
         "unidades",
+        "eventos",
         "importar",
         "comprovantes",
     ];
@@ -109,6 +110,7 @@ final class RoleAccessService
         "responsaveis",
         "presenca",
         "pagamentos",
+        "eventos",
     ];
 
     private const OPERATIONAL_ROUTE_SECTIONS = [
@@ -169,6 +171,42 @@ final class RoleAccessService
         "visualizar_comprovante" => "comprovantes",
         "foto_aluno" => "alunos",
         "baixar_exame_medico" => "alunos",
+        "eventos_list_data" => "eventos",
+        "academy_event_new" => "eventos",
+        "academy_event" => "eventos",
+        "academy_event_section" => "eventos",
+        "academy_category" => "eventos",
+        "academy_category_section" => "eventos",
+        "academy_match" => "eventos",
+        "academy_match_section" => "eventos",
+        "academy_evaluation" => "eventos",
+        "evento_modal_form" => "eventos",
+        "save_event" => "eventos",
+        "save_event_category" => "eventos",
+        "save_event_match" => "eventos",
+        "save_event_match_score" => "eventos",
+        "save_event_staff" => "eventos",
+        "academy_student_search" => "eventos",
+        "add_event_participant" => "eventos",
+        "update_event_participant" => "eventos",
+        "save_event_confirmation" => "eventos",
+        "event_charge" => "eventos",
+        "event_payment" => "eventos",
+        "event_financial_status" => "eventos",
+        "event_finance_list_data" => "eventos",
+        "event_charge_modal" => "eventos",
+        "event_payment_modal" => "eventos",
+        "event_reverse_payment" => "eventos",
+        "event_payment_receipt" => "eventos",
+        "save_event_evaluation" => "eventos",
+        "save_event_stat" => "eventos",
+        "save_event_checklist" => "eventos",
+        "toggle_event_checklist" => "eventos",
+        "cancel_event" => "eventos",
+        "finalize_event" => "eventos",
+        "event_family_account" => "eventos",
+        "student_sport_history" => "alunos",
+        "student_sport_report" => "alunos",
     ];
 
     /** @var array<int, string> */
@@ -302,7 +340,11 @@ final class RoleAccessService
         }
 
         if (self::is_professor($user)) {
-            return self::OPERATIONAL_PROFESSOR_SECTIONS;
+            $sections = self::OPERATIONAL_PROFESSOR_SECTIONS;
+            if (!(new AccessService($user))->can("gd_academy_events_view")) {
+                $sections = array_values(array_diff($sections, ["eventos"]));
+            }
+            return $sections;
         }
 
         return [];

@@ -43,7 +43,8 @@ $gd_all_tab_targets = [
     "custos" => "#bombeiros-tab-custos",
     "materiais" => "#bombeiros-tab-materiais",
     "leads" => "#bombeiros-tab-leads",
-    "unidades" => "#bombeiros-tab-unidades"
+    "unidades" => "#bombeiros-tab-unidades",
+    "eventos" => "#bombeiros-tab-eventos"
 ];
 $gd_all_section_labels = [
     "dashboard" => "Dashboard",
@@ -57,7 +58,8 @@ $gd_all_section_labels = [
     "custos" => "Custos",
     "materiais" => "Materiais",
     "leads" => "Leads palestra",
-    "unidades" => "Unidades"
+    "unidades" => "Unidades",
+    "eventos" => "Eventos"
 ];
 $gd_allowed_sections = isset($gd_allowed_sections) && is_array($gd_allowed_sections) ? $gd_allowed_sections : array_keys($gd_all_tab_targets);
 $gd_allowed_lookup = array_flip($gd_allowed_sections);
@@ -350,6 +352,9 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                 if ($gd_can_access_section("alunos")) {
                     echo modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Novo aluno", ["class" => "btn btn-default", "title" => "Novo aluno"]);
                     echo anchor(get_uri("matricula-online/" . $unidade_atual_slug), "<i data-feather='link' class='icon-16'></i> Link telemarketing", ["id" => "gd-link-matricula-publica", "class" => "btn btn-default", "target" => "_blank", "rel" => "noopener", "title" => "Abrir link público de matrícula"]);
+                }
+                if ($gd_can_access_section("eventos") && !empty($event_can_manage)) {
+                    echo modal_anchor(get_uri("grupo_donato/operacional/evento_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Novo evento", ["class" => "btn btn-primary", "title" => "Novo evento"]);
                 }
                 ?>
             </div>
@@ -741,6 +746,22 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             <?php if ($gd_can_render_tab("unidades")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("unidades"); ?>" id="bombeiros-tab-unidades">
                 <?php echo view('grupo_donato_gestao\Operacional\Views\unidades'); ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($gd_can_render_tab("eventos")): ?>
+            <div role="tabpanel" class="<?php echo $gd_pane_class("eventos"); ?>" id="bombeiros-tab-eventos">
+                <?php echo view('grupo_donato_gestao\Operacional\Views\eventos', [
+                    "dashboard" => $eventos_dashboard ?? [],
+                    "workspace" => $event_workspace ?? null,
+                    "academy_responsibles" => $academy_responsibles ?? [],
+                    "academy_event_categories" => $academy_event_categories ?? [],
+                    "can_manage" => !empty($event_can_manage),
+                    "can_lineup" => !empty($event_can_lineup),
+                    "can_evaluate" => !empty($event_can_evaluate),
+                    "can_finance" => !empty($event_can_finance),
+                    "can_finalize" => !empty($event_can_finalize),
+                ]); ?>
             </div>
             <?php endif; ?>
         </div>

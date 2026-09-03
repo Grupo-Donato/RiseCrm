@@ -3,6 +3,8 @@
 namespace grupo_donato_gestao\Operacional\Controllers;
 
 use App\Controllers\Security_Controller;
+use grupo_donato_gestao\Services\AcademyEventService;
+use grupo_donato_gestao\Services\AccessService;
 use grupo_donato_gestao\Services\RoleAccessService;
 use grupo_donato_gestao\Services\StudentPhotoService;
 use grupo_donato_gestao\Services\UnitContextService;
@@ -75,6 +77,25 @@ class Bombeiros extends Security_Controller
         $dashboard_periodo = $this->_dashboard_periodo();
         $gd_active_tab = $this->_gd_active_tab();
         $gd_allowed_sections = $this->_gd_allowed_sections();
+        $legacy_event_id = (int) $this->request->getGet("event_id");
+        if ($gd_active_tab === "eventos" && $legacy_event_id > 0) {
+            return redirect()->to(get_uri("grupo_donato/operacional/evento/" . $legacy_event_id));
+        }
+        if ($gd_active_tab === "eventos") {
+            $eventAccess = new AccessService($this->login_user);
+            return $this->template->render('grupo_donato_gestao\Operacional\Views\eventos', [
+                "dashboard" => $this->_academy_event_service()->dashboard([
+                    "search" => $this->request->getGet("event_search"),
+                    "status" => $this->request->getGet("event_status"),
+                    "event_type" => $this->request->getGet("event_type"),
+                    "date_from" => $this->request->getGet("event_date_from"),
+                    "date_to" => $this->request->getGet("event_date_to"),
+                ]),
+                "unidade_atual" => $unidade_atual,
+                "unidades_contexto_dropdown" => $this->_unidades_contexto_dropdown(),
+                "can_manage" => $eventAccess->can("gd_academy_events_manage"),
+            ]);
+        }
         $view_data["unidade_atual"] = $unidade_atual;
         $view_data["unidades_contexto_dropdown"] = $this->_unidades_contexto_dropdown();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown(false);
@@ -88,7 +109,295 @@ class Bombeiros extends Security_Controller
             "mes_referencia" => $dashboard_periodo["mes"],
             "ano_referencia" => $dashboard_periodo["ano"]
         ]) : [];
+        $view_data["eventos_dashboard"] = [];
+        $view_data["event_workspace"] = null;
+        $view_data["academy_responsibles"] = [];
+        $view_data["academy_event_categories"] = [];
+        $eventAccess = new AccessService($this->login_user);
+        $view_data["event_can_manage"] = $eventAccess->can("gd_academy_events_manage");
+        $view_data["event_can_lineup"] = $eventAccess->can("gd_academy_events_lineup") || $view_data["event_can_manage"];
+        $view_data["event_can_evaluate"] = $eventAccess->can("gd_academy_events_evaluate") || $eventAccess->can("gd_academy_evaluations_manage");
+        $view_data["event_can_finance"] = $eventAccess->can("gd_academy_events_finance") || $eventAccess->can("gd_finance_view") || $eventAccess->can("gd_payments_manage");
+        $view_data["event_can_finalize"] = $eventAccess->can("gd_academy_events_finalize");
         return $this->template->render('grupo_donato_gestao\Operacional\Views\index', $view_data);
+    }
+
+    public function academy_event(int $eventId = 0)
+    {
+        return $this->_academy_event_page($eventId, "resumo");
+    }
+
+    public function academy_event_new()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->template->render("grupo_donato_gestao\\Operacional\\Views\\academy_event_new", [
+            "page_title" => "Novo evento",
+        ]);
+    }
+
+    public function academy_event_section(int $eventId = 0, string $section = "resumo")
+    {
+        return $this->_academy_event_page($eventId, $section);
+    }
+
+    public function academy_category(int $eventId = 0, int $categoryId = 0)
+    {
+        return $this->_academy_category_page($eventId, $categoryId, "resumo");
+    }
+
+    public function academy_category_section(int $eventId = 0, int $categoryId = 0, string $section = "resumo")
+    {
+        return $this->_academy_category_page($eventId, $categoryId, $section);
+    }
+
+    public function academy_match(int $eventId = 0, int $categoryId = 0, int $matchId = 0)
+    {
+        return $this->_academy_match_page($eventId, $categoryId, $matchId, "resumo");
+    }
+
+    public function academy_match_section(int $eventId = 0, int $categoryId = 0, int $matchId = 0, string $section = "resumo")
+    {
+        return $this->_academy_match_page($eventId, $categoryId, $matchId, $section);
+    }
+
+    public function academy_evaluation(int $eventId = 0, int $categoryId = 0, int $participantId = 0)
+    {
+        $this->_event_require_evaluation();
+        try {
+            $data = $this->_academy_event_service()->evaluationDetail($eventId, $categoryId, $participantId);
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+        return $this->template->render("grupo_donato_gestao\\Operacional\\Views\\academy_evaluation", array_merge($data, $this->_academy_event_page_access(), [
+            "page_title" => "Avaliação do atleta",
+        ]));
+    }
+
+    public function eventos_list_data()
+    {
+        if (!$this->_event_can_view()) { echo json_encode(["data" => []]); return; }
+        echo json_encode($this->_academy_event_service()->listEvents([
+            "search_by" => $this->request->getPost("search_by"),
+            "status" => $this->request->getPost("status"),
+            "event_type" => $this->request->getPost("event_type"),
+            "date_from" => $this->request->getPost("date_from"),
+            "date_to" => $this->request->getPost("date_to"),
+            "limit" => 100,
+        ]));
+    }
+
+    public function evento_modal_form()
+    {
+        $this->_event_require("gd_academy_events_view");
+        $id = (int) $this->request->getPost("id");
+        $event = $id ? ($this->_academy_event_service()->getEvent($id)["event"] ?? null) : null;
+        return $this->template->view("grupo_donato_gestao\Operacional\Views\modal_evento", ["model_info" => $event ?: (object) ["id" => 0, "event_type" => "other", "status" => "draft", "default_participation_amount" => "0.00"]]);
+    }
+
+    public function save_event()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveEvent($this->request->getPost(), (int) $this->request->getPost("id")));
+    }
+
+    public function save_event_category()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveCategory((int) $this->request->getPost("event_id"), $this->request->getPost(), (int) $this->request->getPost("id")));
+    }
+
+    public function save_event_match()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveMatch((int) $this->request->getPost("category_id"), $this->request->getPost(), (int) $this->request->getPost("id")));
+    }
+
+    public function save_event_match_score()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveMatchScore((int) $this->request->getPost("match_id"), $this->request->getPost()));
+    }
+
+    public function save_event_staff()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveStaff((int) $this->request->getPost("event_id"), $this->request->getPost()));
+    }
+
+    public function academy_student_search()
+    {
+        $this->_event_require("gd_academy_events_view");
+        return $this->_event_json(fn() => ["data" => $this->_academy_event_service()->searchStudents((string) $this->request->getPost("query"), (int) $this->request->getPost("category_id"))]);
+    }
+
+    public function add_event_participant()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->addParticipant((int) $this->request->getPost("category_id"), $this->request->getPost()));
+    }
+
+    public function update_event_participant()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->updateParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function save_event_confirmation()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveConfirmation((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function event_charge()
+    {
+        $this->_event_require_finance();
+        return $this->_event_json(fn() => $this->_academy_event_service()->chargeParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function event_payment()
+    {
+        $this->_event_require_finance();
+        return $this->_event_json(fn() => $this->_academy_event_service()->registerPayment((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function event_financial_status()
+    {
+        $this->_event_require_finance();
+        return $this->_event_json(fn() => $this->_academy_event_service()->setParticipantFinancialStatus(
+            (int) $this->request->getPost("participant_id"),
+            (string) $this->request->getPost("financial_status"),
+            (string) $this->request->getPost("note")
+        ));
+    }
+
+    public function event_finance_list_data()
+    {
+        $this->_event_require_finance();
+        try {
+            $eventId = (int) ($this->request->getPost("event_id") ?: $this->request->getGet("event_id"));
+            $result = $this->_academy_event_service()->eventFinancePage($eventId, [
+                "search_by" => $this->request->getPost("search_by"),
+                "status_pagamento" => $this->request->getPost("status_pagamento"),
+                "category_id" => $this->request->getPost("category_id"),
+                "server_side" => $this->request->getPost("server_side"),
+                "limit" => $this->request->getPost("limit"),
+                "skip" => $this->request->getPost("skip"),
+            ]);
+            $result["data"] = array_map(fn($row) => $this->_academy_event_finance_row($row), $result["data"]);
+            return $this->response->setJSON($result);
+        } catch (\Throwable $e) {
+            log_message("critical", "GD Academy event finance list error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString());
+            $status = $e instanceof \DomainException ? 422 : 500;
+            return $this->response->setStatusCode($status)->setJSON([
+                "success" => false,
+                "message" => $e instanceof \DomainException ? $e->getMessage() : "Nao foi possivel carregar o financeiro do evento.",
+                "error_code" => $e instanceof \DomainException ? $e->getMessage() : "gd_event_finance_list_error",
+                "data" => [],
+                "recordsTotal" => 0,
+                "recordsFiltered" => 0,
+            ]);
+        }
+    }
+
+    public function event_charge_modal()
+    {
+        $this->_event_require_finance();
+        try {
+            return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\academy_event_charge_modal", $this->_academy_event_service()->eventFinanceParticipant((int) $this->request->getPost("participant_id")));
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+    }
+
+    public function event_payment_modal()
+    {
+        $this->_event_require_finance();
+        try {
+            $context = $this->_academy_event_service()->eventFinanceParticipant((int) $this->request->getPost("participant_id"));
+            if (empty($context["receivable"])) throw new \DomainException("gd_finance_receivable_not_found");
+            $context["reload_target"] = (string) $this->request->getPost("reload_target");
+            return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\academy_event_payment_modal", $context);
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+    }
+
+    public function event_reverse_payment()
+    {
+        $this->_event_require_finance();
+        return $this->_event_json(fn() => $this->_academy_event_service()->reverseEventPayment(
+            (int) $this->request->getPost("participant_id"),
+            (string) $this->request->getPost("reason")
+        ));
+    }
+
+    public function event_payment_receipt(int $paymentId = 0)
+    {
+        $this->_event_require_finance();
+        $payment = $this->_academy_event_service()->eventPaymentReceipt($paymentId);
+        if (!$payment) return show_404();
+        return $this->template->render("grupo_donato_gestao\\Views\\finance\\receipt", ["payment" => $payment, "page_title" => "Comprovante do evento"]);
+    }
+
+    public function save_event_evaluation()
+    {
+        $this->_event_require("gd_academy_events_evaluate");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveEvaluation((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function save_event_stat()
+    {
+        $this->_event_require("gd_academy_events_evaluate");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveStats((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+    }
+
+    public function save_event_checklist()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveChecklist((int) $this->request->getPost("event_id"), $this->request->getPost(), (int) $this->request->getPost("id")));
+    }
+
+    public function toggle_event_checklist()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->toggleChecklist((int) $this->request->getPost("id"), (bool) $this->request->getPost("complete")));
+    }
+
+    public function cancel_event()
+    {
+        $this->_event_require("gd_academy_events_finalize");
+        return $this->_event_json(fn() => $this->_academy_event_service()->cancelEvent((int) $this->request->getPost("event_id"), (string) $this->request->getPost("reason")));
+    }
+
+    public function finalize_event()
+    {
+        $this->_event_require("gd_academy_events_finalize");
+        return $this->_event_json(fn() => $this->_academy_event_service()->finalizeEvent((int) $this->request->getPost("event_id"), (bool) $this->request->getPost("allow_pending"), (string) $this->request->getPost("note")));
+    }
+
+    public function event_family_account()
+    {
+        $this->_event_require_finance();
+        return $this->_event_json(fn() => $this->_academy_event_service()->familyAccount((int) $this->request->getPost("responsible_id")));
+    }
+
+    public function student_sport_history()
+    {
+        $this->_event_require("gd_academy_evaluations_view");
+        return $this->_event_json(fn() => $this->_academy_event_service()->studentHistory((int) $this->request->getPost("student_id")));
+    }
+
+    public function student_sport_report()
+    {
+        $this->_event_require("gd_academy_evaluations_view");
+        return $this->_event_json(fn() => $this->_academy_event_service()->studentProgressReport(
+            (int) $this->request->getPost("student_id"),
+            (string) $this->request->getPost("date_from"),
+            (string) $this->request->getPost("date_to")
+        ));
     }
 
     public function matricula_publica($slug = "")
@@ -462,6 +771,16 @@ class Bombeiros extends Security_Controller
         $view_data["model_info"] = $model_info ?: $this->_empty_aluno();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown();
         $view_data["can_manage_student_photo"] = $this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students");
+        $view_data["student_sport_history"] = [];
+        $view_data["student_sport_report"] = [];
+        if ($id && $this->_gd_can_access_section("eventos")) {
+            try {
+                $view_data["student_sport_history"] = $this->_academy_event_service()->studentHistory((int) $id);
+                $view_data["student_sport_report"] = $this->_academy_event_service()->studentProgressReport((int) $id);
+            } catch (\Throwable $e) {
+                log_message("error", "GD Academy: falha ao carregar historico esportivo: " . $e->getMessage());
+            }
+        }
         return $this->template->view('grupo_donato_gestao\Operacional\Views\modal_aluno', $view_data);
     }
 
@@ -3695,7 +4014,7 @@ class Bombeiros extends Security_Controller
         $active_tab = strtolower((string) $this->request->getGet("gd_tab"));
         $allowed_tabs = [
             "dashboard", "alunos", "cancelados", "concluidos", "responsaveis", "presenca",
-            "pagamentos", "financeiro", "custos", "materiais", "leads", "unidades"
+              "pagamentos", "financeiro", "custos", "materiais", "leads", "unidades", "eventos"
         ];
 
         if (!in_array($active_tab, $allowed_tabs, true)) {
@@ -5477,6 +5796,280 @@ class Bombeiros extends Security_Controller
                 $_SERVER[$name] = $value;
             }
         }
+    }
+
+    private function _academy_event_finance_row(object $data): array
+    {
+        $status = (string) ($data->financial_display_status ?? "pending_generation");
+        $statusLabels = [
+            "pending_generation" => "Pendente de cobrança",
+            "open" => "Em aberto",
+            "partial" => "Parcial",
+            "paid" => "Pago",
+            "overdue" => "Vencido",
+            "exempt" => "Isento",
+            "courtesy" => "Cortesia",
+            "not_applicable" => "Não aplicável",
+            "cancelled" => "Cancelado",
+        ];
+        $statusClasses = [
+            "paid" => "bg-success",
+            "exempt" => "bg-info",
+            "courtesy" => "bg-info",
+            "not_applicable" => "bg-secondary",
+            "cancelled" => "bg-secondary",
+            "overdue" => "bg-danger",
+        ];
+        $hasReceivable = (int) ($data->receivable_id ?? 0) > 0;
+        $money = static fn($value): string => "R$ " . number_format((float) ($value ?? 0), 2, ",", ".");
+        $access = new AccessService($this->login_user);
+        $options = [];
+
+        if (!$hasReceivable && $status === "pending_generation" && !empty($data->responsible_id)) {
+            $options[] = modal_anchor(get_uri("grupo_donato/operacional/event_charge_modal"), "<i data-feather='plus-circle' class='icon-16'></i> Gerar cobrança", [
+                "class" => "btn btn-default btn-sm",
+                "title" => "Gerar cobrança do evento",
+                "data-post-participant_id" => (int) $data->id,
+                "data-modal-class" => "gd-payment-modal",
+            ]);
+        } elseif (!$hasReceivable && $status === "pending_generation") {
+            $options[] = "<span class='gd-academy-muted'>Sem responsável</span>";
+        } elseif ($hasReceivable && in_array($status, ["open", "partial", "overdue"], true)) {
+            $options[] = modal_anchor(get_uri("grupo_donato/operacional/event_payment_modal"), "<i data-feather='check-circle' class='icon-16'></i> Baixar pagamento", [
+                "class" => "btn btn-primary btn-sm",
+                "title" => "Baixar pagamento",
+                "data-post-participant_id" => (int) $data->id,
+                "data-post-reload_target" => "gd-academy-event-finance-table",
+                "data-modal-class" => "gd-payment-modal",
+            ]);
+        }
+
+        $lastPaymentId = (int) ($data->last_payment_id ?? 0);
+        if ($hasReceivable && $lastPaymentId > 0) {
+            $options[] = anchor(get_uri("grupo_donato/operacional/event_payment_receipt/" . $lastPaymentId), "<i data-feather='file-text' class='icon-16'></i>", [
+                "class" => "btn btn-default btn-sm ml5",
+                "title" => "Gerar comprovante",
+                "target" => "_blank",
+                "rel" => "noopener",
+            ]);
+            if ($access->can("gd_academy_events_finance") || $access->can("gd_finance_view") || $access->can("gd_payments_manage")) {
+                $options[] = ajax_anchor(get_uri("grupo_donato/operacional/event_reverse_payment"), "<i data-feather='rotate-ccw' class='icon-16'></i> Desfazer baixa", [
+                    "class" => "btn btn-danger btn-sm ml5",
+                    "title" => "Desfazer baixa",
+                    "data-post-participant_id" => (int) $data->id,
+                    "data-post-reason" => "Estorno manual de pagamento de evento",
+                    "data-reload-on-success" => 1,
+                ]);
+            }
+        }
+
+        $description = (string) ($data->receivable_description ?? "Participação no evento");
+        if ((string) ($data->receivable_number ?? "") !== "") $description .= " · " . (string) $data->receivable_number;
+        $balance = $hasReceivable ? "<small class='d-block text-off'>Saldo: " . $money($data->balance_amount) . "</small>" : "";
+        $method = (string) ($data->last_payment_method ?? "");
+        $methodLabel = $method !== "" ? app_lang("gd_finance_method_" . $method) : "-";
+
+        return [
+            esc($data->athlete_name ?: "Atleta"),
+            esc($data->responsible_name ?: "Sem responsável"),
+            esc($data->category_name ?: "-"),
+            esc($description),
+            $money($data->original_amount ?? $data->amount) . $balance,
+            $hasReceivable ? $this->_format_date($data->receivable_due_date) : ($data->due_date ? $this->_format_date($data->due_date) : "-"),
+            "<span class='badge " . ($statusClasses[$status] ?? "bg-warning") . "'>" . esc($statusLabels[$status] ?? $status) . "</span>",
+            $data->last_payment_date ? $this->_format_date($data->last_payment_date) : "-",
+            esc($methodLabel),
+            $options ? implode(" ", $options) : "-",
+        ];
+    }
+
+    private function _academy_event_service(): AcademyEventService
+    {
+        $legacyUnitId = $this->_active_unit_id();
+        $modernUnitId = $legacyUnitId;
+        $db = db_connect();
+        $units = $db->prefixTable("gd_units");
+        if ($db->tableExists($units)) {
+            $same = $db->table($units)->where("id", $legacyUnitId)->where("deleted", 0)->where("status", "active")->get(1)->getRow();
+            if ($same) {
+                $modernUnitId = (int) $same->id;
+            } else {
+                $legacy = $this->_active_unit();
+                $byName = $legacy ? $db->table($units)->where("name", (string) ($legacy->nome_unidade ?? ""))->where("deleted", 0)->where("status", "active")->get(1)->getRow() : null;
+                $fallback = $byName ?: $db->table($units)->where("deleted", 0)->where("status", "active")->orderBy("is_default", "DESC")->orderBy("id", "ASC")->get(1)->getRow();
+                if ($fallback) $modernUnitId = (int) $fallback->id;
+            }
+        }
+        return new AcademyEventService($modernUnitId, (int) ($this->login_user->id ?? 0), $this->login_user, $legacyUnitId);
+    }
+
+    private function _academy_event_page(int $eventId, string $section)
+    {
+        $allowed = ["resumo", "categorias", "financeiro", "checklist", "configuracoes"];
+        if ($eventId <= 0 || !in_array($section, $allowed, true)) return show_404();
+        $this->_event_require("gd_academy_events_view");
+        if ($section === "financeiro") $this->_event_require_finance();
+        if ($section === "configuracoes") $this->_event_require("gd_academy_events_manage");
+
+        $service = $this->_academy_event_service();
+        try {
+            switch ($section) {
+                case "categorias":
+                    $data = $service->eventOverview($eventId);
+                    $data["categories"] = $service->eventCategories($eventId);
+                    break;
+                case "financeiro":
+                    $data = $service->eventFinance($eventId);
+                    break;
+                case "checklist":
+                    $data = $service->eventChecklist($eventId);
+                    break;
+                case "configuracoes":
+                    $data = $service->eventSettings($eventId);
+                    break;
+                default:
+                    $data = $service->eventOverview($eventId);
+                    break;
+            }
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+
+        return $this->template->render("grupo_donato_gestao\\Operacional\\Views\\academy_event", array_merge($data, $this->_academy_event_page_access(), [
+            "section" => $section,
+            "page_title" => "Evento",
+        ]));
+    }
+
+    private function _academy_category_page(int $eventId, int $categoryId, string $section)
+    {
+        $allowed = ["resumo", "convocacao", "partidas", "avaliacoes", "estatisticas"];
+        if ($eventId <= 0 || $categoryId <= 0 || !in_array($section, $allowed, true)) return show_404();
+        $this->_event_require("gd_academy_events_view");
+        if ($section === "avaliacoes" || $section === "estatisticas") $this->_event_require_evaluation();
+
+        $service = $this->_academy_event_service();
+        try {
+            $data = $service->categoryOverview($eventId, $categoryId);
+            switch ($section) {
+                case "convocacao":
+                    $data["participants"] = $service->categoryParticipants($eventId, $categoryId);
+                    break;
+                case "partidas":
+                    $data["matches"] = $service->categoryMatches($eventId, $categoryId);
+                    break;
+                case "avaliacoes":
+                    $data["evaluations"] = $service->categoryEvaluations($eventId, $categoryId);
+                    break;
+                case "estatisticas":
+                    $data["stats"] = $service->categoryStats($eventId, $categoryId);
+                    break;
+            }
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+
+        return $this->template->render("grupo_donato_gestao\\Operacional\\Views\\academy_category", array_merge($data, $this->_academy_event_page_access(), [
+            "section" => $section,
+            "page_title" => "Categoria",
+        ]));
+    }
+
+    private function _academy_match_page(int $eventId, int $categoryId, int $matchId, string $section)
+    {
+        $allowed = ["resumo", "escalacao", "estatisticas"];
+        if ($eventId <= 0 || $categoryId <= 0 || $matchId <= 0 || !in_array($section, $allowed, true)) return show_404();
+        $this->_event_require("gd_academy_events_view");
+        if ($section !== "resumo") $this->_event_require_evaluation();
+
+        $service = $this->_academy_event_service();
+        try {
+            $data = $service->matchOverview($eventId, $categoryId, $matchId);
+            if ($section !== "resumo") $data["participants"] = $service->matchParticipants($eventId, $categoryId, $matchId);
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+
+        return $this->template->render("grupo_donato_gestao\\Operacional\\Views\\academy_match", array_merge($data, $this->_academy_event_page_access(), [
+            "section" => $section,
+            "page_title" => "Partida",
+        ]));
+    }
+
+    private function _academy_event_page_access(): array
+    {
+        $access = new AccessService($this->login_user);
+        return [
+            "can_manage" => $access->can("gd_academy_events_manage"),
+            "can_lineup" => $access->can("gd_academy_events_lineup") || $access->can("gd_academy_events_manage"),
+            "can_evaluate" => $access->can("gd_academy_events_evaluate") || $access->can("gd_academy_evaluations_view") || $access->can("gd_academy_evaluations_manage"),
+            "can_finance" => $access->can("gd_academy_events_finance") || $access->can("gd_finance_view") || $access->can("gd_payments_manage"),
+            "can_finalize" => $access->can("gd_academy_events_finalize"),
+            "position_options" => AcademyEventService::positionOptions(),
+        ];
+    }
+
+    private function _event_can_view(): bool
+    {
+        return $this->_gd_can_access_section("eventos");
+    }
+
+    private function _event_require(string $permission): void
+    {
+        $access = new AccessService($this->login_user);
+        // View of the new tab follows the already established Academy shell;
+        // write operations remain explicitly permissioned.
+        if ($permission === "gd_academy_events_view" && $this->_event_can_view()) return;
+        $access->require($permission);
+    }
+
+    private function _event_require_finance(): void
+    {
+        $access = new AccessService($this->login_user);
+        if ($access->can("gd_academy_events_finance") || $access->can("gd_finance_view") || $access->can("gd_payments_manage")) return;
+        $access->require("gd_academy_events_finance");
+    }
+
+    private function _event_require_evaluation(): void
+    {
+        $access = new AccessService($this->login_user);
+        if ($access->can("gd_academy_events_evaluate") || $access->can("gd_academy_evaluations_view") || $access->can("gd_academy_evaluations_manage")) return;
+        $access->require("gd_academy_events_evaluate");
+    }
+
+    private function _event_json(callable $callback)
+    {
+        try {
+            $payload = $callback();
+            echo json_encode(["success" => true, "data" => $payload], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        } catch (\Throwable $e) {
+            http_response_code($e instanceof \DomainException ? 400 : 500);
+            log_message("error", "GD Academy event endpoint: " . $e->getMessage());
+            $messages = [
+                "gd_event_pending" => "Existem pendencias. Informe uma justificativa para finalizar.",
+                "gd_duplicate_participant" => "Este atleta ja esta convocado nesta categoria.",
+                "gd_event_name_required" => "Informe o nome do evento.",
+                "gd_category_name_required" => "Informe o nome da categoria.",
+                "gd_match_name_required" => "Informe a identificacao da partida.",
+                "gd_score_out_of_range" => "A nota deve estar entre 1 e 5.",
+                "gd_category_age_mismatch" => "O atleta nao pertence a faixa etaria da categoria.",
+                "gd_category_capacity_reached" => "O limite de atletas desta categoria foi atingido.",
+                "gd_external_athlete_not_found" => "Atleta externo nao encontrado nesta unidade.",
+                "gd_match_participant_mismatch" => "A partida nao pertence a categoria do atleta.",
+                "gd_event_responsible_required" => "A participacao precisa de um responsavel valido para cobranca.",
+                "gd_event_amount_required" => "Informe um valor de participacao maior que zero.",
+                "gd_event_charged_amount_immutable" => "A condicao financeira nao pode ser alterada depois da geracao do recebivel.",
+                "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
+                "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",
+                "gd_invalid_event_transition" => "A transicao deste evento nao e permitida.",
+            ];
+            $key = $e->getMessage();
+            echo json_encode(["success" => false, "message" => $messages[$key] ?? $key ?: "Nao foi possivel concluir a operacao.", "error_code" => $key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        return null;
     }
 
     private function _read_docx($file_path)

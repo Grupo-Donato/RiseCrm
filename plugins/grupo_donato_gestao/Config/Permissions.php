@@ -36,6 +36,8 @@ final class Permissions
         "gd_costs_view" => "gd_costs_manage",
         "gd_rental_payments_view" => "gd_rental_payments_manage",
         "gd_imports_view" => "gd_imports_manage",
+        "gd_academy_events_view" => "gd_academy_events_manage",
+        "gd_academy_evaluations_view" => "gd_academy_evaluations_manage",
     ];
 
     /** Permissões filhas sem chave view própria liberam a leitura do cadastro pai. */
@@ -67,6 +69,8 @@ final class Permissions
         "gd_costs_view" => ["gd_expenses_manage"],
         "gd_costs_manage" => ["gd_expenses_manage"],
         "gd_costs_pay" => ["gd_expenses_manage"],
+        "gd_academy_events_view" => ["gd_academy_events_manage", "gd_academy_events_lineup", "gd_academy_events_evaluate", "gd_academy_events_finalize", "gd_academy_events_finance"],
+        "gd_academy_evaluations_view" => ["gd_academy_evaluations_manage", "gd_academy_events_evaluate"],
     ];
 
     /** Lista plana de todas as chaves de permissão da fundação. */
@@ -132,6 +136,14 @@ final class Permissions
         "gd_cash_view",
         "gd_imports_view",
         "gd_imports_manage",
+        "gd_academy_events_view",
+        "gd_academy_events_manage",
+        "gd_academy_events_lineup",
+        "gd_academy_events_evaluate",
+        "gd_academy_events_finance",
+        "gd_academy_events_finalize",
+        "gd_academy_evaluations_view",
+        "gd_academy_evaluations_manage",
     ];
 
     /**
@@ -226,6 +238,16 @@ final class Permissions
             "gd_permissions_imports" => [
                 ["key" => "gd_imports_view", "label_key" => "gd_perm_imports_view"],
                 ["key" => "gd_imports_manage", "label_key" => "gd_perm_imports_manage"],
+            ],
+            "gd_permissions_academy_events" => [
+                ["key" => "gd_academy_events_view", "label_key" => "gd_perm_academy_events_view"],
+                ["key" => "gd_academy_events_manage", "label_key" => "gd_perm_academy_events_manage"],
+                ["key" => "gd_academy_events_lineup", "label_key" => "gd_perm_academy_events_lineup"],
+                ["key" => "gd_academy_events_evaluate", "label_key" => "gd_perm_academy_events_evaluate"],
+                ["key" => "gd_academy_events_finance", "label_key" => "gd_perm_academy_events_finance"],
+                ["key" => "gd_academy_events_finalize", "label_key" => "gd_perm_academy_events_finalize"],
+                ["key" => "gd_academy_evaluations_view", "label_key" => "gd_perm_academy_evaluations_view"],
+                ["key" => "gd_academy_evaluations_manage", "label_key" => "gd_perm_academy_evaluations_manage"],
             ],
         ];
     }

@@ -38,6 +38,7 @@ try {
     Invoke-Step "verify-fast" { & (Join-Path $PSScriptRoot "verify-fast.ps1") }
     Invoke-Step "installation" { & $php "plugins/grupo_donato_gestao/Tests/cli.php" install }
     Invoke-Step "installation idempotency" { & $php "plugins/grupo_donato_gestao/Tests/cli.php" install }
+    Invoke-Step "academy events self-test" { & $php "plugins/grupo_donato_gestao/Tests/cli.php" academy-events-selftest }
     Invoke-Step "self-test" { & $php "plugins/grupo_donato_gestao/Tests/cli.php" selftest }
     Invoke-Step "sequence and temporal concurrency" { & (Join-Path $PSScriptRoot "concurrency.ps1") }
     Invoke-Step "booking concurrency" { & (Join-Path $PSScriptRoot "booking_concurrency.ps1") }

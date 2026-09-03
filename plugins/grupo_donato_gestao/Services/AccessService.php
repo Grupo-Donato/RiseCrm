@@ -67,7 +67,13 @@ class AccessService
         }
 
         if (RoleAccessService::is_professor($this->login_user)) {
-            return false;
+            // Professors receive only explicitly assigned Academy permissions.
+            // Legacy operational access remains available to the existing
+            // school screens, but event actions are still granular.
+            $academyPermission = str_starts_with($permission_key, "gd_academy_");
+            if (!$academyPermission) {
+                return false;
+            }
         }
 
         $permissions = $this->login_user->permissions ?? [];

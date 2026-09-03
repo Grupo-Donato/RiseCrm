@@ -438,6 +438,33 @@ $can_manage_student_photo = !empty($can_manage_student_photo);
                 </div>
             </div>
         </div>
+
+        <?php if (!empty($student_sport_history) && !empty($student_sport_history["events"])): ?>
+            <div class="border-top pt15 mt20">
+                <h5>Desenvolvimento esportivo</h5>
+                <?php foreach ($student_sport_history["events"] as $sport_event): ?>
+                    <div class="border-bottom py10">
+                        <strong><?php echo esc($sport_event->event_name); ?></strong>
+                        <span class="text-off"> · <?php echo esc($sport_event->category_name); ?> · <?php echo esc(date("d/m/Y", strtotime((string) $sport_event->starts_on))); ?></span>
+                        <div class="small mt5">Escalação: <?php echo esc($sport_event->lineup_status); ?> · <?php echo $sport_event->matches ? count($sport_event->matches) . " partida(s)" : "sem estatísticas de partida"; ?></div>
+                        <?php if (!empty($sport_event->scores)): ?><div class="small mt5"><?php foreach ($sport_event->scores as $score): ?><span class="badge bg-secondary me5"><?php echo esc($score->name); ?>: <?php echo esc((string) $score->score); ?></span><?php endforeach; ?></div><?php endif; ?>
+                        <?php if (!empty($sport_event->evaluation->strengths)): ?><div class="small mt5"><strong>Pontos fortes:</strong> <?php echo esc($sport_event->evaluation->strengths); ?></div><?php endif; ?>
+                        <?php if (!empty($sport_event->evaluation->development_areas)): ?><div class="small"><strong>A desenvolver:</strong> <?php echo esc($sport_event->evaluation->development_areas); ?></div><?php endif; ?>
+                        <?php if (!empty($sport_event->evaluation->responsible_feedback)): ?><div class="small"><strong>Feedback:</strong> <?php echo esc($sport_event->evaluation->responsible_feedback); ?></div><?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php if (!empty($student_sport_report) && !empty($student_sport_report["events"])): ?>
+            <div class="border-top pt15 mt20">
+                <div class="d-flex justify-content-between align-items-center"><h5 class="mb0">Relatório trimestral</h5><button type="button" class="btn btn-default btn-sm" onclick="window.print();">Imprimir</button></div>
+                <div class="small text-off mt5"><?php echo esc($student_sport_report["date_from"]); ?> a <?php echo esc($student_sport_report["date_to"]); ?> · <?php echo (int) $student_sport_report["event_count"]; ?> evento(s)</div>
+                <?php if (!empty($student_sport_report["averages"])): ?><div class="small mt8"><strong>Médias por critério:</strong> <?php foreach ($student_sport_report["averages"] as $criterion => $average): ?><span class="badge bg-secondary me5"><?php echo esc($criterion); ?>: <?php echo esc($average); ?></span><?php endforeach; ?></div><?php endif; ?>
+                <?php if (!empty($student_sport_report["strengths"])): ?><div class="small mt8"><strong>Pontos fortes:</strong> <?php echo esc(implode(" · ", $student_sport_report["strengths"])); ?></div><?php endif; ?>
+                <?php if (!empty($student_sport_report["development_areas"])): ?><div class="small"><strong>Próximos desenvolvimentos:</strong> <?php echo esc(implode(" · ", $student_sport_report["development_areas"])); ?></div><?php endif; ?>
+                <?php if (!empty($student_sport_report["comments"])): ?><div class="small"><strong>Comentários:</strong> <?php echo esc(implode(" · ", $student_sport_report["comments"])); ?></div><?php endif; ?>
+            </div>
+        <?php endif; ?>
+        <?php endif; ?>
     </div>
 </div>
 

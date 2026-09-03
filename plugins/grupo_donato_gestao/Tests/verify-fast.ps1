@@ -51,7 +51,7 @@ if ($mysql -and -not $env:GD_SKIP_DB_CHECK) {
 }
 
 Write-Host "[FAST] Routes"
-$routes = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Config\Routes.php")
+$routes = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Config\Routes.php")) + "`n" + (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Operacional\Config\Routes.php"))
 $dashboard = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Views\dashboard\index.php")
 $requiredRoutes = @(
     '$routes->get("bookings"',
@@ -70,9 +70,21 @@ $requiredRoutes = @(
     '$routes->get("school/students", static function',
     '$routes->get("finance"',
     '$routes->post("finance/payments/save"',
-    '$routes->post("finance/expenses/save"'
+    '$routes->post("finance/expenses/save"',
+    '$routes->post("save_event"',
+    '$routes->post("save_event_match_score"',
+    '$routes->post("save_event_staff"',
+    '$routes->post("event_financial_status"',
+    '$routes->post("finalize_event"',
+    '$routes->get("evento-novo"',
+    '$routes->get("evento/(:num)"',
+    '$routes->get("evento/(:num)/categoria/(:num)"',
+    '$routes->get("evento/(:num)/categoria/(:num)/partida/(:num)"',
+    '$routes->get("evento/(:num)/categoria/(:num)/avaliacao/(:num)"'
 )
 foreach ($route in $requiredRoutes) { Assert-True $routes.Contains($route) "Required route missing: $route" }
+$eventsView = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $plugin "Operacional\Views\eventos.php")
+Assert-True (-not ($eventsView -match 'workspace|save_event_evaluation|save_event_stat|toggle_event_checklist')) "The event list still contains operational detail screens."
 Assert-True $dashboard.Contains('grupo_donato/operacional?gd_tab=alunos') "The Academy dashboard target is not the official operational tab."
 Assert-True (-not $routes.Contains('School_students::index')) "The legacy student screen is still registered."
 Assert-True ($routes -match 'group\("grupo_donato"[\s\S]*?"filter"\s*=>\s*"csrf"') "The plugin route group is not protected by CSRF."

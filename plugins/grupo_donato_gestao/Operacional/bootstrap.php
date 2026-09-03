@@ -165,6 +165,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             "responsaveis" => ["name" => "Responsáveis", "class" => "user"],
             "presenca" => ["name" => "Presença", "class" => "check-square"],
             "pagamentos" => ["name" => "Pagamentos", "class" => "credit-card"],
+            "eventos" => ["name" => "Eventos", "class" => "trophy"],
             "financeiro" => ["name" => "Inadimplência", "class" => "trending-up"],
             "custos" => ["name" => "Custos", "class" => "dollar-sign"],
             "materiais" => ["name" => "Materiais", "class" => "package"],
@@ -206,7 +207,7 @@ if (!function_exists("bombeiros_install_or_update")) {
 
         // Academia: as telas de operação da escola ficam sob um único item.
         $academy_submenu = [];
-        foreach (["alunos", "responsaveis", "presenca", "pagamentos"] as $key) {
+        foreach (["alunos", "responsaveis", "presenca", "pagamentos", "eventos"] as $key) {
             $item = $section_item($key);
             if ($item) {
                 $academy_submenu[] = $item;
@@ -261,6 +262,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             ["name" => "Responsáveis", "is_sub_menu" => "1"],
             ["name" => "Presença", "is_sub_menu" => "1"],
             ["name" => "Pagamentos", "is_sub_menu" => "1"],
+            ["name" => "Eventos", "is_sub_menu" => "1"],
             ["name" => "Administrativos"],
             ["name" => "Inadimplência", "is_sub_menu" => "1"],
             ["name" => "Custos", "is_sub_menu" => "1"],

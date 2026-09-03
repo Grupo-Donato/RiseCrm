@@ -1,0 +1,7 @@
+<?php $categoryUrl = get_uri("grupo_donato/operacional/evento/" . (int) $event->id . "/categoria/" . (int) $category->id); $categorySection = $section ?? "resumo"; ?>
+<div class="gd-academy-header"><div><div class="gd-academy-kicker">Categoria do evento</div><h1><?php echo esc($category->name); ?></h1><div class="gd-academy-subtitle"><?php echo esc($event->name); ?> · <?php echo $category->min_age !== null ? (int) $category->min_age . "–" . (int) $category->max_age . " anos" : "Faixa livre"; ?><?php if (!empty($category->assistant)): ?> · Auxiliar: <?php echo esc($category->assistant); ?><?php endif; ?></div></div><div class="gd-academy-header-actions"><a class="btn btn-default btn-sm" href="<?php echo esc(get_uri("grupo_donato/operacional/evento/" . (int) $event->id . "/categorias")); ?>">← Categorias</a></div></div>
+<nav class="gd-academy-nav" aria-label="Navegação da categoria">
+    <?php foreach (["resumo" => "Resumo", "convocacao" => "Convocação", "partidas" => "Partidas", "avaliacoes" => "Avaliações", "estatisticas" => "Estatísticas"] as $key => $label): ?>
+        <?php if (in_array($key, ["avaliacoes", "estatisticas"], true) && empty($can_evaluate)) continue; ?><a class="<?php echo $categorySection === $key ? "active" : ""; ?>" href="<?php echo esc($key === "resumo" ? $categoryUrl : $categoryUrl . "/" . $key); ?>"><?php echo esc($label); ?></a>
+    <?php endforeach; ?>
+</nav>

@@ -213,6 +213,7 @@ class Court_rentals extends Gd_Controller
             $resources = $this->bookings->bookableResources("court");
             $barbecue_resources = $this->bookings->bookableResources(Constants::BARBECUE_RESOURCE_TYPE);
             $edit_data = null;
+            $edit_status_options = [];
             $id = (int) ($this->request->getPost("id") ?: $this->request->getGet("id"));
             if ($id <= 0) {
                 $prefill_date = trim((string) $this->request->getPost("prefill_date"));
@@ -320,6 +321,7 @@ class Court_rentals extends Gd_Controller
                     "id" => (int) $rental->id,
                     "rental_type" => "recurring",
                     "lock_version" => (int) $rental->lock_version,
+                    "status" => (string) $rental->status,
                     "series_id" => (int) $series->id,
                     "series_lock_version" => (int) $series->lock_version,
                     "customer_account_id" => (int) $rental->customer_account_id,
@@ -339,6 +341,7 @@ class Court_rentals extends Gd_Controller
                     "commercial_notes" => (string) ($rental->commercial_notes ?? ""),
                     "amount" => $base_amount,
                 ];
+                $edit_status_options = $this->monthlyEditStatusOptions((string) $rental->status);
                 $initial_mode = "recurring";
                 } else {
                     throw new \DomainException("gd_court_rental_not_editable");
@@ -352,6 +355,8 @@ class Court_rentals extends Gd_Controller
                 "finance_accounts" => (new FinanceService($this->unit_id, $this->user_id(), $this->login_user))->accounts(),
                 "payment_methods" => Constants::PAYMENT_METHODS,
                 "edit_data" => $edit_data,
+                "can_status" => $this->access->can("gd_court_rentals_status_manage"),
+                "status_options" => $edit_status_options,
             ]);
         } catch (\Throwable $e) { $this->gd_fail($e); }
     }
@@ -684,6 +689,10 @@ class Court_rentals extends Gd_Controller
             $id = (int) $this->request->getPost("id");
             $rental = $this->service->get($id);
             if (!$rental || (string) $rental->rental_type !== "recurring") { throw new \DomainException("gd_court_rental_not_found"); }
+            $requested_status = trim((string) $this->request->getPost("status"));
+            if ($requested_status !== "" && !in_array($requested_status, array_column($this->monthlyEditStatusOptions((string) $rental->status), "id"), true)) {
+                throw new \DomainException("gd_invalid_court_rental_transition");
+            }
             $existing_series = null;
             foreach ($rental->links as $link) {
                 if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_series_id ?? 0) > 0) {
@@ -704,6 +713,7 @@ class Court_rentals extends Gd_Controller
             $result = $this->service->updateMonthly($id, $input);
             if ($db->transCommit() === false) { throw new \RuntimeException("monthly identity update commit"); }
             $in_tx = false;
+            $this->applyMonthlyEditStatus($result, $rental, $requested_status);
             $this->json_success(app_lang("record_saved"), $result);
         } catch (\Throwable $e) {
             if ($in_tx) { $db->transRollback(); }
@@ -757,6 +767,38 @@ class Court_rentals extends Gd_Controller
     {
         if (!$this->request->getPost("activate")) { return; }
         $row = (new CourtRentalLifecycleService($this->unit_id, $this->user_id(), $this->login_user))->activate($id, $lock_version, $this->access->can("gd_court_rentals_price_override"), (string) $this->request->getPost("justification"));
+        $result["status"] = (string) $row->status;
+        $result["lock_version"] = (int) $row->lock_version;
+    }
+
+    /** Statuses operacionais que podem ser alterados no formulário do mensalista. */
+    private function monthlyEditStatusOptions(string $current): array
+    {
+        $allowed = match ($current) {
+            "draft" => ["draft", "active"],
+            "active" => ["active", "suspended"],
+            "suspended" => ["suspended", "active"],
+            default => [],
+        };
+        return array_map(static fn(string $status): array => [
+            "id" => $status,
+            "text" => app_lang("gd_court_rental_status_" . $status),
+        ], $allowed);
+    }
+
+    /** Aplica a mudança solicitada no mesmo envio do formulário de edição. */
+    private function applyMonthlyEditStatus(array &$result, object $before, string $requested_status): void
+    {
+        if ($requested_status === "" || $requested_status === (string) $before->status) { return; }
+        $this->access->require("gd_court_rentals_status_manage");
+        $lifecycle = new CourtRentalLifecycleService($this->unit_id, $this->user_id(), $this->login_user);
+        $lock_version = (int) ($result["lock_version"] ?? 0);
+        $row = match ([(string) $before->status, $requested_status]) {
+            ["draft", "active"] => $lifecycle->activate($before->id, $lock_version, $this->access->can("gd_court_rentals_price_override"), (string) $this->request->getPost("justification")),
+            ["active", "suspended"] => $lifecycle->suspend($before->id, $lock_version, "keep", (string) $this->request->getPost("reason")),
+            ["suspended", "active"] => $lifecycle->resume($before->id, $lock_version),
+            default => throw new \DomainException("gd_invalid_court_rental_transition"),
+        };
         $result["status"] = (string) $row->status;
         $result["lock_version"] = (int) $row->lock_version;
     }
@@ -1622,17 +1664,13 @@ class Court_rentals extends Gd_Controller
         return '<span class="badge bg-warning">' . app_lang($key) . " " . $this->escape(to_currency($bal)) . "</span>";
     }
 
-    /**
-     * Ações da linha: abrir, suspender/retomar, gerar cobrança e registrar
-     * pagamento já contextualizado — 1 cobrança aberta abre o modal com ela
-     * pré-selecionada; várias oferecem a baixa diretamente nesta lista.
-     */
+    /** Ações da linha de mensalistas, com baixa contextualizada quando houver cobrança. */
     private function monthlyActions(object $row, array $balances): string
     {
-        return $this->rentalActions($row, $balances, "monthly-modal", "gd-court-renters-table", "mensalista", true);
+        return $this->rentalActions($row, $balances, "monthly-modal", "gd-court-renters-table", "mensalista", true, false);
     }
 
-    private function rentalActions(object $row, array $balances, string $modal, string $reload_target, string $edit_label, bool $allow_reschedule = false): string
+    private function rentalActions(object $row, array $balances, string $modal, string $reload_target, string $edit_label, bool $allow_reschedule = false, bool $allow_manual_generation = true): string
     {
         $id = (int) $row->id; $lock = (int) ($row->lock_version ?? 0); $status = (string) $row->status;
         $html = anchor(get_uri("grupo_donato/court-rentals/view/" . $id), "<i data-feather='eye' class='icon-16'></i>", ["title" => app_lang("gd_view_details"), "class" => "me-2"]);
@@ -1647,7 +1685,7 @@ class Court_rentals extends Gd_Controller
             if ($status === "suspended") { $html .= '<a href="#" class="gd-cr-act me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="resume" title="' . app_lang("gd_resume") . '"><i data-feather="play-circle" class="icon-16"></i></a>'; }
             if (in_array($status, ["draft", "active", "suspended"], true)) { $html .= '<a href="#" class="gd-cr-act gd-cr-cancel me-2" data-id="' . $id . '" data-lock="' . $lock . '" data-action="cancel" title="' . app_lang("gd_cancel_rental") . '"><i data-feather="x-circle" class="icon-16"></i></a>'; }
         }
-        if ($this->access->can("gd_rental_payments_manage")) { $html .= anchor(get_uri("grupo_donato/finance/rental-payments"), "<i data-feather='file-text' class='icon-16'></i>", ["title" => app_lang("gd_finance_generate"), "class" => "me-2"]); }
+        if ($allow_manual_generation && $this->access->can("gd_rental_payments_manage")) { $html .= anchor(get_uri("grupo_donato/finance/rental-payments"), "<i data-feather='file-text' class='icon-16'></i>", ["title" => app_lang("gd_finance_generate"), "class" => "me-2"]); }
         if ($this->access->can("gd_rental_payments_manage")) {
             $open_ids = $balances[$id]["open_ids"] ?? [];
             if (count($open_ids) === 1) {

@@ -6,6 +6,8 @@ $is_edit = !empty($edit_data["id"]);
 $edit_type = (string) ($edit_data["rental_type"] ?? $initial_mode);
 $edit_endpoint = $edit_type === "single" ? "grupo_donato/court-rentals/update-single" : "grupo_donato/court-rentals/update-monthly";
 $edit_duration = (int) ($edit_data["duration_minutes"] ?? 0);
+$status_options = is_array($status_options ?? null) ? $status_options : [];
+$can_status = !empty($can_status);
 $finance_accounts = is_array($finance_accounts ?? null) ? $finance_accounts : [];
 $payment_methods = is_array($payment_methods ?? null) ? $payment_methods : [];
 $messages = [
@@ -117,6 +119,17 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         <input id="gd-rental-phone" name="contact_phone" class="form-control" inputmode="tel" maxlength="15" autocomplete="off" value="<?php echo $e($edit_data["contact_phone"] ?? ""); ?>" placeholder="(00) 00000-0000">
                         <small class="text-muted"><?php echo app_lang("gd_contact_optional_help"); ?></small>
                     </div>
+                    <?php if ($is_edit && $edit_type === "recurring" && $status_options) { ?>
+                    <div class="form-group mt15 mb0 gd-rental-status-field">
+                        <label for="gd-rental-status"><?php echo app_lang("gd_status"); ?></label>
+                        <select name="status" id="gd-rental-status" class="form-control"<?php echo $can_status ? "" : " disabled"; ?>>
+                            <?php foreach ($status_options as $status_option) { ?>
+                                <option value="<?php echo $e($status_option["id"]); ?>"<?php echo (string) ($edit_data["status"] ?? "") === (string) $status_option["id"] ? " selected" : ""; ?>><?php echo $e($status_option["text"]); ?></option>
+                            <?php } ?>
+                        </select>
+                        <?php if (!$can_status) { ?><small class="text-muted"><?php echo app_lang("gd_perm_court_rentals_status_manage"); ?></small><?php } ?>
+                    </div>
+                    <?php } ?>
                 </div>
             </div>
 

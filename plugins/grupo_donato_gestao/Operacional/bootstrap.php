@@ -381,6 +381,29 @@ if (!function_exists("bombeiros_install_or_update")) {
                 }
             }
 
+            // Configurações persistidas podem ter sido criadas antes de uma
+            // nova tela entrar na Academy. Nesse caso, força a reconstrução
+            // dos grupos para que o item não fique ausente ou órfão no menu.
+            if ($canonical_group_present) {
+                $present_group_names = array_column($original_items, "name");
+                $missing_group_item = false;
+                foreach ($group_names as $required_group_name) {
+                    if (!in_array($required_group_name, $present_group_names, true)) {
+                        $missing_group_item = true;
+                        break;
+                    }
+                }
+                if ($missing_group_item) {
+                    $needs_group_migration = true;
+                    $academy_position = array_search("GD Academy", $present_group_names, true);
+                    $administrative_position = array_search("Administrativos", $present_group_names, true);
+                    $anchor_position = $academy_position !== false ? $academy_position : $administrative_position;
+                    if ($anchor_position !== false) {
+                        $first_legacy_position = $anchor_position;
+                    }
+                }
+            }
+
             foreach ($original_items as $index => $item) {
                 $name = $item["name"] ?? "";
                 if (in_array($name, $obsolete_message_menu_names, true)) {

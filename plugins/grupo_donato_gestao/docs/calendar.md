@@ -14,7 +14,7 @@ Eventos retornam título simples, instantes com offset da unidade, cor e `extend
 
 ## Reservas na Fase 3B1
 
-A camada `booking` projeta uma entrada por reserva/recurso. O evento principal usa o horário de utilização; `extendedProps` informa ocupação e buffers. Usuário com `gd_bookings_view` recebe número e título; usuário apenas com calendário recebe “Ocupado”. Cliente, contato, documento, notas, metadata e dados financeiros nunca entram no feed. Hold vencido é omitido como ocupação ativa; cores distinguem os oito status.
+A camada `booking` projeta uma entrada por reserva/recurso. O evento principal usa o horário de utilização; `extendedProps` informa ocupação e buffers. Usuário com `gd_bookings_view` recebe número e título; usuário apenas com calendário recebe “Ocupado”. Cliente, contato, documento, notas, metadata e dados financeiros nunca entram no feed. Hold vencido é omitido como ocupação ativa; reservas canceladas nunca são projetadas na agenda, mesmo quando o filtro solicita todos os status.
 
 ## Séries na Fase 3B2
 

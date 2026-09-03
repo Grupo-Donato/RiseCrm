@@ -240,6 +240,7 @@ class AvailabilityService extends CustomerDataService
             ->where("$br.unit_id", $this->unit_id)->whereIn("$br.resource_id", $ids)->where("$br.deleted", 0)->where("$b.deleted", 0)
             ->whereIn("$b.status", Constants::BOOKING_BLOCKING_STATUSES)
             ->groupStart()->where("$b.status !=", "hold")->orGroupStart()->where("$b.status", "hold")->where("$b.hold_expires_at_utc >", gmdate("Y-m-d H:i:s"))->groupEnd()->groupEnd();
+        BookingOccupancyFilter::excludeCancelledRentals($this->db, $q, $b);
         if (!$fullRange) { $q->where("$br.occupancy_starts_at_utc <", $end)->where("$br.occupancy_ends_at_utc >", $start); }
         $excluded = is_array($exclude_booking_id) ? array_values(array_filter(array_map("intval", $exclude_booking_id))) : [(int) $exclude_booking_id];
         $excluded = array_values(array_filter($excluded, static fn (int $id): bool => $id > 0));

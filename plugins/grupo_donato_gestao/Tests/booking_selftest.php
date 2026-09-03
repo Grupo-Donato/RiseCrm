@@ -75,6 +75,9 @@ gd_assert("booking events são append-only",gd_throws(fn()=>$eventModel->delete(
 $richCalendar=(new \grupo_donato_gestao\Services\CalendarService($unit_id,true))->events("2098-08-10T00:00:00Z","2098-08-11T00:00:00Z",[$bookA],["booking"]);$privateCalendar=(new \grupo_donato_gestao\Services\CalendarService($unit_id,false))->events("2098-08-10T00:00:00Z","2098-08-11T00:00:00Z",[$bookA],["booking"]);
 gd_assert("calendário exibe reserva por recurso com ocupação",(bool)array_filter($richCalendar,static fn($e)=>($e["extendedProps"]["booking_id"]??0)>0&&isset($e["extendedProps"]["occupancy_start"])));
 gd_assert("calendário sem booking view retorna somente Ocupado",!array_filter($privateCalendar,static fn($e)=>$e["title"]!==app_lang("gd_calendar_busy"))&&!str_contains(json_encode($privateCalendar),"customer"));
+$cancelledCalendar=(new \grupo_donato_gestao\Services\CalendarService($unit_id,true))->events("2098-08-10T00:00:00Z","2098-08-11T00:00:00Z",[$bookC],["booking"]);
+$cancelledCalendarWithFilter=(new \grupo_donato_gestao\Services\CalendarService($unit_id,true))->events("2098-08-10T00:00:00Z","2098-08-11T00:00:00Z",[$bookC],["booking"],["cancelled"]);
+gd_assert("calendário nunca projeta reservas canceladas",!array_filter(array_merge($cancelledCalendar,$cancelledCalendarWithFilter),static fn($e)=>($e["extendedProps"]["status"]??"")==="cancelled"));
 
 $bookingManageAccess=new \grupo_donato_gestao\Services\AccessService($pm("gd_bookings_manage"));$bookingStatusAccess=new \grupo_donato_gestao\Services\AccessService($pm("gd_booking_status_manage"));
 gd_assert("bookings_manage implica leituras necessárias",$bookingManageAccess->can("gd_bookings_view")&&$bookingManageAccess->can("gd_calendar_view")&&$bookingManageAccess->can("gd_resources_view")&&$bookingManageAccess->can("gd_customer_accounts_view")&&$bookingManageAccess->can("gd_people_view"));

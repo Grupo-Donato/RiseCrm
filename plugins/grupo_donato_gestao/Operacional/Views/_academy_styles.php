@@ -111,6 +111,7 @@
     .gd-academy-page .gd-academy-participants-count { background: var(--academy-surface-2); border: 1px solid var(--academy-line); border-radius: 999px; color: var(--academy-muted); flex: 0 0 auto; font-size: 11px; font-weight: 700; padding: 5px 9px; }
     .gd-academy-page .gd-academy-participants-scroll { max-height: 580px; overflow-y: auto; margin: 0 -8px; padding: 0 3px 2px 0; scrollbar-color: var(--academy-line) transparent; scrollbar-width: thin; }
     .gd-academy-page .gd-academy-participants-scroll .gd-academy-participant-item { min-height: 176px; }
+    .gd-academy-page .gd-academy-lineup-row { margin-bottom: 18px; }
     .gd-academy-page .gd-academy-lineup-row > [class*="col-"] { display: flex; }
     .gd-academy-page .gd-academy-lineup-row .gd-academy-form-card { height: 100%; width: 100%; }
     .gd-academy-page .gd-academy-student-results { max-height: 320px; overflow-y: auto; margin-left: -8px; margin-right: -8px; padding: 0 3px 2px 0; scrollbar-color: var(--academy-line) transparent; scrollbar-width: thin; }

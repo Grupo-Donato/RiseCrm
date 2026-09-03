@@ -98,6 +98,12 @@
     .gd-academy-page .gd-academy-empty h3 { color: var(--academy-text); font-size: 17px; margin: 10px 0 7px; }
     .gd-academy-page .gd-academy-form-card { border-radius: 10px; margin-bottom: 17px; padding: 16px; }
     .gd-academy-page .gd-academy-form-card h3 { color: var(--academy-text); font-size: 16px; font-weight: 600; margin: 0 0 13px; }
+    .gd-academy-page .gd-academy-student-results { max-height: 440px; overflow-y: auto; padding-right: 3px; }
+    .gd-academy-page .gd-academy-student-result { align-items: center; background: var(--academy-surface-2); border: 1px solid var(--academy-line); border-radius: 8px; display: flex; gap: 10px; justify-content: space-between; padding: 10px 12px; }
+    .gd-academy-page .gd-academy-student-result-info { min-width: 0; }
+    .gd-academy-page .gd-academy-student-result-info strong { color: var(--academy-text); display: block; font-size: 13px; }
+    .gd-academy-page .gd-academy-student-result-info small { color: var(--academy-muted); display: block; font-size: 11px; margin-top: 3px; }
+    .gd-academy-page .gd-academy-student-result-status { flex: 0 0 auto; }
 
     .gd-academy-page .form-control,
     .gd-academy-page select,
@@ -161,6 +167,8 @@
         .gd-academy-page .gd-academy-table td:before { color: var(--academy-muted); content: attr(data-label); display: inline-block; font-size: 11px; font-weight: 700; margin-right: 7px; text-transform: uppercase; }
         .gd-academy-page .gd-academy-table td:last-child { padding-top: 9px; }
         .gd-academy-page .gd-academy-form-card { padding: 14px; }
+        .gd-academy-page .gd-academy-student-result { align-items: flex-start; flex-wrap: wrap; }
+        .gd-academy-page .gd-academy-student-result .btn { margin-left: auto; }
         .gd-academy-page select[name="position"] { max-width: none !important; width: 100%; }
         .gd-academy-page .gd-academy-sticky-actions { position: static; }
     }

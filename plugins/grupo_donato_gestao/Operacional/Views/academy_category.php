@@ -25,7 +25,7 @@ $breadcrumbs = [["label" => "GD Academy", "url" => get_uri("grupo_donato/operaci
     <?php elseif ($section === "convocacao"): ?>
         <div class="gd-academy-section-title"><div><h2>Convocação</h2><p class="gd-academy-muted mb0">Confirmação e situação esportiva são acompanhadas separadamente.</p></div></div>
         <?php if ($can_lineup ?? false): ?>
-            <div class="row"><div class="col-md-7"><div class="gd-academy-form-card"><h3>Buscar aluno do GD Academy</h3><form id="gd-academy-student-search" action="<?php echo esc(get_uri("grupo_donato/operacional/academy_student_search")); ?>" method="post"><?php echo csrf_field(); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><div class="input-group"><input class="form-control" name="query" placeholder="Nome ou matrícula" required><button class="btn btn-default" type="submit">Pesquisar</button></div></form><div id="gd-academy-search-results" class="mt10"></div></div></div><div class="col-md-5"><div class="gd-academy-form-card"><h3>Atleta convidado</h3><?php echo form_open(get_uri("grupo_donato/operacional/add_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input type="hidden" name="athlete_type" value="external"><div class="form-group"><label>Nome</label><input class="form-control" name="external_name" required></div><div class="row"><div class="col-6 form-group"><label>Nascimento</label><input class="form-control" type="date" name="birth_date"></div><div class="col-6 form-group"><label>Clube de origem</label><input class="form-control" name="origin_club"></div></div><div class="form-group"><label>Responsável</label><input class="form-control" name="responsible_name"></div><div class="form-group"><label>Telefone</label><input class="form-control" name="phone"></div><button class="btn btn-default" type="submit">Adicionar convidado</button><?php echo form_close(); ?></div></div></div>
+            <div class="row"><div class="col-md-7"><div class="gd-academy-form-card"><h3>Alunos do GD Academy</h3><p class="gd-academy-muted">Digite o nome ou a matrícula para filtrar. Os alunos ativos aparecem automaticamente.</p><form id="gd-academy-student-search" action="<?php echo esc(get_uri("grupo_donato/operacional/academy_student_search")); ?>" method="post"><?php echo csrf_field(); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input class="form-control" name="query" placeholder="Digite nome ou matrícula" autocomplete="off" aria-label="Filtrar alunos do GD Academy"></form><div id="gd-academy-search-results" class="gd-academy-student-results mt10" aria-live="polite"><div class="gd-academy-muted">Carregando alunos...</div></div></div></div><div class="col-md-5"><div class="gd-academy-form-card"><h3>Atleta convidado</h3><?php echo form_open(get_uri("grupo_donato/operacional/add_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input type="hidden" name="athlete_type" value="external"><div class="form-group"><label>Nome</label><input class="form-control" name="external_name" required></div><div class="row"><div class="col-6 form-group"><label>Nascimento</label><input class="form-control" type="date" name="birth_date"></div><div class="col-6 form-group"><label>Clube de origem</label><input class="form-control" name="origin_club"></div></div><div class="form-group"><label>Responsável</label><input class="form-control" name="responsible_name"></div><div class="form-group"><label>Telefone</label><input class="form-control" name="phone"></div><button class="btn btn-default" type="submit">Adicionar convidado</button><?php echo form_close(); ?></div></div></div>
         <?php endif; ?>
         <?php if (empty($participants)): ?><div class="gd-academy-empty"><i data-feather="users" class="icon-28"></i><h3>Nenhum atleta convocado</h3><p>Ainda não existem atletas convocados nesta categoria.</p></div><?php else: ?><div class="gd-academy-list"><?php foreach ($participants as $participant): ?><article class="gd-academy-list-item"><div class="d-flex align-items-center gap-2"><img class="gd-academy-avatar" src="<?php echo esc($participantPhoto($participant)); ?>" alt=""><div class="gd-academy-list-item-main"><strong><?php echo esc($participant->athlete_name); ?></strong><small><?php echo $participant->age !== null ? (int) $participant->age . " anos" : "Idade não informada"; ?> · <?php echo esc($participant->athlete_type === "internal" ? ($participant->turma ?? "Aluno GD Academy") : ($participant->origin_club ?? "Atleta convidado")); ?><?php if (!empty($participant->position)): ?> · <?php echo esc($participant->position); ?><?php endif; ?></small></div></div><div class="d-flex flex-wrap gap-1"><span class="gd-academy-status <?php echo ($participant->confirmation_status ?? "") === "confirmed" ? "gd-academy-status-success" : "gd-academy-status-warning"; ?>"><?php echo esc($confirmationLabels[$participant->confirmation_status] ?? $participant->confirmation_status); ?></span><span class="gd-academy-status gd-academy-status-muted"><?php echo esc($lineupLabels[$participant->lineup_status] ?? $participant->lineup_status); ?></span></div><?php if ($can_lineup ?? false): ?><div class="w-100"><div class="row mt10"><div class="col-md-4 mb8"><?php echo form_open(get_uri("grupo_donato/operacional/update_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="participant_id" value="<?php echo (int) $participant->id; ?>"><label class="gd-academy-muted">Situação esportiva</label><select class="form-control" name="lineup_status"><?php foreach ($lineupLabels as $key => $label): ?><option value="<?php echo esc($key); ?>" <?php echo $participant->lineup_status === $key ? "selected" : ""; ?>><?php echo esc($label); ?></option><?php endforeach; ?></select></div><div class="col-md-4 mb8"><label class="gd-academy-muted">Confirmação</label><select class="form-control" name="confirmation_status"><?php foreach ($confirmationLabels as $key => $label): ?><option value="<?php echo esc($key); ?>" <?php echo $participant->confirmation_status === $key ? "selected" : ""; ?>><?php echo esc($label); ?></option><?php endforeach; ?></select></div><div class="col-md-2 mb8"><label class="gd-academy-muted">Posição</label><input class="form-control" name="position" value="<?php echo esc($participant->position ?? ""); ?>"></div><div class="col-md-2 mb8 d-flex align-items-end"><button class="btn btn-default w-100" type="submit">Salvar</button><?php echo form_close(); ?></div></div></div><?php endif; ?></article><?php endforeach; ?></div><?php endif; ?>
 
@@ -47,7 +47,91 @@ $breadcrumbs = [["label" => "GD Academy", "url" => get_uri("grupo_donato/operaci
 <?php if ($section === "convocacao" && ($can_lineup ?? false)): ?>
 <script>
 $(function(){
-    $("#gd-academy-student-search").on("submit",function(e){e.preventDefault();var form=this,results=$("#gd-academy-search-results");results.html('<div class="gd-academy-muted">Buscando...</div>');appAjaxRequest({url:form.action,type:"POST",data:$(form).serialize(),dataType:"json",success:function(r){var rows=(r&&r.data&&r.data.data)||[];if(!rows.length){results.html('<div class="gd-academy-muted">Nenhum aluno encontrado.</div>');return;}results.empty();rows.forEach(function(row){var item=$("<div class='gd-academy-list-item mb8'><span><strong></strong><small></small></span><button class='btn btn-primary btn-sm' type='button'>Adicionar</button></div>");item.find("strong").text(row.name||row.nome_aluno||"Aluno");item.find("small").text(row.registration||row.matricula||"");item.find("button").on("click",function(){var button=$(this);button.prop("disabled",true).text("Adicionando...");appAjaxRequest({url:"<?php echo get_uri("grupo_donato/operacional/add_event_participant"); ?>",type:"POST",data:{category_id:<?php echo (int) $category->id; ?>,athlete_type:"internal",student_id:row.id},dataType:"json",success:function(add){if(add&&add.success){window.location.reload();}else{appAlert.error((add&&add.message)||"Não foi possível convocar o aluno.");button.prop("disabled",false).text("Adicionar");}}});});results.append(item);});},error:function(){results.html('<div class="text-danger">Não foi possível pesquisar.</div>');}});});
+    var form = $("#gd-academy-student-search"), input = form.find("[name='query']"), results = $("#gd-academy-search-results"), timer = null, xhr = null, requestId = 0;
+
+    function renderStudents(rows) {
+        results.empty();
+        if (!rows.length) {
+            results.html('<div class="gd-academy-muted">Nenhum aluno ativo encontrado.</div>');
+            return;
+        }
+
+        var summary = $("<div class='gd-academy-muted mb8'></div>");
+        summary.text(rows.length + " aluno(s) encontrado(s)");
+        results.append(summary);
+
+        rows.forEach(function(row) {
+            var item = $("<div class='gd-academy-student-result mb8'><div class='gd-academy-student-result-info'><strong></strong><small></small></div><span class='gd-academy-student-result-status'></span><button class='btn btn-primary btn-sm' type='button'>Adicionar</button></div>");
+            var details = [];
+            if (row.matricula) details.push("Matrícula " + row.matricula);
+            if (row.turma) details.push(row.turma);
+            if (row.age !== null && row.age !== undefined) details.push(row.age + " anos");
+            item.find("strong").text(row.nome_aluno || row.name || "Aluno");
+            item.find("small").text(details.join(" · ") || "Aluno ativo");
+
+            if (row.age_compatible === false) {
+                item.find(".gd-academy-student-result-status").text("Fora da faixa").addClass("gd-academy-status gd-academy-status-warning");
+            }
+
+            var button = item.find("button");
+            if (row.already_added) {
+                button.prop("disabled", true).removeClass("btn-primary").addClass("btn-default").text("Já convocado");
+            } else {
+                button.on("click", function() {
+                    button.prop("disabled", true).text("Adicionando...");
+                    appAjaxRequest({
+                        url: "<?php echo get_uri("grupo_donato/operacional/add_event_participant"); ?>",
+                        type: "POST",
+                        data: {category_id: <?php echo (int) $category->id; ?>, athlete_type: "internal", student_id: row.id},
+                        dataType: "json",
+                        success: function(add) {
+                            if (add && add.success) {
+                                window.location.reload();
+                            } else {
+                                appAlert.error((add && add.message) || "Não foi possível convocar o aluno.");
+                                button.prop("disabled", false).text("Adicionar");
+                            }
+                        },
+                        error: function() {
+                            appAlert.error("Não foi possível convocar o aluno.");
+                            button.prop("disabled", false).text("Adicionar");
+                        }
+                    });
+                });
+            }
+            results.append(item);
+        });
+    }
+
+    function searchStudents() {
+        var current = ++requestId;
+        if (xhr && xhr.abort) xhr.abort();
+        results.html('<div class="gd-academy-muted">Buscando alunos...</div>');
+        xhr = appAjaxRequest({
+            url: form.attr("action"),
+            type: "POST",
+            data: form.serialize(),
+            dataType: "json",
+            success: function(response) {
+                if (current !== requestId) return;
+                renderStudents((response && response.data && response.data.data) || []);
+            },
+            error: function() {
+                if (current === requestId) results.html('<div class="text-danger">Não foi possível carregar os alunos.</div>');
+            }
+        });
+    }
+
+    form.on("submit", function(e) {
+        e.preventDefault();
+        clearTimeout(timer);
+        searchStudents();
+    });
+    input.on("input", function() {
+        clearTimeout(timer);
+        timer = setTimeout(searchStudents, 250);
+    });
+    searchStudents();
 });
 </script>
 <?php endif; ?>

@@ -576,9 +576,9 @@ final class AcademyEventService extends CustomerDataService
     {
         $students = $this->table("grupo_donato_alunos");
         $query = DataNormalizationService::text($query);
-        $builder = $this->db->table($students)->select("id,nome_aluno,nascimento_aluno,turma,photo_path,responsavel_id,status")->where("unidade_id", $this->legacy_unit_id)->where("deleted", 0)->where("status", "Ativo");
+        $builder = $this->db->table($students)->select("id,nome_aluno,matricula,nascimento_aluno,turma,photo_path,responsavel_id,status")->where("unidade_id", $this->legacy_unit_id)->where("deleted", 0)->where("status", "Ativo");
         if ($query !== "") $builder->groupStart()->like("nome_aluno", $query)->orLike("matricula", $query)->groupEnd();
-        $rows = $builder->orderBy("nome_aluno", "ASC")->limit(40)->get()->getResult();
+        $rows = $builder->orderBy("nome_aluno", "ASC")->get()->getResult();
         $existing = [];
         if ($categoryId) { foreach ($this->db->table($this->table("gd_academy_event_participants"))->select("student_id")->where("unit_id", $this->unit_id)->where("category_id", $categoryId)->where("deleted", 0)->where("student_id IS NOT NULL", null, false)->get()->getResult() as $row) $existing[(int) $row->student_id] = true; }
         $category = $categoryId ? $this->scopedRow($this->table("gd_academy_event_categories"), $categoryId) : null;

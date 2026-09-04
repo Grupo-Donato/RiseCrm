@@ -95,6 +95,21 @@ $test('conversas ocupam o viewport sem criar rolagem externa', static function (
     }
 });
 
+$test('cabecalho de conversas concentra a nova conversa e retrai filtros', static function () use ($read, $assert): void {
+    $index = $read('Views/index.php');
+    $conversationView = $read('Views/partials/conversations.php');
+    $javascript = $read('Assets/js/chatwoot.js');
+    $styles = $read('Views/partials/styles.php');
+    $assert(str_contains($conversationView, 'impulso-new-conversation-inline') && str_contains($conversationView, 'data-conversation-filter-toggle'), 'Ações do inbox não estão no cabeçalho de conversas.');
+    $assert(str_contains($conversationView, 'id="impulso-workflow-filters"') && str_contains($conversationView, 'impulso-workflow-filters impulso-hidden'), 'Filtros não começam recolhidos.');
+    $assert(!str_contains($conversationView, 'impulso-visible-conversation-count'), 'Contador antigo ainda ocupa o cabeçalho.');
+    $assert(str_contains($index, "\$active_tab !== 'conversations'"), 'A topbar antiga ainda é renderizada na aba de conversas.');
+    foreach (['setFilterPanelOpen', 'aria-expanded', 'impulso-active-filter-count'] as $needle) {
+        $assert(str_contains($javascript, $needle), 'Comportamento de filtros retráteis ausente: ' . $needle);
+    }
+    $assert(str_contains($styles, 'impulso-chat-heading-actions') && str_contains($styles, 'impulso-filter-toggle'), 'Estilos das ações compactas do cabeçalho ausentes.');
+});
+
 $test('caixa de entrada usa leitura local imediata e sincronizacao remota limitada', static function () use ($read, $assert): void {
     $javascript = $read('Assets/js/chatwoot.js');
     $chat = $read('Services/Chat_service.php');

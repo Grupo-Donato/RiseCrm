@@ -98,7 +98,16 @@ foreach (($conversations ?? []) as $conversation) {
                         <h2>Conversas</h2>
                         <span class="impulso-current-channel" id="impulso-current-channel">Todos os canais</span>
                     </div>
-                    <span class="impulso-count-badge" id="impulso-visible-conversation-count"><?php echo count($conversations); ?></span>
+                    <div class="impulso-chat-heading-actions">
+                        <?php if (!empty($can_send_messages)) { ?>
+                            <button class="btn btn-primary impulso-new-conversation-inline" type="button" data-impulso-action="new-conversation" aria-label="Nova conversa" title="Nova conversa">
+                                <i data-feather="plus"></i><span>Nova conversa</span>
+                            </button>
+                        <?php } ?>
+                        <button class="btn btn-default impulso-filter-toggle" type="button" data-conversation-filter-toggle aria-controls="impulso-workflow-filters" aria-expanded="false" aria-label="Mostrar filtros" title="Mostrar filtros">
+                            <i data-feather="sliders"></i><span>Filtros</span><span class="impulso-filter-count impulso-hidden" id="impulso-active-filter-count" aria-hidden="true">0</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="impulso-mobile-channel-picker">
@@ -115,7 +124,7 @@ foreach (($conversations ?? []) as $conversation) {
                     <i data-feather="search"></i>
                     <input type="search" id="impulso-conversation-search" placeholder="Buscar por nome, telefone ou mensagem">
                 </div>
-                <div class="impulso-workflow-filters" aria-label="Filtros operacionais">
+                <div class="impulso-workflow-filters impulso-hidden" id="impulso-workflow-filters" aria-label="Filtros operacionais" aria-hidden="true">
                     <select class="form-control" data-conversation-filter-control="assignee_id" aria-label="Filtrar por agente"><option value="">Todos os agentes</option><option value="unassigned">Sem agente</option><option value="me">Atribuídas a mim</option></select>
                     <select class="form-control" data-conversation-filter-control="team_id" aria-label="Filtrar por equipe"><option value="">Todas as equipes</option></select>
                     <select class="form-control" data-conversation-filter-control="priority" aria-label="Filtrar por prioridade"><option value="">Todas as prioridades</option><option value="none">Sem prioridade</option><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option><option value="urgent">Urgente</option></select>
@@ -126,7 +135,7 @@ foreach (($conversations ?? []) as $conversation) {
                     <input class="form-control" data-conversation-filter-control="last_activity_to" type="date" aria-label="Atividade até">
                     <input class="form-control" data-conversation-filter-control="tags" type="search" placeholder="Tags (separadas por vírgula)" aria-label="Filtrar tags">
                 </div>
-                <div class="impulso-active-filter-row"><div id="impulso-active-filter-summary" aria-live="polite"></div><button type="button" class="btn btn-link btn-sm impulso-hidden" data-conversation-filter-clear>Limpar filtros</button></div>
+                <div class="impulso-active-filter-row impulso-hidden" id="impulso-active-filter-row" aria-hidden="true"><div id="impulso-active-filter-summary" aria-live="polite"></div><button type="button" class="btn btn-link btn-sm impulso-hidden" data-conversation-filter-clear>Limpar filtros</button></div>
             </div>
             <div class="impulso-queue-tabs" role="group" aria-label="Filtrar conversas por status">
                 <button class="impulso-queue-tab active" type="button" aria-pressed="true" data-conversation-filter="all">Todas</button>

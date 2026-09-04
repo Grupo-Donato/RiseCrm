@@ -64,6 +64,7 @@
         status: 'all',
         search: '',
         filters: { assignee_id: '', team_id: '', priority: '', unread: '', conversation_type: '', bot_status: '', last_activity_from: '', last_activity_to: '', tags: '' },
+        filterPanelOpen: false,
         filterCounts: { open: 0, pending: 0, resolved: 0, snoozed: 0, unread: 0 },
         assignmentOptions: { staff: [], teams: [] },
         page: 1,
@@ -882,7 +883,6 @@
         }
         html += '<div class="impulso-conversation-empty' + (state.hasMore ? '' : ' impulso-hidden') + '" id="impulso-conversation-load-more"><button class="btn btn-default btn-sm" type="button">Carregar mais</button></div>';
         list.innerHTML = html;
-        setText('impulso-visible-conversation-count', state.conversations.length, '0');
         list.querySelectorAll('[data-conversation-select]').forEach(function (button) {
             button.addEventListener('click', function () { selectConversation(Number(this.getAttribute('data-conversation-select'))); });
         });
@@ -1225,7 +1225,7 @@
             item.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
         renderChannels();
-        renderFilterSummary();
+        renderFilterSummary(true);
         setActiveConversationId(null, 'filter');
         return loadConversations(true);
     }
@@ -1243,8 +1243,25 @@
             : true;
     }
 
-    function renderFilterSummary() {
+    function setFilterPanelOpen(open) {
+        var panel = document.getElementById('impulso-workflow-filters');
+        var toggle = document.querySelector('[data-conversation-filter-toggle]');
+        state.filterPanelOpen = !!open;
+        if (panel) {
+            panel.classList.toggle('impulso-hidden', !state.filterPanelOpen);
+            panel.setAttribute('aria-hidden', state.filterPanelOpen ? 'false' : 'true');
+        }
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', state.filterPanelOpen ? 'true' : 'false');
+            toggle.setAttribute('aria-label', state.filterPanelOpen ? 'Ocultar filtros' : 'Mostrar filtros');
+            toggle.setAttribute('title', state.filterPanelOpen ? 'Ocultar filtros' : 'Mostrar filtros');
+            toggle.classList.toggle('active', state.filterPanelOpen);
+        }
+    }
+
+    function renderFilterSummary(openIfActive) {
         var summary = document.getElementById('impulso-active-filter-summary');
+        var summaryRow = document.getElementById('impulso-active-filter-row');
         var clear = document.querySelector('[data-conversation-filter-clear]');
         if (!summary) return;
         var active = [];
@@ -1263,7 +1280,24 @@
             chip.textContent = label;
             summary.appendChild(chip);
         });
+        if (summaryRow) {
+            summaryRow.classList.toggle('impulso-hidden', active.length === 0);
+            summaryRow.setAttribute('aria-hidden', active.length === 0 ? 'true' : 'false');
+        }
         if (clear) clear.classList.toggle('impulso-hidden', active.length === 0);
+        var count = document.getElementById('impulso-active-filter-count');
+        if (count) {
+            count.textContent = String(active.length);
+            count.classList.toggle('impulso-hidden', active.length === 0);
+            count.setAttribute('aria-hidden', active.length === 0 ? 'true' : 'false');
+        }
+        if (active.length === 0) {
+            setFilterPanelOpen(false);
+        } else if (openIfActive === true) {
+            setFilterPanelOpen(true);
+        } else {
+            setFilterPanelOpen(state.filterPanelOpen);
+        }
     }
 
     function clearConversationFilters() {
@@ -1278,7 +1312,7 @@
             item.classList.toggle('active', selected);
             item.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
-        renderFilterSummary();
+        renderFilterSummary(false);
         setActiveConversationId(null, 'filter_clear');
         loadConversations(true);
     }
@@ -2272,6 +2306,8 @@
     }
 
     function bindConversationControls() {
+        var filterToggle = document.querySelector('[data-conversation-filter-toggle]');
+        if (filterToggle) filterToggle.addEventListener('click', function () { setFilterPanelOpen(!state.filterPanelOpen); });
         var mobile = document.getElementById('impulso-mobile-channel-filter');
         if (mobile) mobile.addEventListener('change', function () {
             var option = this.options[this.selectedIndex];
@@ -2291,7 +2327,7 @@
         document.querySelectorAll('[data-conversation-filter-control]').forEach(function (control) {
             control.addEventListener('change', function () {
                 state.filters[this.getAttribute('data-conversation-filter-control')] = this.value || '';
-                renderFilterSummary();
+                renderFilterSummary(true);
                 setActiveConversationId(null, 'filter');
                 loadConversations(true);
             });
@@ -2301,7 +2337,7 @@
             state.search = this.value.trim();
             if (state.searchTimer) window.clearTimeout(state.searchTimer);
             setActiveConversationId(null, 'search');
-            renderFilterSummary();
+            renderFilterSummary(true);
             state.searchTimer = window.setTimeout(function () { loadConversations(true); }, 320);
             runtime.timers.push(state.searchTimer);
         });

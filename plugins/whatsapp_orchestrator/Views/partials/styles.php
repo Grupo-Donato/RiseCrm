@@ -4222,4 +4222,82 @@
             width: 94%;
         }
     }
+
+    /* Conversation actions stay in the inbox header so the page keeps its vertical space. */
+    .impulso-hub .impulso-chat-heading {
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .impulso-hub .impulso-chat-heading > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .impulso-hub .impulso-chat-heading h2 {
+        white-space: nowrap;
+    }
+
+    .impulso-hub .impulso-chat-heading-actions {
+        align-items: center;
+        display: flex;
+        flex: 0 0 auto;
+        gap: 6px;
+    }
+
+    .impulso-hub .impulso-chat-heading-actions .btn {
+        align-items: center;
+        display: inline-flex;
+        font-size: 11px;
+        gap: 5px;
+        min-height: 32px;
+        padding: 6px 9px;
+        white-space: nowrap;
+    }
+
+    .impulso-hub .impulso-chat-heading-actions .btn svg {
+        height: 14px;
+        width: 14px;
+    }
+
+    .impulso-hub .impulso-filter-toggle {
+        background: #123d68;
+        border-color: rgba(142, 181, 221, .18);
+        color: #dbe8f7;
+    }
+
+    .impulso-hub .impulso-filter-toggle:hover,
+    .impulso-hub .impulso-filter-toggle.active {
+        background: #174676;
+        border-color: rgba(142, 181, 221, .35);
+        color: #fff;
+    }
+
+    .impulso-hub .impulso-filter-count {
+        align-items: center;
+        background: var(--ih-primary);
+        border-radius: 999px;
+        color: #fff;
+        display: inline-flex;
+        font-size: 9px;
+        font-weight: 700;
+        justify-content: center;
+        line-height: 1;
+        min-height: 16px;
+        min-width: 16px;
+        padding: 2px 4px;
+    }
+
+    .impulso-hub .impulso-active-filter-row {
+        min-height: 0;
+    }
+
+    @media (max-width: 575.98px) {
+        .impulso-hub .impulso-chat-heading-actions .impulso-filter-toggle {
+            font-size: 0;
+            min-width: 32px;
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+    }
 </style>

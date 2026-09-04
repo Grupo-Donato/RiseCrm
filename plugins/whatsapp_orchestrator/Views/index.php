@@ -34,7 +34,7 @@ include __DIR__ . '/partials/styles.php';
                 <div class="alert alert-danger m-3" role="alert"><?php echo esc($integration_error); ?></div>
             <?php } ?>
 
-            <?php if (!empty($can_send_messages)) { ?>
+            <?php if (!empty($can_send_messages) && $active_tab !== 'conversations') { ?>
                 <div class="page-title clearfix impulso-topbar impulso-topbar--compact">
                     <div class="title-button-group skip-dropdown-migration impulso-topbar-actions">
                         <button class="btn btn-primary" type="button" data-impulso-action="new-conversation" aria-label="Nova conversa" title="Nova conversa">

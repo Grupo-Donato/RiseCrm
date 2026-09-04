@@ -118,6 +118,216 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         white-space: pre-wrap;
     }
 
+    .gd-alunos-view-toolbar {
+        align-items: center;
+        background: var(--gd-surface, #082a52) !important;
+        border-color: var(--gd-border, #244d78) !important;
+        color: var(--gd-text, #fff);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        justify-content: space-between;
+    }
+
+    .gd-alunos-view-toolbar h4 {
+        color: var(--gd-text, #fff);
+        font-weight: 600;
+        margin: 0 0 3px;
+    }
+
+    .gd-alunos-view-toolbar p {
+        color: var(--gd-muted, #b7c5d8) !important;
+        margin: 0;
+    }
+
+    .gd-alunos-view-switch {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .gd-alunos-class-list {
+        background: var(--gd-bg, #03182f);
+        color: var(--gd-text, #fff);
+        padding: 20px;
+    }
+
+    .gd-alunos-class-summary {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: space-between;
+        margin-bottom: 15px;
+    }
+
+    .gd-alunos-class-summary p {
+        margin: 0;
+    }
+
+    .gd-alunos-class-card {
+        background: var(--gd-surface, #082a52);
+        border: 1px solid var(--gd-border, #244d78);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+        margin-bottom: 15px;
+        overflow: hidden;
+    }
+
+    .gd-alunos-class-card:last-child {
+        margin-bottom: 0;
+    }
+
+    .gd-alunos-class-heading {
+        align-items: center;
+        background: var(--gd-surface-3, #0e3a6e);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: space-between;
+        padding: 13px 15px;
+    }
+
+    .gd-alunos-class-heading h3 {
+        color: var(--gd-text, #fff);
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .gd-alunos-class-card .table {
+        background: var(--gd-surface, #082a52) !important;
+        margin-bottom: 0;
+        min-width: 960px;
+    }
+
+    .gd-alunos-class-card .table th,
+    .gd-alunos-class-card .table td {
+        border-color: var(--gd-border, #244d78) !important;
+        color: var(--gd-text, #fff) !important;
+        padding: 11px 9px;
+        vertical-align: middle;
+    }
+
+    .gd-alunos-class-card .table th {
+        background: var(--gd-surface-2, #0b315f) !important;
+        color: var(--gd-muted, #b7c5d8) !important;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: none;
+        white-space: nowrap;
+    }
+
+    .gd-alunos-class-card .table tbody tr:hover td {
+        background: var(--gd-surface-3, #0e3a6e) !important;
+    }
+
+    .gd-alunos-class-table th:nth-child(1) { width: 24%; }
+    .gd-alunos-class-table th:nth-child(2) { width: 11%; }
+    .gd-alunos-class-table th:nth-child(3) { width: 22%; }
+    .gd-alunos-class-table th:nth-child(4) { width: 17%; }
+    .gd-alunos-class-table th:nth-child(5) { width: 12%; }
+    .gd-alunos-class-table th:nth-child(6) { width: 12%; }
+
+    .gd-alunos-sort-button {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        color: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        gap: 5px;
+        justify-content: flex-start;
+        padding: 0;
+        text-align: inherit;
+        width: 100%;
+    }
+
+    .gd-alunos-class-table th.text-right .gd-alunos-sort-button { justify-content: flex-end; }
+    .gd-alunos-class-table th.text-center .gd-alunos-sort-button { justify-content: center; }
+
+    .gd-alunos-sort-button:hover,
+    .gd-alunos-sort-button:focus {
+        color: var(--gd-gold-hover, #e4bc55);
+        outline: none;
+    }
+
+    .gd-alunos-sort-icon {
+        color: var(--gd-muted, #b7c5d8);
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    .gd-alunos-class-table th[aria-sort="ascending"] .gd-alunos-sort-icon,
+    .gd-alunos-class-table th[aria-sort="descending"] .gd-alunos-sort-icon {
+        color: var(--gd-gold-hover, #e4bc55);
+        font-weight: 700;
+    }
+
+    .gd-absence-indicator {
+        align-items: center;
+        display: inline-flex;
+        gap: 6px;
+        justify-content: center;
+        min-height: 24px;
+        white-space: nowrap;
+    }
+
+    .gd-absence-bars {
+        align-items: flex-end;
+        display: inline-flex;
+        gap: 2px;
+        height: 17px;
+    }
+
+    .gd-absence-bar {
+        background: var(--gd-border, #244d78);
+        border-radius: 2px;
+        display: block;
+        width: 4px;
+    }
+
+    .gd-absence-bar:nth-child(1) { height: 6px; }
+    .gd-absence-bar:nth-child(2) { height: 9px; }
+    .gd-absence-bar:nth-child(3) { height: 13px; }
+    .gd-absence-bar:nth-child(4) { height: 17px; }
+
+    .gd-absence-clear .gd-absence-bar.is-filled { background: var(--gd-success, #16a34a); }
+    .gd-absence-warning .gd-absence-bar.is-filled { background: var(--gd-warning, #f59e0b); }
+    .gd-absence-critical .gd-absence-bar.is-filled { background: var(--gd-danger, #ef4444); }
+
+    .gd-absence-count {
+        color: var(--gd-text, #fff);
+        font-size: 12px;
+        line-height: 1;
+        min-width: 20px;
+        text-align: center;
+    }
+
+    .gd-absence-critical .gd-absence-count {
+        color: #ff8795;
+    }
+
+    .gd-absence-contact {
+        background: rgba(239, 68, 68, .2);
+        border-radius: 999px;
+        color: #ff8795;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 4px 6px;
+    }
+
+    .gd-alunos-class-card .gd-alunos-class-actions {
+        white-space: nowrap;
+        width: 100px;
+    }
+
+    .gd-alunos-class-actions a {
+        margin: 2px;
+    }
+
     .gd-mobile-ready .action-option,
     .gd-mobile-ready td.option a,
     .gd-mobile-ready td.option .btn {
@@ -183,6 +393,31 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
         .gd-mobile-ready .p20 {
             padding: 15px !important;
+        }
+
+        .gd-mobile-ready .gd-alunos-view-toolbar {
+            align-items: flex-start;
+            padding: 15px !important;
+        }
+
+        .gd-mobile-ready .gd-alunos-view-switch {
+            width: 100%;
+        }
+
+        .gd-mobile-ready .gd-alunos-view-switch .btn {
+            flex: 1 1 140px;
+        }
+
+        .gd-mobile-ready .gd-alunos-class-list {
+            padding: 12px;
+        }
+
+        .gd-mobile-ready .gd-alunos-class-heading {
+            padding: 12px;
+        }
+
+        .gd-mobile-ready .gd-alunos-class-card .table {
+            min-width: 960px;
         }
 
         .gd-mobile-ready .row > [class*="col-"] {
@@ -644,8 +879,25 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
             <?php if ($gd_can_render_tab("alunos")): ?>
             <div role="tabpanel" class="<?php echo $gd_pane_class("alunos"); ?>" id="bombeiros-tab-alunos">
-                <div class="table-responsive">
-                    <table id="bombeiros-alunos-table" class="display" cellspacing="0" width="100%"></table>
+                <div class="gd-alunos-view-toolbar p20 border-bottom">
+                    <div>
+                        <h4>Visualização dos alunos</h4>
+                        <p class="text-off">Escolha entre a lista completa e a organização por turma.</p>
+                    </div>
+                    <div class="gd-alunos-view-switch" role="group" aria-label="Visualização dos alunos">
+                        <button type="button" class="btn btn-primary" data-gd-alunos-view="todos" aria-pressed="true">Todos os alunos</button>
+                        <button type="button" class="btn btn-default" data-gd-alunos-view="turmas" aria-pressed="false">Por turma</button>
+                    </div>
+                </div>
+
+                <div id="gd-alunos-view-todos">
+                    <div class="table-responsive">
+                        <table id="bombeiros-alunos-table" class="display" cellspacing="0" width="100%"></table>
+                    </div>
+                </div>
+
+                <div id="gd-alunos-view-turmas" class="d-none">
+                    <div id="gd-alunos-por-turma-content" aria-live="polite"></div>
                 </div>
             </div>
             <?php endif; ?>
@@ -920,6 +1172,152 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         window.bombeirosUnidadesOptions = <?php echo json_encode($unidades_options, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
         window.gdUnidadesContextoOptions = <?php echo json_encode($unidades_contexto_options, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 
+        var gdAlunosViewStorageKey = "gdAlunosViewMode";
+        var gdAlunosPorTurmaLoaded = false;
+        var gdAlunosPorTurmaLoading = false;
+
+        var loadGdAlunosPorTurma = function () {
+            var $content = $("#gd-alunos-por-turma-content");
+            if (!$content.length || gdAlunosPorTurmaLoaded || gdAlunosPorTurmaLoading) {
+                return;
+            }
+
+            gdAlunosPorTurmaLoading = true;
+            appLoader.show({container: "#gd-alunos-por-turma-content"});
+            appAjaxRequest({
+                url: "<?php echo_uri("grupo_donato/operacional/alunos_por_turma"); ?>",
+                type: "POST",
+                success: function (html) {
+                    $content.html(html);
+                    gdAlunosPorTurmaLoaded = true;
+                    gdAlunosPorTurmaLoading = false;
+                    appLoader.hide();
+                    feather.replace();
+                },
+                error: function () {
+                    gdAlunosPorTurmaLoading = false;
+                    appLoader.hide();
+                    appAlert.error(AppLanugage.somethingWentWrong);
+                }
+            });
+        };
+
+        var gdAlunosSortValue = function ($row, key) {
+            var columnIndexes = {
+                aluno: 0,
+                matricula: 1,
+                responsavel: 2,
+                whatsapp: 3,
+                faltas: 4,
+                mensalidade: 5
+            };
+            var $cell = $row.children("td").eq(columnIndexes[key]);
+
+            if (key === "faltas") {
+                return parseInt($cell.find("[data-absence-count]").attr("data-absence-count") || "0", 10) || 0;
+            }
+
+            if (key === "mensalidade") {
+                var money = $cell.text().replace(/[^0-9,-]/g, "").replace(/\./g, "").replace(",", ".");
+                return parseFloat(money) || 0;
+            }
+
+            return $.trim($cell.text()).toLocaleLowerCase();
+        };
+
+        var sortGdAlunosClassTable = function ($table, $heading, key) {
+            var direction = $heading.attr("aria-sort") === "ascending" ? "descending" : "ascending";
+            var rows = $table.find("tbody > tr").get();
+
+            rows.sort(function (a, b) {
+                var aValue = gdAlunosSortValue($(a), key);
+                var bValue = gdAlunosSortValue($(b), key);
+                var comparison;
+
+                if (typeof aValue === "number" && typeof bValue === "number") {
+                    comparison = aValue - bValue;
+                } else {
+                    comparison = String(aValue).localeCompare(String(bValue), "pt-BR", {
+                        numeric: true,
+                        sensitivity: "base"
+                    });
+                }
+
+                return direction === "ascending" ? comparison : -comparison;
+            });
+
+            $table.find("thead th").attr("aria-sort", "none").find(".gd-alunos-sort-icon").text("↕");
+            $heading.attr("aria-sort", direction).find(".gd-alunos-sort-icon").text(direction === "ascending" ? "↑" : "↓");
+            $table.find("tbody").append(rows);
+        };
+
+        $("body").off("click.gdAlunosSort", ".gd-alunos-sort-button").on("click.gdAlunosSort", ".gd-alunos-sort-button", function () {
+            var $button = $(this);
+            sortGdAlunosClassTable($button.closest("table"), $button.closest("th"), $button.attr("data-gd-alunos-sort-key"));
+        });
+
+        var setGdAlunosView = function (view) {
+            var porTurma = view === "turmas";
+            $("[data-gd-alunos-view]").each(function () {
+                var isActive = $(this).attr("data-gd-alunos-view") === (porTurma ? "turmas" : "todos");
+                $(this).toggleClass("btn-primary", isActive).toggleClass("btn-default", !isActive);
+                $(this).attr("aria-pressed", isActive ? "true" : "false");
+            });
+            $("#gd-alunos-view-todos").toggleClass("d-none", porTurma);
+            $("#gd-alunos-view-turmas").toggleClass("d-none", !porTurma);
+
+            try {
+                localStorage.setItem(gdAlunosViewStorageKey, porTurma ? "turmas" : "todos");
+            } catch (e) {
+            }
+
+            if (porTurma) {
+                loadGdAlunosPorTurma();
+            } else {
+                recalcGdResponsiveTables();
+            }
+        };
+
+        $("[data-gd-alunos-view]").on("click", function () {
+            setGdAlunosView($(this).attr("data-gd-alunos-view"));
+        });
+
+        $("body").off("click", "#gd-alunos-por-turma-content .gd-aluno-por-turma-delete").on("click", "#gd-alunos-por-turma-content .gd-aluno-por-turma-delete", function () {
+            var $link = $(this);
+            $link.appConfirmation({
+                title: "Excluir este aluno?",
+                btnConfirmLabel: "Excluir",
+                btnCancelLabel: "Cancelar",
+                onConfirm: function () {
+                    appAjaxRequest({
+                        url: $link.attr("data-action-url"),
+                        type: "POST",
+                        dataType: "json",
+                        data: {id: $link.attr("data-id")},
+                        success: function (result) {
+                            if (result.success) {
+                                appAlert.success(result.message);
+                                if (window.reloadGdOperationalTables) {
+                                    reloadGdOperationalTables();
+                                }
+                            } else {
+                                appAlert.error(result.message);
+                            }
+                        }
+                    });
+                }
+            });
+
+            return false;
+        });
+
+        var gdAlunosInitialView = "todos";
+        try {
+            gdAlunosInitialView = localStorage.getItem(gdAlunosViewStorageKey) || "todos";
+        } catch (e) {
+        }
+        setGdAlunosView(gdAlunosInitialView);
+
         $("#gd-dashboard-mes, #gd-dashboard-ano").on("change", function () {
             var mes = $("#gd-dashboard-mes").val();
             var ano = $("#gd-dashboard-ano").val();
@@ -1078,18 +1476,26 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                 columns: [
                     {title: "Matrícula", "class": "w90"},
                     {title: "Aluno", "class": "all"},
-                    {title: "Unidade"},
                     {title: "Responsável"},
                     {title: "WhatsApp", "class": "w140"},
                     {title: "Turma", "class": "w120"},
-                    {title: "Camisa", "class": "w80"},
+                    {
+                        title: "Faltas este mês",
+                        "class": "text-center w100",
+                        type: "num",
+                        render: function (data, type) {
+                            if (type === "sort" || type === "type") {
+                                var count = $("<div>").html(data).find("[data-absence-count]").attr("data-absence-count");
+                                return parseInt(count || "0", 10) || 0;
+                            }
+                            return data;
+                        }
+                    },
                     {title: "Mensalidade", "class": "text-right w120"},
-                    {title: "Origem", "class": "text-center w120"},
-                    {title: "Status", "class": "text-center w100"},
                     {title: "<i data-feather='menu' class='icon-16'></i>", "class": "all text-center option w100"}
                 ],
-                printColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+                printColumns: [0, 1, 2, 3, 4, 5, 6],
+                xlsColumns: [0, 1, 2, 3, 4, 5, 6]
             });
         }
 

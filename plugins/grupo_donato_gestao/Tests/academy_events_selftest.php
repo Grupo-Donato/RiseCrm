@@ -19,7 +19,8 @@ function gd_academy_events_selftest(): void
     $professorAccess = new \grupo_donato_gestao\Services\AccessService($professor);
     gd_assert("professor recebe somente permissao Academy explicitamente atribuida", $professorAccess->can("gd_academy_events_view") && !$professorAccess->can("gd_finance_view"));
     $professorWithoutEvents = (object) ["user_type" => "staff", "job_title" => "Professor", "permissions" => []];
-    gd_assert("professor sem permissao nao recebe a aba de eventos", !(new \grupo_donato_gestao\Services\AccessService($professorWithoutEvents))->can("gd_academy_events_view") && !in_array("eventos", \grupo_donato_gestao\Services\RoleAccessService::allowed_operational_sections($professorWithoutEvents), true));
+    gd_assert("todos os usuarios da GD Academy recebem a aba de eventos", \grupo_donato_gestao\Services\RoleAccessService::can_view_academy_menu($professorWithoutEvents) && in_array("eventos", \grupo_donato_gestao\Services\RoleAccessService::allowed_operational_sections($professorWithoutEvents), true));
+    gd_assert("permissao granular de eventos continua separada", !(new \grupo_donato_gestao\Services\AccessService($professorWithoutEvents))->can("gd_academy_events_view"));
 
     $unit = model("grupo_donato_gestao\\Models\\Gd_units_model")->get_default();
     if (!$unit) {

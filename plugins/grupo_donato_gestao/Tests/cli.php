@@ -189,7 +189,7 @@ if ($task === "operacional-check") {
     $routesSrc = (string) @file_get_contents(__DIR__ . "/../Operacional/Config/Routes.php");
     $hasRoute = strpos($routesSrc, 'group("grupo_donato/operacional"') !== false && strpos($routesSrc, 'grupo_donato_gestao\\Operacional\\Controllers') !== false;
     $ok = $ok && $hasRoute; echo ($hasRoute ? "[PASS]" : "[FAIL]") . " rotas operacional (arquivo + namespace)\n";
-    $views = ["index", "lista_pagamentos", "modal_aluno", "financeiro_resumo", "public_matricula", "eventos", "modal_evento"];
+    $views = ["index", "lista_pagamentos", "modal_aluno", "financeiro_resumo", "public_matricula", "eventos", "modal_evento", "lista_alunos_por_turma"];
     foreach ($views as $v) { $p = __DIR__ . "/../Operacional/Views/$v.php"; $vok = is_file($p); $ok = $ok && $vok; echo ($vok ? "[PASS]" : "[FAIL]") . " view: $v\n"; }
     $db = db_connect();
     $tcount = count($db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [gd_like_literal_prefix($db->getPrefix() . "grupo_donato_")])->getResultArray());
@@ -712,6 +712,25 @@ if ($task === "selftest") {
         })) === count($professores)
     );
     gd_assert(
+        "todos os professores que acessam a GD Academy também acessam Eventos",
+        count(array_filter($professores, static function ($professor) {
+            return RoleAccessService::can_view_academy_menu($professor)
+                && RoleAccessService::can_access_operational_section($professor, "eventos");
+        })) === count($professores)
+    );
+    gd_assert(
+        "rota de alunos por turma pertence à aba Alunos",
+        RoleAccessService::operational_route_section("alunos_por_turma") === "alunos"
+    );
+    $absence_counts = model("grupo_donato_gestao\\Operacional\\Models\\Bombeiros_presenca_model")->get_absence_counts($unit_id);
+    $critical_absence_indicator = bombeiros_faltas_indicator(4);
+    gd_assert(
+        "contador de faltas por aluno e alerta de contato estão disponíveis",
+        is_array($absence_counts)
+            && str_contains($critical_absence_indicator, "gd-absence-critical")
+            && str_contains($critical_absence_indicator, "Contato")
+    );
+    gd_assert(
         "secretaria acessa todos os menus internos da GD Academy sem acessar Administrativos",
         RoleAccessService::can_view_academy_menu($secretaria)
             && RoleAccessService::can_access_operational_section($secretaria, "alunos")
@@ -720,6 +739,7 @@ if ($task === "selftest") {
             && RoleAccessService::can_access_operational_section($secretaria, "responsaveis")
             && RoleAccessService::can_access_operational_section($secretaria, "presenca")
             && RoleAccessService::can_access_operational_section($secretaria, "pagamentos")
+            && RoleAccessService::can_access_operational_section($secretaria, "eventos")
             && RoleAccessService::can_access_operational_section($secretaria, "comprovantes")
             && !RoleAccessService::can_access_operational_section($secretaria, "financeiro")
     );

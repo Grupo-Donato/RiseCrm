@@ -174,6 +174,32 @@ if (!function_exists("bombeiros_install_or_update")) {
         ];
     }
 
+    function bombeiros_faltas_indicator($count)
+    {
+        $count = max(0, (int) $count);
+        $level = min($count, 4);
+        $state = $count >= 4 ? "critical" : ($count > 0 ? "warning" : "clear");
+        $label = ($count === 1 ? "1 falta" : $count . " faltas") . " neste mês";
+        $accessible_label = $count >= 4
+            ? $label . ". Entrar em contato com o responsável."
+            : $label;
+        $display_count = $count >= 4 ? "4+" : (string) $count;
+        $escape = static function ($value) {
+            return htmlspecialchars((string) $value, ENT_QUOTES, "UTF-8");
+        };
+        $bars = "";
+        for ($bar = 1; $bar <= 4; $bar++) {
+            $bars .= "<span class=\"gd-absence-bar" . ($bar <= $level ? " is-filled" : "") . "\"></span>";
+        }
+
+        return "<span class=\"gd-absence-indicator gd-absence-$state\" data-absence-count=\"$count\" data-order=\"$count\" role=\"img\" aria-label=\"" . $escape($accessible_label) . "\" title=\"" . $escape($accessible_label) . "\">
+            <span class=\"gd-absence-sort-value sr-only\">$count</span>
+            <span class=\"gd-absence-bars\" aria-hidden=\"true\">$bars</span>
+            <strong class=\"gd-absence-count\" aria-hidden=\"true\">$display_count</strong>" .
+            ($count >= 4 ? "<span class=\"gd-absence-contact\">Contato</span>" : "") .
+            "</span>";
+    }
+
     function bombeiros_left_menu_native_name($key, $item)
     {
         return $item["name"];

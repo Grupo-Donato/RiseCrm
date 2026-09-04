@@ -83,6 +83,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("trocar_unidade", "Bombeiros::trocar_unidade");
 
     $routes->post("alunos_list_data", "Bombeiros::alunos_list_data");
+    $routes->post("alunos_por_turma", "Bombeiros::alunos_por_turma");
     $routes->post("responsaveis_list_data", "Bombeiros::responsaveis_list_data");
     $routes->post("unidades_list_data", "Bombeiros::unidades_list_data");
     $routes->post("pagamentos_list_data", "Bombeiros::pagamentos_list_data");

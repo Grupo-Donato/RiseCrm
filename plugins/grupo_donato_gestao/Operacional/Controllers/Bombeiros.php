@@ -510,6 +510,7 @@ class Bombeiros extends Security_Controller
         $options = ["unidade_id" => $this->_active_unit_id(), "status_not_in" => ["Cancelado", "Concluido"]];
 
         $list_data = $this->Bombeiros_alunos_model->get_details($options)->getResult();
+        $this->_append_absence_counts($list_data);
         $result = [];
 
         foreach ($list_data as $data) {
@@ -517,6 +518,50 @@ class Bombeiros extends Security_Controller
         }
 
         echo json_encode(["data" => $result]);
+    }
+
+    public function alunos_por_turma()
+    {
+        $list_data = $this->Bombeiros_alunos_model->get_details([
+            "unidade_id" => $this->_active_unit_id(),
+            "status_not_in" => ["Cancelado", "Concluido"]
+        ])->getResult();
+        $this->_append_absence_counts($list_data);
+        $turmas = [];
+
+        foreach ($list_data as $aluno) {
+            $turma = trim((string) ($aluno->turma ?? ""));
+            $turma_key = $turma ?: "__sem_turma__";
+            if (!isset($turmas[$turma_key])) {
+                $turmas[$turma_key] = [
+                    "label" => $turma ?: "Sem turma",
+                    "alunos" => []
+                ];
+            }
+            $turmas[$turma_key]["alunos"][] = $aluno;
+        }
+
+        $turma_order = array_keys(bombeiros_turmas_values());
+        $turma_positions = array_flip($turma_order);
+        uasort($turmas, function ($a, $b) use ($turma_positions) {
+            $a_position = $turma_positions[$a["label"]] ?? PHP_INT_MAX;
+            $b_position = $turma_positions[$b["label"]] ?? PHP_INT_MAX;
+            if ($a_position !== $b_position) {
+                return $a_position <=> $b_position;
+            }
+            if ($a["label"] === "Sem turma") {
+                return 1;
+            }
+            if ($b["label"] === "Sem turma") {
+                return -1;
+            }
+            return strcasecmp($a["label"], $b["label"]);
+        });
+
+        return $this->template->view('grupo_donato_gestao\\Operacional\\Views\\lista_alunos_por_turma', [
+            "turmas" => $turmas,
+            "total_alunos" => count($list_data)
+        ]);
     }
 
     public function responsaveis_list_data()
@@ -2726,14 +2771,26 @@ class Bombeiros extends Security_Controller
     private function _aluno_row_data($id)
     {
         $data = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
+        if ($data) {
+            $students = [$data];
+            $this->_append_absence_counts($students);
+        }
         return $this->_aluno_row($data);
+    }
+
+    private function _append_absence_counts(array &$students)
+    {
+        $counts = $this->Bombeiros_presenca_model->get_absence_counts($this->_active_unit_id());
+        foreach ($students as $student) {
+            if (is_object($student)) {
+                $student->faltas_count = $counts[(int) ($student->id ?? 0)] ?? 0;
+            }
+        }
     }
 
     private function _aluno_row($data)
     {
-        $status_class = $this->_aluno_status_class($data->status);
         $matricula = $data->matricula ?: (string) $data->id;
-        $origem_matricula = $this->_origem_matricula_label($data->origem_matricula ?? "manual");
         $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
             "class" => "edit",
             "title" => "Editar aluno",
@@ -2753,14 +2810,11 @@ class Bombeiros extends Security_Controller
         return [
             esc($matricula),
             esc($data->nome_aluno),
-            esc($data->nome_unidade ?: "-"),
             esc($data->responsavel_nome ?: "-"),
             esc($this->_format_phone($data->responsavel_whats)),
             esc($data->turma ?: "-"),
-            esc($data->tamanho_camisa ?: "-"),
+            bombeiros_faltas_indicator($data->faltas_count ?? 0),
             "R$ " . number_format((float) $data->valor_mensalidade, 2, ",", "."),
-            "<span class='badge bg-secondary'>" . esc($origem_matricula) . "</span>",
-            "<span class='badge $status_class'>" . esc($this->_aluno_status_label($data->status)) . "</span>",
             $options
         ];
     }

@@ -104,7 +104,7 @@ final class RoleAccessService
         "comprovantes",
     ];
 
-    /** Todos os professores têm acesso operacional à aba de Pagamentos. */
+    /** Todos os professores têm acesso operacional às abas da Academia. */
     private const OPERATIONAL_PROFESSOR_SECTIONS = [
         "alunos",
         "responsaveis",
@@ -133,6 +133,7 @@ final class RoleAccessService
         "leads_palestra_list_data" => "leads",
         "custos_list_data" => "custos",
         "aluno_modal_form" => "alunos",
+        "alunos_por_turma" => "alunos",
         "responsavel_modal_form" => "responsaveis",
         "unidade_modal_form" => "unidades",
         "lead_palestra_modal_form" => "leads",
@@ -335,16 +336,13 @@ final class RoleAccessService
                 "responsaveis",
                 "presenca",
                 "pagamentos",
+                "eventos",
                 "comprovantes",
             ];
         }
 
         if (self::is_professor($user)) {
-            $sections = self::OPERATIONAL_PROFESSOR_SECTIONS;
-            if (!(new AccessService($user))->can("gd_academy_events_view")) {
-                $sections = array_values(array_diff($sections, ["eventos"]));
-            }
-            return $sections;
+            return self::OPERATIONAL_PROFESSOR_SECTIONS;
         }
 
         return [];

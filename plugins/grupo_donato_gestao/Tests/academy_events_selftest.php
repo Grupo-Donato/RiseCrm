@@ -17,10 +17,21 @@ function gd_academy_events_selftest(): void
 
     $professor = (object) ["user_type" => "staff", "job_title" => "Professor", "permissions" => ["gd_academy_events_view" => "1"]];
     $professorAccess = new \grupo_donato_gestao\Services\AccessService($professor);
-    gd_assert("professor recebe somente permissao Academy explicitamente atribuida", $professorAccess->can("gd_academy_events_view") && !$professorAccess->can("gd_finance_view"));
+    gd_assert("professor recebe acesso à Academy sem acesso ao financeiro administrativo", $professorAccess->can("gd_academy_events_view") && !$professorAccess->can("gd_finance_view"));
     $professorWithoutEvents = (object) ["user_type" => "staff", "job_title" => "Professor", "permissions" => []];
     gd_assert("todos os usuarios da GD Academy recebem a aba de eventos", \grupo_donato_gestao\Services\RoleAccessService::can_view_academy_menu($professorWithoutEvents) && in_array("eventos", \grupo_donato_gestao\Services\RoleAccessService::allowed_operational_sections($professorWithoutEvents), true));
-    gd_assert("permissao granular de eventos continua separada", !(new \grupo_donato_gestao\Services\AccessService($professorWithoutEvents))->can("gd_academy_events_view"));
+    $academyPermissions = [
+        "gd_academy_events_view",
+        "gd_academy_events_manage",
+        "gd_academy_events_lineup",
+        "gd_academy_events_evaluate",
+        "gd_academy_events_finance",
+        "gd_academy_events_finalize",
+        "gd_academy_evaluations_view",
+        "gd_academy_evaluations_manage",
+    ];
+    $academyAccess = new \grupo_donato_gestao\Services\AccessService($professorWithoutEvents);
+    gd_assert("quem vê a GD Academy pode alterar tudo dentro dela", array_reduce($academyPermissions, static fn(bool $allowed, string $permission): bool => $allowed && $academyAccess->can($permission), true));
 
     $unit = model("grupo_donato_gestao\\Models\\Gd_units_model")->get_default();
     if (!$unit) {

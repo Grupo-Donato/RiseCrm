@@ -31,13 +31,14 @@ Recebíveis pagos não são apagados nem cancelados; o cancelamento do evento re
 
 ## Permissões
 
-- `gd_academy_events_view`: acesso à aba e leitura.
-- `gd_academy_events_manage`: evento, categorias, partidas e checklist.
-- `gd_academy_events_lineup`: convocação, escalação e confirmação.
-- `gd_academy_events_evaluate`: avaliações e estatísticas por partida.
-- `gd_academy_events_finance`: geração e baixa financeira do evento.
-- `gd_academy_events_finalize`: finalizar ou cancelar.
-- `gd_academy_evaluations_view/manage`: histórico esportivo e extensão de avaliações.
+O acesso ao menu **GD Academy** é a autorização do módulo. Quem pode visualizar
+esse menu pode operar todos os recursos da Academy, inclusive criar/editar
+eventos, categorias e partidas, convocar atletas, registrar avaliações,
+movimentar o financeiro do evento e finalizar ou cancelar eventos.
+
+As chaves `gd_academy_events_*` e `gd_academy_evaluations_*` continuam sendo
+aceitas pelo backend para compatibilidade com as rotas existentes, mas não
+restringem usuários que já têm acesso ao menu GD Academy.
 
 Os endpoints continuam sob o grupo CSRF de `grupo_donato/operacional` e todas as consultas de domínio são limitadas por `unit_id`.
 

@@ -52,6 +52,14 @@ class AccessService
             return false;
         }
 
+        // A visibilidade do menu GD Academy é o nível de acesso do módulo.
+        // Quem já pode abrir esse menu deve conseguir operar tudo dentro dele,
+        // inclusive Eventos, sem depender de checkboxes granulares legados.
+        if (str_starts_with($permission_key, "gd_academy_")
+            && RoleAccessService::can_view_academy_menu($this->login_user)) {
+            return true;
+        }
+
         if (in_array($permission_key, self::ADMINISTRATIVE_PERMISSION_KEYS, true)
             && !RoleAccessService::has_administrative_access($this->login_user)) {
             return false;
@@ -67,9 +75,9 @@ class AccessService
         }
 
         if (RoleAccessService::is_professor($this->login_user)) {
-            // Professors receive only explicitly assigned Academy permissions.
             // Legacy operational access remains available to the existing
-            // school screens, but event actions are still granular.
+            // school screens. Academy permissions were handled above by the
+            // menu-level access rule.
             $academyPermission = str_starts_with($permission_key, "gd_academy_");
             if (!$academyPermission) {
                 return false;

@@ -243,6 +243,12 @@ class Bombeiros extends Security_Controller
         return $this->_event_json(fn() => $this->_academy_event_service()->updateParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost()));
     }
 
+    public function save_event_lineup()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->saveLineup((int) $this->request->getPost("match_id"), $this->request->getPost()));
+    }
+
     public function delete_event_participant()
     {
         $this->_event_require("gd_academy_events_lineup");
@@ -6117,6 +6123,7 @@ class Bombeiros extends Security_Controller
                 "gd_score_out_of_range" => "A nota deve estar entre 1 e 5.",
                 "gd_category_age_mismatch" => "O atleta nao pertence a faixa etaria da categoria.",
                 "gd_category_capacity_reached" => "O limite de atletas desta categoria foi atingido.",
+                "gd_lineup_required" => "Nenhum atleta foi enviado para a escalação.",
                 "gd_external_athlete_not_found" => "Atleta externo nao encontrado nesta unidade.",
                 "gd_match_participant_mismatch" => "A partida nao pertence a categoria do atleta.",
                 "gd_event_responsible_required" => "A participacao precisa de um responsavel valido para cobranca.",

@@ -61,6 +61,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("academy_student_search", "Bombeiros::academy_student_search");
     $routes->post("add_event_participant", "Bombeiros::add_event_participant");
     $routes->post("update_event_participant", "Bombeiros::update_event_participant");
+    $routes->post("save_event_lineup", "Bombeiros::save_event_lineup");
     $routes->post("delete_event_participant", "Bombeiros::delete_event_participant");
     $routes->post("save_event_confirmation", "Bombeiros::save_event_confirmation");
     $routes->post("event_charge", "Bombeiros::event_charge");

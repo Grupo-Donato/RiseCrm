@@ -123,6 +123,15 @@ function gd_academy_events_selftest(): void
         gd_assert("leitura de estatísticas da categoria", count($categoryStats) === 1);
         gd_assert("leitura de resumo da partida", (int) $matchView["match"]->id === $matchId);
         gd_assert("leitura de escalação da partida", count($matchParticipants) === 1);
+        $lineupInput = [(int) $matchParticipants[0]->participant_id => [
+            "lineup_status" => "starter",
+            "position" => "Goleiro",
+            "lock_version" => (int) $matchParticipants[0]->lock_version,
+        ]];
+        $lineupSaved = $service->saveLineup($matchId, ["participants" => $lineupInput]);
+        $lineupRow = $db->table($prefix . "gd_academy_event_participants")->where("id", $participantId)->get(1)->getRow();
+        gd_assert("salva a escalação completa em uma única operação", !empty($lineupSaved["saved"]) && (int) ($lineupSaved["updated"] ?? 0) === 1 && $lineupRow && (string) $lineupRow->lineup_status === "starter" && (string) $lineupRow->position === "Goleiro");
+        gd_assert("escalação em lote respeita a versão concorrente", gd_throws(fn() => $service->saveLineup($matchId, ["participants" => $lineupInput]), "gd_edit_conflict"));
         gd_assert("leitura de avaliação individual", (int) $evaluationView["participant"]->id === $participantId);
         gd_assert("leitura de financeiro do evento", count($financeView["participants"]) === 2);
         gd_assert("filtros da aba de pagamentos do evento", count($financeOpenPage["data"]) === 1 && count($financeGuestPage["data"]) === 1);

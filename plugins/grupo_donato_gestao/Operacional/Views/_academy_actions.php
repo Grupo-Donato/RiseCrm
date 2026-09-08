@@ -29,7 +29,7 @@ $(function(){
         "winger":"Ponta", "ponta":"Ponta",
         "forward":"Atacante", "atacante":"Atacante"
     };
-    $(".gd-academy-page input[name='position']").each(function(){
+    $(".gd-academy-page input[name='position'], .gd-academy-page input[data-gd-position-input='1']").each(function(){
         var input=$(this), raw=$.trim(input.val()||""), current=positionAliases[raw.toLowerCase()]||raw;
         var select=$("<select/>",{class:input.attr("class")||"form-control",name:input.attr("name")||"position"});
         if(input.attr("id")) select.attr("id",input.attr("id"));

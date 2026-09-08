@@ -15,7 +15,7 @@ O módulo de eventos vive dentro da tela operacional oficial da Academy. A entra
 2. Criar categorias com faixa etária, gênero, equipe técnica, limite e valor.
 3. Registrar partidas e atualizar o placar após o jogo.
 4. Pesquisar alunos da operação e adicionar convidados externos com dados de origem.
-5. Registrar confirmação e escalação. A mudança da confirmação também grava a linha de confirmação/auditoria.
+5. Registrar confirmação e escalação. A escalação da partida permite definir todos os atletas e salvar a convocação de uma vez; a mudança da confirmação também grava a linha de confirmação/auditoria.
 6. Gerar o recebível individual, baixar pagamentos parciais ou totais e consultar a conta familiar.
 7. Registrar avaliação de 1 a 5, pontos fortes, desenvolvimento, recomendação e nota interna.
 8. Registrar estatísticas por partida e concluir o checklist.
@@ -44,7 +44,12 @@ Os endpoints continuam sob o grupo CSRF de `grupo_donato/operacional` e todas as
 
 ## Endpoints principais
 
-`eventos_list_data`, `evento_modal_form`, `save_event`, `save_event_category`, `save_event_match`, `save_event_match_score`, `save_event_staff`, `academy_student_search`, `add_event_participant`, `update_event_participant`, `delete_event_participant`, `save_event_confirmation`, `event_charge`, `event_payment`, `save_event_evaluation`, `save_event_stat`, `save_event_checklist`, `toggle_event_checklist`, `event_family_account`, `student_sport_history`, `finalize_event` e `cancel_event`.
+`eventos_list_data`, `evento_modal_form`, `save_event`, `save_event_category`, `save_event_match`, `save_event_match_score`, `save_event_staff`, `academy_student_search`, `add_event_participant`, `update_event_participant`, `save_event_lineup`, `delete_event_participant`, `save_event_confirmation`, `event_charge`, `event_payment`, `save_event_evaluation`, `save_event_stat`, `save_event_checklist`, `toggle_event_checklist`, `event_family_account`, `student_sport_history`, `finalize_event` e `cancel_event`.
+
+`save_event_lineup` recebe os participantes da partida em uma única requisição,
+valida a categoria e a versão de cada registro e grava as alterações em uma
+transação única. Se outro usuário alterar um atleta durante a edição, nenhuma
+alteração parcial é aplicada e a tela informa o conflito para recarregamento.
 
 A exclusão de um convocado é lógica: a participação e seus registros de confirmação,
 avaliação e estatísticas ficam preservados para auditoria. Se houver uma cobrança em

@@ -436,7 +436,7 @@ final class AcademyEventService extends CustomerDataService
         $s = $this->table("grupo_donato_alunos");
         $x = $this->table("gd_academy_external_athletes");
         $stats = $this->table("gd_academy_match_player_stats");
-        $sql = "SELECT p.id participant_id,p.athlete_type,COALESCE(s.nome_aluno,x.name) athlete_name,p.position,p.lineup_status,
+        $sql = "SELECT p.id participant_id,p.athlete_type,COALESCE(s.nome_aluno,x.name) athlete_name,p.position,p.lineup_status,p.lock_version,
             st.id stat_id,st.goals,st.assists,st.penalties_scored,st.penalties_missed,st.yellow_cards,st.red_cards,st.saves,st.minutes_played,st.notes stat_notes
             FROM `$p` p LEFT JOIN `$s` s ON s.id=p.student_id AND s.unidade_id=? AND s.deleted=0
             LEFT JOIN `$x` x ON x.id=p.external_athlete_id AND x.unit_id=p.unit_id AND x.deleted=0
@@ -701,6 +701,86 @@ final class AcademyEventService extends CustomerDataService
         $changed = $this->db->table($table)->where("id", $id)->where("unit_id", $this->unit_id)->where("lock_version", (int) $row->lock_version)->update($data); if (!$changed || $this->db->affectedRows() !== 1) throw new \DomainException("gd_edit_conflict");
         if ($confirmation !== (string) $row->confirmation_status) $this->saveConfirmation($id, ["status" => $confirmation, "responsible_id" => $row->responsible_id, "origin" => "admin"]);
         $this->audit_change("update", "academy_event_participant", $id, (array) $row, (array) $this->scopedRow($table, $id)); return ["saved" => true, "id" => $id];
+    }
+
+    public function saveLineup(int $matchId, array $input): array
+    {
+        $match = $this->scopedRow($this->table("gd_academy_event_matches"), $matchId);
+        if (!$match) throw new \DomainException("gd_record_not_found");
+
+        $participantsInput = $input["participants"] ?? [];
+        if (!is_array($participantsInput) || !$participantsInput) throw new \DomainException("gd_lineup_required");
+
+        $participantIds = [];
+        foreach ($participantsInput as $participantId => $participantInput) {
+            $id = (int) $participantId;
+            if ($id <= 0 || !is_array($participantInput) || in_array($id, $participantIds, true)) throw new \DomainException("gd_invalid_value");
+            $participantIds[] = $id;
+        }
+
+        $participantTable = $this->table("gd_academy_event_participants");
+        $rows = $this->db->table($participantTable)
+            ->where("unit_id", $this->unit_id)
+            ->where("event_id", (int) $match->event_id)
+            ->where("category_id", (int) $match->category_id)
+            ->where("deleted", 0)
+            ->whereIn("id", $participantIds)
+            ->get()
+            ->getResult();
+        if (count($rows) !== count($participantIds)) throw new \DomainException("gd_match_participant_mismatch");
+
+        $rowsById = [];
+        foreach ($rows as $row) $rowsById[(int) $row->id] = $row;
+        $changes = [];
+        foreach ($participantIds as $id) {
+            $row = $rowsById[$id];
+            $participantInput = $participantsInput[$id] ?? $participantsInput[(string) $id] ?? [];
+            $lineup = (string) ($participantInput["lineup_status"] ?? $row->lineup_status);
+            if (!in_array($lineup, self::LINEUP_STATUSES, true)) throw new \DomainException("gd_invalid_value");
+            $positionInput = trim((string) ($participantInput["position"] ?? ""));
+            $positionKey = self::positionKey($positionInput);
+            if ($positionInput !== "" && !$positionKey) throw new \DomainException("gd_invalid_position");
+            $position = $positionKey ? self::POSITION_LABELS[$positionKey] : null;
+            $lockVersion = (int) ($participantInput["lock_version"] ?? 0);
+            if ($lockVersion <= 0 || $lockVersion !== (int) $row->lock_version) throw new \DomainException("gd_edit_conflict");
+            if ($lineup !== (string) $row->lineup_status || $position !== ($row->position ?: null)) {
+                $changes[] = ["row" => $row, "lineup_status" => $lineup, "position" => $position, "lock_version" => $lockVersion];
+            }
+        }
+
+        if (!$changes) return ["saved" => true, "match_id" => $matchId, "updated" => 0, "total" => count($participantIds)];
+
+        $now = gmdate("Y-m-d H:i:s");
+        $this->db->transBegin();
+        try {
+            foreach ($changes as $change) {
+                $row = $change["row"];
+                $data = $this->stamp([
+                    "lineup_status" => $change["lineup_status"],
+                    "position" => $change["position"],
+                    "lock_version" => (int) $change["lock_version"] + 1,
+                    "updated_at" => $now,
+                ], false);
+                $changed = $this->db->table($participantTable)
+                    ->where("id", (int) $row->id)
+                    ->where("unit_id", $this->unit_id)
+                    ->where("deleted", 0)
+                    ->where("lock_version", (int) $change["lock_version"])
+                    ->update($data);
+                if (!$changed || $this->db->affectedRows() !== 1) throw new \DomainException("gd_edit_conflict");
+            }
+            if ($this->db->transCommit() === false) throw new \RuntimeException("save_failed");
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+
+        foreach ($changes as $change) {
+            $row = $change["row"];
+            $id = (int) $row->id;
+            $this->audit_change("update", "academy_event_participant", $id, (array) $row, (array) $this->scopedRow($participantTable, $id), ["match_id" => $matchId, "bulk_lineup" => true]);
+        }
+        return ["saved" => true, "match_id" => $matchId, "updated" => count($changes), "total" => count($participantIds)];
     }
 
     public function deleteParticipant(int $id): array

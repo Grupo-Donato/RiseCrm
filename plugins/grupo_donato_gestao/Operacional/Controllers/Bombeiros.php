@@ -243,6 +243,12 @@ class Bombeiros extends Security_Controller
         return $this->_event_json(fn() => $this->_academy_event_service()->updateParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost()));
     }
 
+    public function delete_event_participant()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->deleteParticipant((int) $this->request->getPost("participant_id")));
+    }
+
     public function save_event_confirmation()
     {
         $this->_event_require("gd_academy_events_lineup");
@@ -6119,6 +6125,7 @@ class Bombeiros extends Security_Controller
                 "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
                 "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",
                 "gd_invalid_event_transition" => "A transicao deste evento nao e permitida.",
+                "gd_finance_paid_cannot_cancel" => "Nao e possivel excluir um convocado com pagamento registrado. Estorne o pagamento antes.",
             ];
             $key = $e->getMessage();
             echo json_encode(["success" => false, "message" => $messages[$key] ?? $key ?: "Nao foi possivel concluir a operacao.", "error_code" => $key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

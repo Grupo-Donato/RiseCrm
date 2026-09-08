@@ -41,7 +41,9 @@ class Campaign_dispatch_service
         private ?Chat_conversations_model $conversations = null,
         private ?Chat_contacts_model $contacts = null,
         private ?Chat_settings_model $settings = null,
-        ?BaseConnection $db = null
+        ?BaseConnection $db = null,
+        private ?Chat_service $chat = null,
+        private ?Media_service $media = null
     ) {
         $this->campaigns ??= new Chat_campaigns_model();
         $this->audienceRecipients ??= new Chat_campaign_recipients_model();
@@ -53,6 +55,28 @@ class Campaign_dispatch_service
         $this->contacts ??= new Chat_contacts_model();
         $this->settings ??= new Chat_settings_model();
         $this->db = $db ?? db_connect('default');
+    }
+
+    /** Idempotent stop; serialize against the last provider call before returning. */
+    public function stop(int $campaignId, string $reason = 'Campanha encerrada pelo usuario.'): void
+    {
+        $lock = 'chat_campaign_dispatch_' . $campaignId;
+        $this->acquireLock($lock, 10, 'Envio em andamento; tente encerrar novamente.');
+        try {
+            $campaign = $this->campaigns->get_by_id($campaignId);
+            if (!$campaign) throw new RuntimeException('Campanha nao encontrada.', 404);
+            if (in_array($campaign['status'], ['cancelled', 'completed'], true)) return;
+            $now = gmdate('Y-m-d H:i:s');
+            $this->campaigns->update_record($campaignId, ['status' => 'cancelled', 'finished_at' => $now]);
+            $this->db->table('chat_campaign_run_recipients')->where('campaign_id', $campaignId)->where('deleted', 0)->whereIn('status', ['pending', 'retry', 'sending'])->update(['status' => 'failed', 'error_message' => $reason, 'updated_at' => $now]);
+            $runs = $this->db->table('chat_campaign_runs')->where('campaign_id', $campaignId)->where('deleted', 0)->where('status', 'running')->get()->getResultArray();
+            foreach ($runs as $run) {
+                $this->refreshMetrics($campaignId, (int) $run['id']);
+                $this->runs->update_record((int) $run['id'], ['status' => 'cancelled', 'finished_at' => $now, 'error_message' => $reason]);
+            }
+        } finally {
+            $this->releaseLock($lock);
+        }
     }
 
     /** Moves due campaigns to running and enqueues one rate-limited minute batch. */
@@ -72,7 +96,24 @@ class Campaign_dispatch_service
         foreach ($rows as $campaign) {
             $campaignId = (int) $campaign['id'];
             $schedule = $this->decode((string) ($campaign['schedule_json'] ?? ''));
-            if (($campaign['status'] ?? '') === 'scheduled' && !$this->isDue($schedule)) {
+            if (Campaign_schedule::expired($schedule)) {
+                $this->stop($campaignId, 'Periodo da campanha encerrado.');
+                continue;
+            }
+            // An existing run can resume outside its initial two-minute window.
+            $activeRun = $this->db->table('chat_campaign_runs')->where('campaign_id', $campaignId)->where('status', 'running')->where('deleted', 0)->countAllResults() > 0;
+            if (!$activeRun && ($schedule['type'] ?? '') === 'recurring' && isset($schedule['window_seconds'])) {
+                $at = strtotime((string) ($schedule['next_at'] ?? $schedule['at']));
+                if (time() >= $at + (int) $schedule['window_seconds']) {
+                    $schedule['next_at'] = Campaign_schedule::occurrence($schedule, time() - (int) $schedule['window_seconds'] + 1);
+                    if (!$schedule['next_at']) {
+                        $this->stop($campaignId, 'Periodo da campanha encerrado.');
+                        continue;
+                    }
+                    $this->campaigns->update_record($campaignId, ['schedule_json' => $this->encode($schedule)]);
+                }
+            }
+            if (!$activeRun && ($campaign['status'] ?? '') === 'scheduled' && !$this->isDue($schedule)) {
                 continue;
             }
 
@@ -148,21 +189,35 @@ class Campaign_dispatch_service
         if ($this->isTerminalRecipientStatus((string) ($recipient['status'] ?? ''))) {
             return ['processed' => false, 'duplicate' => true];
         }
-        if (!empty($recipient['available_at']) && strtotime((string) $recipient['available_at']) > time()) {
+        if (!empty($recipient['available_at']) && strtotime((string) $recipient['available_at'] . ' UTC') > time()) {
             return ['processed' => false, 'reason' => 'recipient_not_available'];
         }
 
-        $lock = 'chat_campaign_run_recipient_' . $runRecipientId;
+        $lock = 'chat_campaign_dispatch_' . $campaignId;
         $this->acquireLock($lock, 2, 'Destinatario ocupado; tente novamente.');
         try {
+            $campaign = $this->campaigns->get_by_id($campaignId);
+            if (!$campaign || $campaign['status'] !== 'running') return ['processed' => false, 'reason' => 'campaign_not_running'];
+            $schedule = $this->decode((string) ($campaign['schedule_json'] ?? ''));
+            if (Campaign_schedule::expired($schedule)) return ['processed' => false, 'reason' => 'campaign_expired'];
             $recipient = $this->runRecipients->get_by_id($runRecipientId) ?: $recipient;
             if ($this->isTerminalRecipientStatus((string) ($recipient['status'] ?? ''))) {
                 return ['processed' => false, 'duplicate' => true];
             }
-            if (!empty($recipient['available_at']) && strtotime((string) $recipient['available_at']) > time()) {
+            if (!empty($recipient['available_at']) && strtotime((string) $recipient['available_at'] . ' UTC') > time()) {
                 return ['processed' => false, 'reason' => 'recipient_not_available'];
             }
 
+            $interval = (int) ($schedule['interval_seconds'] ?? 0);
+            $lastAttempt = $this->db->table('chat_campaign_run_recipients')->selectMax('last_attempt_at', 'last_at')->where('campaign_id', $campaignId)->where('deleted', 0)->get()->getRowArray();
+            $nextAllowed = !empty($lastAttempt['last_at']) ? strtotime($lastAttempt['last_at'] . ' UTC') + $interval : 0;
+            $recent = $this->db->table('chat_campaign_run_recipients')->select('last_attempt_at')->where('campaign_id', $campaignId)->where('deleted', 0)->where('last_attempt_at >', gmdate('Y-m-d H:i:s', time() - 60))->orderBy('last_attempt_at', 'ASC')->get()->getResultArray();
+            $rateLimit = max(1, (int) ($campaign['rate_limit_per_minute'] ?? 20));
+            if (count($recent) >= $rateLimit) $nextAllowed = max($nextAllowed, strtotime($recent[0]['last_attempt_at'] . ' UTC') + 60);
+            if ($nextAllowed > time()) {
+                $this->runRecipients->update_record($runRecipientId, ['available_at' => gmdate('Y-m-d H:i:s', $nextAllowed), 'queued_at' => null]);
+                return ['processed' => false, 'reason' => 'campaign_interval'];
+            }
             $attempts = (int) ($recipient['attempts'] ?? 0) + 1;
             $maxAttempts = min(20, max(1, (int) (
                 $recipient['max_attempts']
@@ -228,7 +283,7 @@ class Campaign_dispatch_service
                         $this->decode((string) ($campaign['template_parameters_json'] ?? '')),
                         $variables
                     );
-                    $sent = (new Chat_service())->send_template(
+                    $sent = ($this->chat ??= new Chat_service())->send_template(
                         $conversationId,
                         (string) $template['name'],
                         (string) ($template['language_code'] ?? 'pt_BR'),
@@ -241,9 +296,12 @@ class Campaign_dispatch_service
                         throw new RuntimeException('Campanha nao oficial exige instancia Evolution.');
                     }
                     $text = $this->renderText((string) $campaign['message_content'], $variables);
-                    $sent = (new Chat_service())->send_text($conversationId, $text, $clientId, 0);
+                    $sent = !empty($campaign['media_id'])
+                        ? ($this->media ??= new Media_service())->sendCampaignMedia($conversationId, (int) $campaign['media_id'], $text, $clientId, 0)
+                        : ($this->chat ??= new Chat_service())->send_text($conversationId, $text, $clientId, 0);
                 }
 
+                if (($sent['status'] ?? '') === 'failed') throw new RuntimeException('O provedor nao confirmou o envio.');
                 $externalId = trim((string) ($sent['external_message_id'] ?? ''));
                 $this->runRecipients->update_record($runRecipientId, [
                     'status' => 'sent',
@@ -383,7 +441,7 @@ class Campaign_dispatch_service
 
     private function finishIfComplete(int $campaignId): void
     {
-        $lock = 'chat_campaign_finish_' . $campaignId;
+        $lock = 'chat_campaign_dispatch_' . $campaignId;
         if (!$this->tryAcquireLock($lock, 1)) {
             return;
         }
@@ -437,7 +495,7 @@ class Campaign_dispatch_service
             if (($schedule['type'] ?? '') === 'recurring') {
                 $schedule['next_at'] = $this->nextOccurrence($schedule);
                 $this->campaigns->update_record($campaignId, [
-                    'status' => 'scheduled',
+                    'status' => $schedule['next_at'] ? 'scheduled' : 'completed',
                     'schedule_json' => $this->encode($schedule),
                     'metrics_json' => $this->encode($metrics),
                     'finished_at' => $finishedAt,
@@ -624,10 +682,12 @@ class Campaign_dispatch_service
     private function ensureActiveRun(array $campaign, array $schedule): array
     {
         $campaignId = (int) $campaign['id'];
-        $lock = 'chat_campaign_start_' . $campaignId;
+        $lock = 'chat_campaign_dispatch_' . $campaignId;
         $this->acquireLock($lock, 3, 'Campanha ocupada; tente novamente.');
 
         try {
+            $campaign = $this->campaigns->get_by_id($campaignId);
+            if (!$campaign || !in_array($campaign['status'], ['scheduled', 'running'], true)) return [];
             $active = $this->db->table('chat_campaign_runs')
                 ->where('campaign_id', $campaignId)
                 ->where('status', 'running')
@@ -821,7 +881,7 @@ class Campaign_dispatch_service
         if (($schedule['type'] ?? '') === 'recurring') {
             $schedule['next_at'] = $this->nextOccurrence($schedule);
             $this->campaigns->update_record($campaignId, [
-                'status' => 'scheduled',
+                'status' => $schedule['next_at'] ? 'scheduled' : 'completed',
                 'schedule_json' => $this->encode($schedule),
                 'metrics_json' => $this->encode($metrics ?: $this->emptyMetrics((int) ($run['recipient_count'] ?? 0))),
                 'finished_at' => $run['finished_at'] ?? gmdate('Y-m-d H:i:s'),
@@ -854,7 +914,7 @@ class Campaign_dispatch_service
     private function isDue(array $schedule): bool
     {
         $at = $this->scheduledAt($schedule);
-        return $at === null || strtotime($at) === false || strtotime($at) <= time();
+        return $at === null || strtotime($at . ' UTC') <= time();
     }
 
     private function scheduledAt(array $schedule): ?string
@@ -874,8 +934,11 @@ class Campaign_dispatch_service
         return substr(hash('sha256', $campaignId . '|manual|' . gmdate('Y-m-d H:i')), 0, 40);
     }
 
-    private function nextOccurrence(array $schedule): string
+    private function nextOccurrence(array $schedule): ?string
     {
+        if (isset($schedule['window_seconds'])) {
+            return Campaign_schedule::occurrence($schedule, max(time(), strtotime((string) ($schedule['next_at'] ?? $schedule['at']))) + 1);
+        }
         $timezoneName = trim((string) (
             $schedule['timezone']
             ?? $this->settings->get_value('campaign_recurring_timezone', 'America/Sao_Paulo')

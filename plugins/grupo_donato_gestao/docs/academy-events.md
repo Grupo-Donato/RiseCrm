@@ -6,7 +6,7 @@ O módulo de eventos vive dentro da tela operacional oficial da Academy. A entra
 
 - Alunos e responsáveis internos continuam sendo lidos de `grupo_donato_alunos` e `grupo_donato_responsaveis`.
 - A unidade legada é mapeada para uma unidade ativa de `gd_units`. O mapeamento é feito por id, nome ou unidade padrão, nesta ordem.
-- Categorias, partidas, convocação, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067.
+- Categorias, partidas, convocação, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067; a V068 ajusta os índices da convocação para preservar históricos removidos sem impedir uma nova convocação.
 - Atleta externo é um registro contextual do evento. Ele não cria um segundo aluno nem um segundo responsável.
 
 ## Fluxo
@@ -44,7 +44,12 @@ Os endpoints continuam sob o grupo CSRF de `grupo_donato/operacional` e todas as
 
 ## Endpoints principais
 
-`eventos_list_data`, `evento_modal_form`, `save_event`, `save_event_category`, `save_event_match`, `save_event_match_score`, `save_event_staff`, `academy_student_search`, `add_event_participant`, `update_event_participant`, `save_event_confirmation`, `event_charge`, `event_payment`, `save_event_evaluation`, `save_event_stat`, `save_event_checklist`, `toggle_event_checklist`, `event_family_account`, `student_sport_history`, `finalize_event` e `cancel_event`.
+`eventos_list_data`, `evento_modal_form`, `save_event`, `save_event_category`, `save_event_match`, `save_event_match_score`, `save_event_staff`, `academy_student_search`, `add_event_participant`, `update_event_participant`, `delete_event_participant`, `save_event_confirmation`, `event_charge`, `event_payment`, `save_event_evaluation`, `save_event_stat`, `save_event_checklist`, `toggle_event_checklist`, `event_family_account`, `student_sport_history`, `finalize_event` e `cancel_event`.
+
+A exclusão de um convocado é lógica: a participação e seus registros de confirmação,
+avaliação e estatísticas ficam preservados para auditoria. Se houver uma cobrança em
+aberto, ela é cancelada junto; participações com pagamento registrado precisam ser
+estornadas antes da exclusão.
 
 ## Verificação
 

@@ -94,6 +94,7 @@ $routes->group('chatwoot_plugin', $route_options, static function ($routes): voi
     $routes->put('api/campaigns/(:num)', 'Campaigns::update/$1');
     $routes->delete('api/campaigns/(:num)', 'Campaigns::delete/$1');
     $routes->post('api/campaigns/(:num)/duplicate', 'Campaigns::duplicate/$1');
+    $routes->post('api/campaigns/(:num)/stop', 'Campaigns::stop/$1');
     $routes->post('api/campaigns/(:num)/toggle', 'Campaigns::toggle/$1');
     $routes->get('api/campaigns/(:num)/runs', 'Campaigns::runs/$1');
     $routes->get('api/campaigns/(:num)/runs/(:num)/recipients', 'Campaigns::run_recipients/$1/$2');

@@ -143,7 +143,7 @@
                             <div class="impulso-field full"><label>Fonte do público</label><select class="form-control" id="impulso-campaign-audience-source"><option value="contacts">Contatos do Impulso Hub</option><option value="manual">Lista manual</option><option value="csv">Arquivo CSV</option></select></div>
                             <div class="impulso-field full"><label>Etiquetas incluídas</label><input class="form-control" id="impulso-campaign-include-tags" placeholder="lead, interessado"></div>
                             <div class="impulso-field full"><label>Etiquetas excluídas</label><input class="form-control" id="impulso-campaign-exclude-tags" placeholder="matriculado, opt-out"></div>
-                            <div class="impulso-field full"><label>Números manuais</label><textarea class="form-control" id="impulso-campaign-manual-numbers" rows="7" placeholder="Um número por linha"></textarea></div>
+                            <div class="impulso-field full"><label>Números e variáveis por contato</label><textarea class="form-control" id="impulso-campaign-manual-numbers" rows="7" placeholder='Um número por linha, ou [{"numero":"5511999999999","variaveis":{"nome":"Ana","pedido":"123"}}]'></textarea><small>Para personalizar, informe a lista JSON com numero e variaveis. Use {nome}, {pedido} etc. na mensagem.</small></div>
                         </div>
                         <div class="impulso-audience-preview">
                             <div class="impulso-audience-count"><span>Público estimado</span><strong id="impulso-campaign-audience-count">0</strong></div>
@@ -174,7 +174,9 @@
                 <div class="impulso-campaign-form-step impulso-hidden" data-campaign-panel="4">
                     <div class="impulso-field-grid">
                         <div class="impulso-field"><label>Início</label><input class="form-control" id="impulso-campaign-start-date" type="date"></div>
-                        <div class="impulso-field"><label>Horário</label><input class="form-control" id="impulso-campaign-start-time" type="time"></div>
+                        <div class="impulso-field"><label>Horário</label><input class="form-control" id="impulso-campaign-start-time" type="time" step="1"></div>
+                        <div class="impulso-field"><label>Fim do período (opcional)</label><input class="form-control" id="impulso-campaign-ends-at" type="datetime-local" step="1"><small>Interrompe também os envios ainda pendentes.</small></div>
+                        <div class="impulso-field"><label>Intervalo entre mensagens (segundos)</label><input class="form-control" id="impulso-campaign-interval" type="number" min="0" max="3600" value="15"><small>Intervalo mínimo; a fila pode aumentar a espera.</small></div>
                         <div class="impulso-field"><label>Fuso horário</label><input class="form-control" id="impulso-campaign-timezone" value="America/Sao_Paulo" readonly><small>Usado nas recorrências e datas da fila.</small></div>
                         <div class="impulso-field full"><label>Dias da semana</label><div class="impulso-weekdays" id="impulso-campaign-weekdays"><?php foreach (['seg'=>'Seg','ter'=>'Ter','qua'=>'Qua','qui'=>'Qui','sex'=>'Sex','sab'=>'Sáb','dom'=>'Dom'] as $key=>$label) { ?><label><input type="checkbox" value="<?php echo $key; ?>" <?php echo in_array($key,['seg','ter','qua','qui','sex'],true) ? 'checked' : ''; ?>><span><?php echo $label; ?></span></label><?php } ?></div></div>
                         <div class="impulso-field full"><label class="form-check"><input class="form-check-input" id="impulso-campaign-start-immediately" type="checkbox"> <span class="form-check-label">Iniciar imediatamente após salvar</span></label></div>

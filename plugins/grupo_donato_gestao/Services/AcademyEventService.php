@@ -703,6 +703,94 @@ final class AcademyEventService extends CustomerDataService
         $this->audit_change("update", "academy_event_participant", $id, (array) $row, (array) $this->scopedRow($table, $id)); return ["saved" => true, "id" => $id];
     }
 
+    public function deleteParticipant(int $id): array
+    {
+        $table = $this->table("gd_academy_event_participants");
+        $participant = $this->scopedRow($table, $id);
+        if (!$participant) throw new \DomainException("gd_record_not_found");
+
+        $now = gmdate("Y-m-d H:i:s");
+        $receivableId = (int) ($participant->receivable_id ?? 0);
+        $receivableCancelled = false;
+        $this->db->transBegin();
+        try {
+            if ($receivableId > 0) {
+                $finance = new FinanceService($this->unit_id, $this->actor_id, $this->login_user);
+                $receivable = $finance->getReceivable($receivableId);
+                if (!$receivable) throw new \DomainException("gd_record_not_found");
+                if ((string) ($receivable->status ?? "") !== "cancelled") {
+                    $finance->cancelReceivable($receivableId, "Convocacao excluida");
+                    $receivableCancelled = true;
+                }
+            }
+
+            $evaluationIds = array_map(
+                static fn($row): int => (int) $row->id,
+                $this->db->table($this->table("gd_academy_athlete_evaluations"))
+                    ->select("id")
+                    ->where("unit_id", $this->unit_id)
+                    ->where("participant_id", $id)
+                    ->where("deleted", 0)
+                    ->get()
+                    ->getResult()
+            );
+            if ($evaluationIds) {
+                $this->db->table($this->table("gd_academy_evaluation_scores"))
+                    ->where("unit_id", $this->unit_id)
+                    ->whereIn("evaluation_id", $evaluationIds)
+                    ->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+                $this->db->table($this->table("gd_academy_athlete_evaluations"))
+                    ->where("unit_id", $this->unit_id)
+                    ->where("participant_id", $id)
+                    ->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+            }
+            $this->db->table($this->table("gd_academy_event_confirmations"))
+                ->where("unit_id", $this->unit_id)
+                ->where("participant_id", $id)
+                ->where("deleted", 0)
+                ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+            $this->db->table($this->table("gd_academy_match_player_stats"))
+                ->where("unit_id", $this->unit_id)
+                ->where("participant_id", $id)
+                ->where("deleted", 0)
+                ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+
+            $changed = $this->db->table($table)
+                ->where("id", $id)
+                ->where("unit_id", $this->unit_id)
+                ->where("deleted", 0)
+                ->where("lock_version", (int) $participant->lock_version)
+                ->update([
+                    "deleted" => 1,
+                    "updated_at" => $now,
+                    "updated_by" => $this->actor_id ?: null,
+                    "lock_version" => (int) $participant->lock_version + 1,
+                ]);
+            $deletedRow = $this->db->table($table)
+                ->where("id", $id)
+                ->where("unit_id", $this->unit_id)
+                ->where("deleted", 1)
+                ->where("lock_version", (int) $participant->lock_version + 1)
+                ->get(1)
+                ->getRow();
+            if (!$changed || !$deletedRow) throw new \DomainException("gd_edit_conflict");
+            if ($this->db->transCommit() === false) throw new \RuntimeException("delete_failed");
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+
+        $this->audit_change("delete", "academy_event_participant", $id, (array) $participant, null, [
+            "event_id" => (int) $participant->event_id,
+            "category_id" => (int) $participant->category_id,
+            "receivable_id" => $receivableId ?: null,
+            "receivable_cancelled" => $receivableCancelled,
+        ]);
+        return ["saved" => true, "id" => $id, "deleted" => true, "receivable_cancelled" => $receivableCancelled];
+    }
+
     public function saveConfirmation(int $participantId, array $input): array
     {
         $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId); if (!$participant) throw new \DomainException("gd_record_not_found");

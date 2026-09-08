@@ -51,7 +51,7 @@ function gd_academy_events_selftest(): void
     $attackerCriteria = array_filter($service->criteria("Atacante"), static fn($criterion): bool => (string) ($criterion->scope ?? "") === "position");
     gd_assert("critérios de goleiro são filtrados pela posição", count($goalkeeperCriteria) === 4 && count($attackerCriteria) === 0);
     $token = substr(hash("sha256", uniqid("academy-events-", true)), 0, 12);
-    $eventId = $categoryId = $matchId = $participantId = $externalParticipantId = $externalAthleteId = $receivableId = $accountId = $staffId = $confirmationId = $evaluationId = $statsId = 0;
+    $eventId = $categoryId = $matchId = $participantId = $externalParticipantId = $readdedParticipantId = $externalAthleteId = $receivableId = $accountId = $staffId = $confirmationId = $evaluationId = $statsId = 0;
     $accountWasExisting = $db->table($prefix . "gd_customer_accounts")->where("legacy_responsible_id", (int) $student->responsavel_id)->where("unit_id", $unitId)->where("deleted", 0)->countAllResults() > 0;
     try {
         $event = $service->saveEvent(["name" => "Self-test Academy " . $token, "event_type" => "championship", "starts_on" => "2099-02-10", "ends_on" => "2099-02-11", "status" => "confirmed", "default_participation_amount" => "75.00"]);
@@ -135,6 +135,14 @@ function gd_academy_events_selftest(): void
         gd_assert("conta familiar reúne recebível moderno", count($service->familyAccount((int) $student->responsavel_id)["receivables"]) >= 1);
         $finalized = $service->finalizeEvent($eventId);
         gd_assert("finaliza sem pendências quando checklist, avaliação, confirmação e placar estão completos", !empty($finalized["saved"]) && empty($finalized["pending"]));
+        $removed = $service->deleteParticipant($externalParticipantId);
+        $deletedExternal = $db->table($prefix . "gd_academy_event_participants")->where("id", $externalParticipantId)->where("unit_id", $unitId)->where("deleted", 1)->get(1)->getRow();
+        gd_assert("exclusão de convocado é lógica e auditável", !empty($removed["deleted"]) && $deletedExternal !== null && $db->table($prefix . "gd_academy_event_confirmations")->where("participant_id", $externalParticipantId)->where("deleted", 0)->countAllResults() === 0);
+        $readded = $service->addParticipant($categoryId, ["athlete_type" => "external", "external_athlete_id" => $externalAthleteId]);
+        $readdedParticipantId = (int) ($readded["id"] ?? 0);
+        $readdedRow = $db->table($prefix . "gd_academy_event_participants")->where("id", $readdedParticipantId)->get(1)->getRow();
+        gd_assert("atleta pode ser convocado novamente após desfazer a convocação", $readdedParticipantId > 0 && $readdedParticipantId !== $externalParticipantId && $readdedRow !== null && (int) $readdedRow->deleted === 0 && (int) $readdedRow->lock_version === 1);
+        $service->deleteParticipant($readdedParticipantId);
     } finally {
         $audit = $prefix . "gd_audit_logs";
         if ($receivableId > 0) {
@@ -150,12 +158,13 @@ function gd_academy_events_selftest(): void
             $db->table($prefix . "gd_academy_event_participants")->where("id", $participantId)->delete();
         }
         if ($externalParticipantId > 0) $db->table($prefix . "gd_academy_event_participants")->where("id", $externalParticipantId)->delete();
+        if ($readdedParticipantId > 0) $db->table($prefix . "gd_academy_event_participants")->where("id", $readdedParticipantId)->delete();
         if ($externalAthleteId > 0) $db->table($prefix . "gd_academy_external_athletes")->where("id", $externalAthleteId)->where("unit_id", $unitId)->delete();
         if ($matchId > 0) $db->table($prefix . "gd_academy_event_matches")->where("id", $matchId)->delete();
         if ($categoryId > 0) $db->table($prefix . "gd_academy_event_categories")->where("id", $categoryId)->delete();
         if ($eventId > 0) { $db->table($prefix . "gd_academy_event_staff")->where("event_id", $eventId)->delete(); $db->table($prefix . "gd_academy_event_checklist")->where("event_id", $eventId)->delete(); $db->table($prefix . "gd_academy_events")->where("id", $eventId)->delete(); }
         if ($accountId > 0 && !$accountWasExisting) $db->table($prefix . "gd_customer_accounts")->where("id", $accountId)->where("legacy_responsible_id", (int) $student->responsavel_id)->delete();
-        foreach ([["academy_event", $eventId], ["academy_event_category", $categoryId], ["academy_event_match", $matchId], ["academy_event_participant", $participantId], ["academy_event_participant", $externalParticipantId], ["academy_event_staff", $staffId], ["academy_athlete_evaluation", $evaluationId], ["academy_match_player_stats", $statsId]] as [$entity, $id]) {
+        foreach ([["academy_event", $eventId], ["academy_event_category", $categoryId], ["academy_event_match", $matchId], ["academy_event_participant", $participantId], ["academy_event_participant", $externalParticipantId], ["academy_event_participant", $readdedParticipantId], ["academy_event_staff", $staffId], ["academy_athlete_evaluation", $evaluationId], ["academy_match_player_stats", $statsId]] as [$entity, $id]) {
             if ($id > 0) $db->table($audit)->where("entity_type", $entity)->where("entity_id", $id)->delete();
         }
     }

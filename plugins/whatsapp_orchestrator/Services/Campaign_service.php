@@ -65,7 +65,11 @@ class Campaign_service
     public function get(int $id): ?array
     {
         $row = $this->campaigns->get_by_id($id);
-        return $row ? $this->map($row) : null;
+        if (!$row) return null;
+        $mapped = $this->map($row);
+        $recipients = $this->db->table('chat_campaign_recipients')->where('campaign_id', $id)->where('deleted', 0)->orderBy('id', 'ASC')->get()->getResultArray();
+        $mapped['numbers'] = array_map(fn (array $r): array => ['numero' => $r['phone_normalized'], 'variaveis' => $this->json((string) ($r['variables_json'] ?? ''))], $recipients);
+        return $mapped;
     }
 
     public function audience_preview(array $input): array
@@ -124,7 +128,7 @@ class Campaign_service
             }
             try {
                 $phone = $this->contacts->normalize_phone((string) $number);
-                $optOut = $this->db->table('chat_contacts')->select('id, name, company, city, opt_out')->where('phone_normalized', $phone)->where('deleted', 0)->get(1)->getRowArray();
+                $optOut = $this->db->table('chat_contacts')->select('id, name, company, city, opt_out')->where('phone_normalized', $phone)->where('deleted', 0)->groupStart()->where('instance_id', $instanceId)->orWhere('instance_id IS NULL', null, false)->groupEnd()->orderBy('opt_out', 'DESC')->get(1)->getRowArray();
                 if ($optOut && !empty($optOut['opt_out'])) {
                     $excludedOptOut++;
                     continue;
@@ -153,6 +157,38 @@ class Campaign_service
     }
 
     public function save(array $input, int $actorId, ?int $id = null): array
+    {
+        $key = trim((string) ($input['idempotency_key'] ?? ''));
+        $lock = $id ? 'chat_campaign_dispatch_' . $id : 'chat_campaign_save_' . substr(hash('sha256', $key ?: $this->uuid()), 0, 40);
+        $acquired = $this->db->query('SELECT GET_LOCK(?, 10) acquired', [$lock])->getRowArray();
+        if ((int) ($acquired['acquired'] ?? 0) !== 1) throw new RuntimeException('Campanha ocupada; tente novamente.', 409);
+        try {
+            if (!$id && $key !== '') {
+                $existing = $this->db->table('chat_campaigns')->where('idempotency_key', hash('sha256', $key))->get(1)->getRowArray();
+                if ($existing) {
+                    $schedule = $this->json((string) $existing['schedule_json']);
+                    if (!empty($existing['deleted']) || (int) $existing['created_by'] !== $actorId || ($schedule['request_hash'] ?? '') !== hash('sha256', json_encode($input))) {
+                        throw new RuntimeException('Identificador de cadastro ja utilizado por outra solicitacao.', 409);
+                    }
+                    return $this->get((int) $existing['id']) ?: [];
+                }
+            }
+            $this->db->transBegin();
+            try {
+                $saved = $this->saveUnlocked($input, $actorId, $id);
+                if (!$this->db->transStatus()) throw new RuntimeException('Nao foi possivel salvar a campanha.');
+                $this->db->transCommit();
+                return $saved;
+            } catch (\Throwable $e) {
+                $this->db->transRollback();
+                throw $e;
+            }
+        } finally {
+            $this->db->query('SELECT RELEASE_LOCK(?)', [$lock]);
+        }
+    }
+
+    private function saveUnlocked(array $input, int $actorId, ?int $id = null): array
     {
         $name = trim((string) ($input['name'] ?? ''));
         $instanceId = (int) ($input['instance_id'] ?? 0);
@@ -203,20 +239,34 @@ class Campaign_service
         $requestedType = (string) ($input['schedule_type'] ?? $input['type'] ?? 'draft');
         if ($requestedType === 'one_time') $requestedType = !empty($input['start_date']) ? 'scheduled' : 'draft';
         if ($requestedType === 'triggered') $requestedType = 'draft';
+        $timezone = trim((string) ($input['timezone'] ?? $this->settings->get_value('campaign_recurring_timezone', 'America/Sao_Paulo')));
         $schedule = [
             'type' => $this->scheduleType($requestedType),
-            'at' => $this->dateValue($input['schedule_at'] ?? ((string) ($input['start_date'] ?? '') !== '' ? trim((string) $input['start_date']) . ' ' . trim((string) ($input['start_time'] ?? '00:00')) : null)),
+            'at' => Campaign_schedule::date($input['schedule_at'] ?? ((string) ($input['start_date'] ?? '') !== '' ? trim((string) $input['start_date']) . ' ' . trim((string) ($input['start_time'] ?? '00:00')) : null), $timezone),
             'days_of_week' => $this->normalizeWeekdays(is_array($input['days_of_week'] ?? null) ? $input['days_of_week'] : (is_array($input['weekdays'] ?? null) ? $input['weekdays'] : [])),
             'start_immediately' => filter_var($input['start_immediately'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'timezone' => trim((string) ($input['timezone'] ?? $this->settings->get_value('campaign_recurring_timezone', 'America/Sao_Paulo'))),
+            'timezone' => $timezone,
+            'ends_at' => Campaign_schedule::date($input['ends_at'] ?? null, $timezone),
+            'interval_seconds' => Campaign_schedule::interval($input['interval_seconds'] ?? 15),
+            'window_seconds' => 120,
+            'request_hash' => hash('sha256', json_encode($input)),
         ];
+        if ($schedule['ends_at'] && (!$schedule['at'] || strtotime($schedule['ends_at']) <= strtotime($schedule['at']))) throw new InvalidArgumentException('O fim da campanha deve ser posterior ao inicio.');
+        if ($schedule['type'] === 'scheduled' && !$schedule['at']) throw new InvalidArgumentException('Informe a data e o horario do disparo.');
         if ($schedule['type'] === 'recurring') {
             if (!$schedule['at'] || $schedule['days_of_week'] === []) throw new InvalidArgumentException('Campanha recorrente exige data inicial, horario e pelo menos um dia da semana.');
             try { new \DateTimeZone($schedule['timezone']); } catch (\Throwable $e) { throw new InvalidArgumentException('Fuso horario da campanha invalido.'); }
-            $schedule['next_at'] = $schedule['at'];
+            $schedule['next_at'] = Campaign_schedule::occurrence($schedule, strtotime($schedule['at']));
+            if (!$schedule['next_at']) throw new InvalidArgumentException('Nenhum dia de disparo dentro do periodo informado.');
+        }
+        $mediaId = !empty($input['media_id']) ? (int) $input['media_id'] : null;
+        if ($mediaId) {
+            if ($campaignType === 'official') throw new InvalidArgumentException('Use os parametros do template para midia em campanhas oficiais.');
+            (new Media_service())->validateCampaignMedia($mediaId, $instanceId);
         }
         $scheduledType = in_array($schedule['type'], ['scheduled','recurring'], true);
-        $status = $before['status'] ?? ($schedule['start_immediately'] ? 'running' : ($scheduledType ? 'scheduled' : 'draft'));
+        $status = $before['status'] ?? ($scheduledType ? 'scheduled' : 'draft');
+        if ($before && $before['status'] === 'draft' && $scheduledType) $status = 'scheduled';
         if ($schedule['start_immediately']) $status = 'running';
         $audience = [
             'source' => (string) ($input['audience_source'] ?? 'contacts'),
@@ -230,7 +280,7 @@ class Campaign_service
             'instance_id' => $instanceId, 'external_id' => $before['external_id'] ?? null,
             'name' => $name, 'description' => mb_substr(trim((string) ($input['description'] ?? '')), 0, 5000) ?: null,
             'status' => $status, 'audience_json' => json_encode($audience, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            'message_content' => $message, 'media_id' => !empty($input['media_id']) ? (int) $input['media_id'] : null,
+            'message_content' => $message, 'media_id' => $mediaId,
             'schedule_json' => json_encode($schedule, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'metrics_json' => json_encode(['audience'=>$preview['count'],'sent'=>0,'delivered'=>0,'read'=>0,'replied'=>0,'failed'=>0,'pending'=>$preview['count']], JSON_UNESCAPED_UNICODE),
             'correlation_id' => $correlationId, 'idempotency_key' => $idempotencyKey, 'last_error' => null,
@@ -294,8 +344,11 @@ class Campaign_service
     {
         $row = $this->campaigns->get_by_id($id);
         if (!$row) throw new RuntimeException('Campanha nao encontrada.', 404);
+        if (in_array($row['status'], ['cancelled', 'completed'], true)) throw new RuntimeException('Duplique a campanha encerrada para iniciar outro disparo.', 409);
         $pausing = !in_array((string) $row['status'], ['paused', 'draft', 'failed'], true);
-        $status = $pausing ? 'paused' : 'running';
+        $schedule = $this->json((string) $row['schedule_json']);
+        if (!$pausing && Campaign_schedule::expired($schedule)) throw new RuntimeException('O periodo da campanha terminou.', 409);
+        $status = $pausing ? 'paused' : (!empty($schedule['at']) ? 'scheduled' : 'running');
         $payload = [
             'status' => $status,
             'dispatch_mode' => 'internal_queue',
@@ -315,8 +368,16 @@ class Campaign_service
         return $this->get($id) ?: [];
     }
 
+    public function stop(int $id, int $actorId): array
+    {
+        (new Campaign_dispatch_service())->stop($id);
+        $this->audit->record($actorId, 'campaign.stopped', 'campaign', $id);
+        return $this->get($id) ?: [];
+    }
+
     public function delete(int $id, int $actorId): void
     {
+        (new Campaign_dispatch_service())->stop($id);
         $row = $this->campaigns->get_by_id($id);
         if (!$row) throw new RuntimeException('Campanha nao encontrada.', 404);
         $now = gmdate('Y-m-d H:i:s');
@@ -529,6 +590,7 @@ class Campaign_service
         $schedule = $this->json((string) ($row['schedule_json'] ?? ''));
         $metrics = $this->json((string) ($row['metrics_json'] ?? ''));
         $templateParameters = $this->json((string) ($row['template_parameters_json'] ?? ''));
+        $localAt = !empty($schedule['at']) ? (new \DateTimeImmutable($schedule['at']))->setTimezone(new \DateTimeZone($schedule['timezone'] ?? 'America/Sao_Paulo')) : null;
         return [
             'id'=>(int)$row['id'], 'external_id'=>$row['external_id'] ?: null, 'instance_id'=>(int)$row['instance_id'], 'name'=>(string)$row['name'],
             'description'=>(string)($row['description']??''), 'status'=>$this->normalizeStatus((string)($row['status']??'draft')), 'message'=>(string)$row['message_content'],
@@ -539,8 +601,9 @@ class Campaign_service
             'audience_count'=>(int)($audience['recipient_count']??$metrics['audience']??0), 'last_error'=>$row['last_error']?:null,
             'audience_source'=>(string)($audience['source']??'contacts'), 'include_tags'=>is_array($audience['include_tags']??null)?$audience['include_tags']:[],
             'exclude_tags'=>is_array($audience['exclude_tags']??null)?$audience['exclude_tags']:[], 'numbers'=>[],
-            'type'=>(($schedule['type']??'')==='recurring'?'recurring':'one_time'), 'start_date'=>!empty($schedule['at'])?date('Y-m-d',strtotime((string)$schedule['at'])):'',
-            'start_time'=>!empty($schedule['at'])?date('H:i',strtotime((string)$schedule['at'])):'',
+            'type'=>(($schedule['type']??'')==='recurring'?'recurring':'one_time'), 'start_date'=>$localAt ? $localAt->format('Y-m-d') : '',
+            'start_time'=>$localAt ? $localAt->format('H:i:s') : '',
+            'ends_at'=>$schedule['ends_at']??null, 'interval_seconds'=>(int)($schedule['interval_seconds']??0),
             'timezone'=>(string)($schedule['timezone']??'America/Sao_Paulo'), 'weekdays'=>is_array($schedule['days_of_week']??null)?$schedule['days_of_week']:[],
             'next_at'=>$schedule['next_at']??null,
             'scheduled'=>!empty($schedule['next_at']??$schedule['at']??null)?date('d/m/Y H:i',strtotime((string)($schedule['next_at']??$schedule['at']))):'Sem agendamento',
@@ -579,7 +642,7 @@ class Campaign_service
 
     private function normalizeWeekdays(array $values): array
     {
-        $map = ['dom'=>0,'seg'=>1,'ter'=>2,'qua'=>3,'qui'=>4,'sex'=>5,'sab'=>6];
+        $map = ['sun'=>0,'mon'=>1,'tue'=>2,'wed'=>3,'thu'=>4,'fri'=>5,'sat'=>6,'dom'=>0,'seg'=>1,'ter'=>2,'qua'=>3,'qui'=>4,'sex'=>5,'sab'=>6];
         $result = [];
         foreach ($values as $value) {
             $key = strtolower(trim((string) $value));
@@ -662,8 +725,7 @@ class Campaign_service
     private function validateTemplateVariables(string $message): void
     {
         preg_match_all('/\{([^{}]+)\}/u', $message, $matches);
-        $allowed = ['nome','name','telefone','phone','empresa','company','cidade','city'];
-        $unknown = array_filter(array_unique($matches[1] ?? []), static fn (string $key): bool => !in_array($key, $allowed, true) && !preg_match('/^[1-9][0-9]{0,2}$/', $key));
+        $unknown = array_filter(array_unique($matches[1] ?? []), static fn (string $key): bool => !preg_match('/^[A-Za-z0-9_.-]{1,100}$/', $key));
         if ($unknown) throw new InvalidArgumentException('Variaveis de template desconhecidas: ' . implode(', ', $unknown) . '.');
     }
 

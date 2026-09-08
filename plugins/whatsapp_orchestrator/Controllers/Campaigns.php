@@ -27,6 +27,13 @@ class Campaigns extends Api_controller
     public function delete(int $id): ResponseInterface { $this->requireManageCampaignsPermission(); try { $this->service->delete($id, $this->actorId()); return $this->success(['id' => $id, 'deleted' => true]); } catch (Throwable $e) { return $this->failure($e); } }
     public function duplicate(int $id): ResponseInterface { $this->requireManageCampaignsPermission(); try { return $this->success($this->service->duplicate($id, $this->actorId()), [], 201); } catch (Throwable $e) { return $this->failure($e); } }
     public function toggle(int $id): ResponseInterface { $this->requireManageCampaignsPermission(); try { return $this->success($this->service->toggle($id, $this->actorId())); } catch (Throwable $e) { return $this->failure($e); } }
+    public function stop(int $id): ResponseInterface
+    {
+        $this->requireManageCampaignsPermission();
+        try { return $this->success($this->service->stop($id, $this->actorId())); }
+        catch (Throwable $e) { return $this->failure($e); }
+    }
+
     public function runs(int $id): ResponseInterface
     {
         $this->requireManageCampaignsPermission();

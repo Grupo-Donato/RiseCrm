@@ -65,6 +65,54 @@ class Media_service
         $this->serviceWindow ??= new Service_window_policy();
     }
 
+    /** Validate a reusable campaign attachment without consuming the original file. */
+    public function validateCampaignMedia(int $mediaId, int $instanceId): array
+    {
+        $row = $this->media->get_by_id($mediaId);
+        if (!$row || (int) ($row['instance_id'] ?? 0) !== $instanceId || !empty($row['conversation_id'])) {
+            throw new InvalidArgumentException('Selecione um anexo de campanha deste canal.');
+        }
+        $root = realpath(rtrim(WRITEPATH, '/\\') . '/uploads');
+        $path = $root ? realpath($root . '/' . ($row['storage_path'] ?? '')) : false;
+        if (!$root || !$path || !str_starts_with($path, $root . DIRECTORY_SEPARATOR) || !is_file($path)) {
+            throw new InvalidArgumentException('Anexo da campanha indisponivel.');
+        }
+        $instance = $this->instances->get_by_id($instanceId);
+        if (!$instance) throw new InvalidArgumentException('Canal do anexo indisponivel.');
+        $this->mediaPolicy->validatePath($path, $row['original_name'], $this->providers->forInstance($instance)->getCapabilities(), '', $row['media_type']);
+        return ['row' => $row, 'path' => $path];
+    }
+
+    public function sendCampaignMedia(int $conversationId, int $mediaId, string $caption, string $clientMessageId, int $actorId = 0): array
+    {
+        $clientMessageId = $this->normalizeClientMessageId($clientMessageId);
+        if (!$this->sendLocks->acquireFor($conversationId, $clientMessageId, 0)) throw new RuntimeException('Envio em andamento.', 409);
+        try {
+            $context = $this->sendContext($conversationId);
+            $source = $this->validateCampaignMedia($mediaId, (int) $context['instance']['id']);
+            $file = new UploadedFile($source['path'], $source['row']['original_name'], $source['row']['mime_type'], filesize($source['path']), UPLOAD_ERR_OK);
+            $identity = ['source_sha256' => hash_file('sha256', $source['path']), 'source_size' => filesize($source['path']), 'source_detected_mime' => Media_policy_service::detectMime($source['path'])];
+            $existing = $this->messages->find_by_client_message_id($conversationId, $clientMessageId);
+            if ($existing) {
+                $this->assertImmutableSource($existing, $identity);
+                $state = $this->idempotencyState($existing);
+                if ($state === 'idempotent_success') return $this->projectMessage($existing);
+                if (!$this->canRetryState($state)) throw new RuntimeException('Envio anterior sem confirmacao; reenvio automatico bloqueado.', 409);
+                $logical = $this->mediaLogicalContext($existing);
+                $caption = (string) ($logical['caption'] ?? $caption);
+            }
+            $prepared = $this->mediaPolicy->validatePath($source['path'], $source['row']['original_name'], $context['capabilities'], $caption, $source['row']['media_type']);
+            $this->mediaConversion->assertProviderVideoCompatible($source['path'], (array) ($prepared['policy'] ?? []));
+            $prepared['source_path'] = $source['path'];
+            $prepared['stored_source'] = true;
+            $prepared['source_mime_type'] = $prepared['detected_mime_type'];
+            $prepared['converted'] = false;
+            return $this->sendPrepared($context, $file, $prepared, $clientMessageId, $actorId, '', $existing, $identity);
+        } finally {
+            $this->sendLocks->releaseFor($conversationId, $clientMessageId);
+        }
+    }
+
     public function send(
         int $conversationId,
         UploadedFile $file,
@@ -413,7 +461,7 @@ class Media_service
             throw new RuntimeException('Nao foi possivel preparar o armazenamento de midia.', 422);
         }
         $storedName = $sha . '-' . bin2hex(random_bytes(4)) . '.' . (string) $prepared['extension'];
-        if (!empty($prepared['converted'])) {
+        if (!empty($prepared['converted']) || !empty($prepared['stored_source'])) {
             if (!copy($sourcePath, $directory . DIRECTORY_SEPARATOR . $storedName)) {
                 throw new RuntimeException('Nao foi possivel armazenar a midia convertida.', 422);
             }

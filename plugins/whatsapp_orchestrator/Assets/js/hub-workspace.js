@@ -306,14 +306,21 @@
             'impulso-campaign-description': campaign.description || '', 'impulso-campaign-audience-source': campaign.audience_source || 'contacts',
             'impulso-campaign-include-tags': Array.isArray(campaign.include_tags) ? campaign.include_tags.join(', ') : '',
             'impulso-campaign-exclude-tags': Array.isArray(campaign.exclude_tags) ? campaign.exclude_tags.join(', ') : '',
-            'impulso-campaign-manual-numbers': Array.isArray(campaign.numbers) ? campaign.numbers.join('\n') : '',
+            'impulso-campaign-manual-numbers': Array.isArray(campaign.numbers) ? (campaign.numbers.some(function (n) { return typeof n === 'object'; }) ? JSON.stringify(campaign.numbers, null, 2) : campaign.numbers.join('\n')) : '',
             'impulso-campaign-message': campaign.message || '', 'impulso-campaign-start-date': campaign.start_date || '',
             'impulso-campaign-start-time': campaign.start_time || '', 'impulso-campaign-timezone': campaign.timezone || 'America/Sao_Paulo',
             'impulso-campaign-rate-limit': campaign.rate_limit_per_minute || 20,
+            'impulso-campaign-interval': campaign.interval_seconds == null ? 15 : campaign.interval_seconds,
+            'impulso-campaign-ends-at': campaign.ends_at ? campaign.ends_at.slice(0, 19) : '',
             'impulso-campaign-dispatch-mode': campaign.dispatch_mode || 'internal_queue',
             'impulso-campaign-template-parameters': JSON.stringify(campaign.template_parameters || [], null, 2)
         };
         Object.keys(values).forEach(function (id) { var el = byId(id); if (el) el.value = values[id]; });
+        if (Array.isArray(campaign.weekdays)) {
+            var dayMap = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
+            all('#impulso-campaign-weekdays input').forEach(function (el) { el.checked = campaign.weekdays.indexOf(dayMap[el.value]) >= 0; });
+        }
+        workspace.campaignIdempotencyKey = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
         updateCampaignChannelUi(true, campaign.template_id || null);
         var title = byId('impulso-campaign-modal-title'); if (title) title.textContent = campaign.id ? 'Editar campanha' : 'Nova campanha';
         updateCampaignPreview();
@@ -832,6 +839,16 @@
         all('[data-campaign-id]').forEach(function (row) { var show = (!query || (row.getAttribute('data-campaign-search') || '').indexOf(query) >= 0) && (status === 'all' || row.getAttribute('data-campaign-status') === status) && (instance === 'all' || row.getAttribute('data-campaign-instance') === instance); row.classList.toggle('impulso-hidden', !show); if (show) visible += 1; });
         var empty = byId('impulso-campaign-empty'); if (empty) empty.classList.toggle('impulso-hidden', visible > 0);
     }
+    function campaignNumbers() {
+        var value = ((byId('impulso-campaign-manual-numbers') || {}).value || '').trim();
+        if (value.charAt(0) === '[') {
+            var entries;
+            try { entries = JSON.parse(value); } catch (e) { throw new Error('A lista de contatos precisa ser um JSON válido.'); }
+            if (!Array.isArray(entries)) throw new Error('Informe uma lista de contatos.');
+            return entries;
+        }
+        return value.split(/\r?\n/).map(function (v) { return v.replace(/\D/g, ''); }).filter(Boolean);
+    }
     function campaignPayload() {
         var weekdays = all('#impulso-campaign-weekdays input:checked').map(function (item) { return item.value; });
         var templateParameters = [];
@@ -848,7 +865,7 @@
             rate_limit_per_minute: Number((byId('impulso-campaign-rate-limit') || {}).value || 20),
             description: (byId('impulso-campaign-description') || {}).value.trim(), audience_source: (byId('impulso-campaign-audience-source') || {}).value,
             include_tags: (byId('impulso-campaign-include-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean), exclude_tags: (byId('impulso-campaign-exclude-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean),
-            numbers: (byId('impulso-campaign-manual-numbers') || {}).value.split(/\r?\n/).map(function (v) { return v.replace(/\D/g, ''); }).filter(Boolean), message: (byId('impulso-campaign-message') || {}).value.trim(), media_id: workspace.pendingCampaignMediaId, start_date: (byId('impulso-campaign-start-date') || {}).value, start_time: (byId('impulso-campaign-start-time') || {}).value, timezone: (byId('impulso-campaign-timezone') || {}).value || 'America/Sao_Paulo', weekdays: weekdays, start_immediately: !!((byId('impulso-campaign-start-immediately') || {}).checked)
+            numbers: campaignNumbers(), idempotency_key: workspace.campaignIdempotencyKey, ends_at: (byId('impulso-campaign-ends-at') || {}).value || null, interval_seconds: Number((byId('impulso-campaign-interval') || {}).value || 0), message: (byId('impulso-campaign-message') || {}).value.trim(), media_id: workspace.pendingCampaignMediaId, start_date: (byId('impulso-campaign-start-date') || {}).value, start_time: (byId('impulso-campaign-start-time') || {}).value, timezone: (byId('impulso-campaign-timezone') || {}).value || 'America/Sao_Paulo', weekdays: weekdays, start_immediately: !!((byId('impulso-campaign-start-immediately') || {}).checked)
         };
     }
     function uploadCampaignMedia(file) {
@@ -972,6 +989,7 @@
         var id = button.getAttribute('data-campaign-id'); showContextMenu(button, [
             { label: 'Editar campanha', icon: 'edit-3', action: function () { api(endpointWithId('campaigns', id)).then(function (payload) { openCampaign(payloadData(payload, {})); }).catch(function (error) { backendError(error, 'campanhas'); }); } },
             { label: 'Duplicar', icon: 'copy', action: function () { api(endpointWithId('campaigns', id, '/duplicate'), { method: 'POST', body: {} }).then(function () { toast('Campanha duplicada', 'Uma nova cópia foi criada.', 'copy'); window.location.reload(); }).catch(function (error) { backendError(error, 'duplicação'); }); } },
+            { label: 'Encerrar disparos', icon: 'stop-circle', action: function () { api(endpointWithId('campaigns', id, '/stop'), { method: 'POST', body: {} }).then(function () { toast('Campanha encerrada', 'Os próximos envios foram interrompidos.', 'stop-circle'); window.location.reload(); }).catch(function (error) { backendError(error, 'encerramento'); }); } },
             { label: 'Pausar/retomar', icon: 'pause-circle', action: function () { api(endpointWithId('campaigns', id, '/toggle'), { method: 'POST', body: {} }).then(function () { toast('Campanha atualizada', 'O estado do disparo foi alterado.', 'pause-circle'); window.location.reload(); }).catch(function (error) { backendError(error, 'campanha'); }); } },
             { label: 'Excluir', icon: 'trash-2', danger: true, action: function () { if (!window.confirm('Excluir esta campanha?')) return; api(endpointWithId('campaigns', id), { method: 'DELETE', body: {} }).then(function () { window.location.reload(); }).catch(function (error) { backendError(error, 'exclusão'); }); } }
         ]); }

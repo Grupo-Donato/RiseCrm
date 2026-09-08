@@ -128,10 +128,7 @@ class Integration_job_service
             $this->enqueue('instance_status', [], 3, 'instance-status-periodic');
             $scheduled++;
         }
-        if ($this->due('campaign-internal-schedule-periodic', 60)) {
-            $this->enqueue('campaign_schedule', [], 3, 'campaign-internal-schedule-periodic');
-            $scheduled++;
-        }
+        $scheduled += (new Campaign_dispatch_service())->scheduleDue();
         return $scheduled;
     }
 
@@ -208,7 +205,7 @@ class Integration_job_service
 
         $mediaCount = 0;
         if ($mediaDays > 0) {
-            $rows = $this->db->table('chat_media')->select('id,storage_path')->where('deleted', 0)->where('created_at <', gmdate('Y-m-d H:i:s', time() - $mediaDays * 86400))->get()->getResultArray();
+            $rows = $this->db->table('chat_media')->select('id,storage_path')->where('deleted', 0)->where('created_at <', gmdate('Y-m-d H:i:s', time() - $mediaDays * 86400))->where('id NOT IN (SELECT media_id FROM ' . $this->db->prefixTable('chat_campaigns') . ' WHERE deleted = 0 AND media_id IS NOT NULL)', null, false)->get()->getResultArray();
             $root = realpath(rtrim(WRITEPATH, '\\/') . DIRECTORY_SEPARATOR . 'uploads');
             foreach ($rows as $row) {
                 $path = realpath(rtrim(WRITEPATH, '\\/') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, (string) $row['storage_path']));

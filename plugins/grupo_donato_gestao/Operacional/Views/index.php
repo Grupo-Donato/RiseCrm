@@ -203,10 +203,16 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
     .gd-alunos-class-card .table th,
     .gd-alunos-class-card .table td {
+        background-color: var(--gd-surface, #082a52) !important;
         border-color: var(--gd-border, #244d78) !important;
         color: var(--gd-text, #fff) !important;
         padding: 11px 9px;
         vertical-align: middle;
+    }
+
+    .gd-alunos-class-card .table > :not(caption) > * > * {
+        background-color: var(--gd-surface, #082a52) !important;
+        color: var(--gd-text, #fff) !important;
     }
 
     .gd-alunos-class-card .table th {
@@ -325,7 +331,25 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
     }
 
     .gd-alunos-class-actions a {
-        margin: 2px;
+        align-items: center;
+        background: var(--gd-border, #244d78) !important;
+        border: 1px solid var(--gd-border, #244d78) !important;
+        border-radius: 50%;
+        color: var(--gd-text, #fff) !important;
+        display: inline-flex;
+        height: 38px;
+        justify-content: center;
+        margin: 2px 4px;
+        min-width: 38px;
+        padding: 0;
+        vertical-align: middle;
+    }
+
+    .gd-alunos-class-actions a:hover,
+    .gd-alunos-class-actions a:focus {
+        background: var(--gd-surface-3, #0e3a6e) !important;
+        border-color: var(--gd-border-strong, #315d8b) !important;
+        color: var(--gd-text, #fff) !important;
     }
 
     .gd-mobile-ready .action-option,

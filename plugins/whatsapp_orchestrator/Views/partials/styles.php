@@ -174,20 +174,6 @@
         width: 8px;
     }
 
-    .impulso-mobile-nav {
-        display: none;
-        padding: 12px 15px;
-    }
-
-    .impulso-mobile-nav label {
-        color: inherit;
-        display: block;
-        font-size: 11px;
-        font-weight: 700;
-        margin-bottom: 5px;
-        text-transform: uppercase;
-    }
-
     .impulso-workspace {
         background: transparent;
         min-height: calc(100vh - 216px);
@@ -552,7 +538,7 @@
 
     .impulso-chat-layout {
         display: grid;
-        grid-template-columns: minmax(0, 205px) minmax(0, 315px) minmax(0, 1fr) minmax(0, 300px);
+        grid-template-columns: minmax(340px, 380px) minmax(0, 1fr);
         height: 100%;
         min-height: 0;
         min-width: 0;
@@ -774,6 +760,7 @@
         justify-content: space-between;
         min-height: 66px;
         padding: 10px 14px;
+        position: relative;
     }
 
     .impulso-chat-header-main {
@@ -807,6 +794,38 @@
         display: flex;
         gap: 6px;
     }
+
+    .impulso-more-menu {
+        background: var(--ih-surface, #fff);
+        border: 1px solid var(--ih-border);
+        border-radius: 8px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+        min-width: 190px;
+        padding: 5px;
+        position: absolute;
+        right: 12px;
+        top: calc(100% - 3px);
+        z-index: 70;
+    }
+
+    .impulso-more-menu button {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        color: inherit;
+        cursor: pointer;
+        display: flex;
+        font-size: 11px;
+        gap: 7px;
+        padding: 8px;
+        text-align: left;
+        width: 100%;
+    }
+
+    .impulso-more-menu button:hover,
+    .impulso-more-menu button:focus-visible { background: var(--ih-surface-soft); }
+    .impulso-more-menu svg { height: 14px; width: 14px; }
 
     .impulso-chat-body {
         background-image: radial-gradient(rgba(109, 93, 252, .07) 1px, transparent 1px);
@@ -1096,6 +1115,50 @@
         margin-bottom: 11px;
         text-transform: uppercase;
     }
+
+    .impulso-contact-drawer-header {
+        align-items: center;
+        background: var(--ih-surface-raised, var(--ih-surface-soft));
+        border-bottom: 1px solid var(--ih-border);
+        display: flex;
+        justify-content: space-between;
+        padding: 9px 12px;
+    }
+
+    .impulso-contact-drawer-header > div {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .impulso-contact-drawer-header strong { font-size: 12px; }
+
+    .impulso-contact-tabs {
+        border-bottom: 1px solid var(--ih-border);
+        display: flex;
+        gap: 2px;
+        padding: 6px 8px 0;
+    }
+
+    .impulso-contact-tabs button {
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: inherit;
+        cursor: pointer;
+        flex: 1 1 0;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 7px 4px 8px;
+    }
+
+    .impulso-contact-tabs button:hover,
+    .impulso-contact-tabs button.active {
+        border-bottom-color: var(--ih-primary);
+        color: var(--ih-primary);
+    }
+
+    .impulso-contact-tab-panel[hidden] { display: none; }
 
     .impulso-contact-item {
         gap: 9px;
@@ -1799,7 +1862,6 @@
         .impulso-topbar { padding: 12px 14px; }
         .impulso-brand-block .impulso-live-pill { display: none; }
         .impulso-topbar-actions .impulso-icon-button { display: none; }
-        .impulso-mobile-nav { display: block; border-bottom: 1px solid var(--ih-border); }
         .impulso-page { padding: 15px; }
         .impulso-grid-2,
         .impulso-grid-3,
@@ -1859,7 +1921,6 @@
     .impulso-shell-card,
     .impulso-workspace,
     .impulso-chat-column,
-    .impulso-channel-sidebar,
     .impulso-composer,
     .impulso-card {
         color: inherit;
@@ -1870,35 +1931,7 @@
         opacity: .68;
     }
 
-    /* Multi-instance channel rail */
-    .impulso-chat-layout {
-        grid-template-columns: minmax(0, 205px) minmax(0, 315px) minmax(0, 1fr) minmax(0, 300px);
-    }
-
-    .impulso-channel-sidebar {
-        background: transparent;
-        border-right: 1px solid var(--ih-border);
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        overflow: hidden;
-    }
-
-    .impulso-channel-header {
-        align-items: center;
-        border-bottom: 1px solid var(--ih-border);
-        display: flex;
-        justify-content: space-between;
-        min-height: 70px;
-        padding: 13px 12px;
-    }
-
-    .impulso-channel-header h3 {
-        font-size: 15px;
-        font-weight: 760;
-        margin: 2px 0 0;
-    }
-
+    /* Multi-instance channels are presented by the compact picker in the list header. */
     .impulso-channel-list {
         flex: 1;
         overflow-y: auto;
@@ -2036,24 +2069,83 @@
     }
 
     .impulso-current-channel {
+        align-items: center;
+        background: transparent;
+        border: 0;
         color: inherit;
-        display: block;
+        cursor: pointer;
+        display: inline-flex;
         font-size: 9px;
+        gap: 4px;
         margin-top: 2px;
+        max-width: 190px;
+        padding: 2px 0;
+        text-align: left;
     }
 
-    .impulso-mobile-channel-picker {
-        display: none;
-        margin-bottom: 9px;
+    .impulso-current-channel span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .impulso-mobile-channel-picker label {
-        color: inherit;
-        display: block;
+    .impulso-current-channel svg {
+        flex: 0 0 auto;
+        height: 12px;
+        width: 12px;
+    }
+
+    .impulso-channel-picker {
+        background: var(--ih-surface, #fff);
+        border: 1px solid var(--ih-border);
+        border-radius: 10px;
+        box-shadow: var(--ih-shadow, 0 12px 30px rgba(31, 41, 55, .16));
+        left: 12px;
+        max-height: min(460px, calc(100vh - 130px));
+        overflow-y: auto;
+        position: absolute;
+        top: 62px;
+        width: min(330px, calc(100% - 24px));
+        z-index: 60;
+    }
+
+    .impulso-channel-picker-heading {
+        border-bottom: 1px solid var(--ih-border);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 11px 12px 9px;
+    }
+
+    .impulso-channel-picker-heading strong { font-size: 11px; }
+    .impulso-channel-picker-heading span { font-size: 9px; opacity: .68; }
+    .impulso-channel-picker .impulso-channel-list { padding: 7px; }
+    .impulso-channel-picker .impulso-channel-item { margin-bottom: 2px; }
+    .impulso-channel-picker .impulso-channel-copy small { opacity: .72; }
+    .impulso-channel-picker .impulso-channel-manage { min-height: 40px; }
+
+    .impulso-status-filter {
+        align-items: center;
+        display: inline-flex;
+        flex: 0 0 auto;
+        gap: 4px;
+        margin-left: auto;
+    }
+
+    .impulso-status-filter span {
         font-size: 8px;
-        font-weight: 740;
-        margin-bottom: 4px;
+        opacity: .66;
         text-transform: uppercase;
+    }
+
+    .impulso-status-filter select {
+        background: transparent;
+        border: 1px solid var(--ih-border);
+        border-radius: 6px;
+        color: inherit;
+        font-size: 10px;
+        min-height: 27px;
+        padding: 3px 5px;
     }
 
     .impulso-active-channel-chip {
@@ -2100,7 +2192,7 @@
 
     @media (max-width: 1480px) {
         .impulso-chat-layout {
-            grid-template-columns: minmax(0, 190px) minmax(0, 300px) minmax(0, 1fr);
+            grid-template-columns: minmax(330px, 360px) minmax(0, 1fr);
         }
 
         .impulso-contact-sidebar {
@@ -2120,26 +2212,9 @@
 
     @media (max-width: 1100px) {
         .impulso-chat-layout {
-            grid-template-columns: minmax(0, 68px) minmax(0, 290px) minmax(0, 1fr);
+            grid-template-columns: minmax(310px, 340px) minmax(0, 1fr);
         }
 
-        .impulso-channel-header {
-            justify-content: center;
-            padding: 12px 6px;
-        }
-
-        .impulso-channel-header > div,
-        .impulso-channel-header .impulso-count-badge,
-        .impulso-channel-copy,
-        .impulso-channel-unread,
-        .impulso-channel-manage span {
-            display: none;
-        }
-
-        .impulso-channel-list { padding: 7px; }
-        .impulso-channel-item { justify-content: center; padding: 7px; }
-        .impulso-channel-item.active { box-shadow: inset 3px 0 0 var(--ih-primary); }
-        .impulso-channel-manage { justify-content: center; padding: 10px; }
     }
 
     @media (max-width: 991.98px) {
@@ -2147,18 +2222,11 @@
             grid-template-columns: 1fr;
         }
 
-        .impulso-channel-sidebar {
-            display: none;
-        }
-
-        .impulso-mobile-channel-picker {
-            display: block;
-        }
     }
 
     /* Container-query companion: the Rise sidebar reduces inline space without changing the viewport. */
     @container impulso-inbox (max-width: 1480px) {
-        .impulso-chat-layout { grid-template-columns: minmax(0, 190px) minmax(0, 300px) minmax(0, 1fr); }
+        .impulso-chat-layout { grid-template-columns: minmax(330px, 360px) minmax(0, 1fr); }
         .impulso-contact-sidebar {
             bottom: 0;
             max-width: 330px;
@@ -2173,21 +2241,11 @@
     }
 
     @container impulso-inbox (max-width: 1100px) {
-        .impulso-chat-layout { grid-template-columns: minmax(0, 68px) minmax(0, 290px) minmax(0, 1fr); }
-        .impulso-channel-header { justify-content: center; padding: 12px 6px; }
-        .impulso-channel-header > div,
-        .impulso-channel-header .impulso-count-badge,
-        .impulso-channel-copy,
-        .impulso-channel-unread,
-        .impulso-channel-manage span { display: none; }
-        .impulso-channel-list { padding: 7px; }
-        .impulso-channel-item { justify-content: center; padding: 7px; }
+        .impulso-chat-layout { grid-template-columns: minmax(310px, 340px) minmax(0, 1fr); }
     }
 
-    @container impulso-inbox (max-width: 991.98px) {
+    @container impulso-inbox (max-width: 1100px) {
         .impulso-chat-layout { grid-template-columns: 1fr; }
-        .impulso-channel-sidebar { display: none; }
-        .impulso-mobile-channel-picker { display: block; }
         .impulso-chat-sidebar {
             bottom: 0;
             left: -105%;
@@ -2235,7 +2293,6 @@
 
     .impulso-hub .impulso-card,
     .impulso-hub .impulso-chat-column,
-    .impulso-hub .impulso-channel-sidebar,
     .impulso-hub .impulso-workspace,
     .impulso-hub .impulso-composer {
         background-color: transparent;
@@ -2243,7 +2300,6 @@
 
     .impulso-hub .impulso-card,
     .impulso-hub .impulso-chat-column,
-    .impulso-hub .impulso-channel-sidebar,
     .impulso-hub .impulso-contact-sidebar,
     .impulso-hub .impulso-chat-sidebar,
     .impulso-hub .impulso-chat-main {
@@ -2356,37 +2412,6 @@
 
 
 
-    /* Refined workspace */
-    .impulso-hub .impulso-section-nav {
-        align-items: center;
-        border-bottom: 1px solid var(--ih-border);
-        border-top: 1px solid var(--ih-border);
-        display: flex;
-        gap: 3px;
-        overflow-x: auto;
-        padding: 7px 14px;
-        scrollbar-width: none;
-    }
-
-    .impulso-hub .impulso-section-nav::-webkit-scrollbar { display: none; }
-
-    .impulso-hub .impulso-section-nav-item {
-        align-items: center;
-        border-radius: 9px;
-        color: inherit;
-        display: inline-flex;
-        flex: 0 0 auto;
-        font-size: 11px;
-        font-weight: 650;
-        gap: 7px;
-        padding: 9px 11px;
-        text-decoration: none;
-        transition: background .16s ease, color .16s ease, transform .16s ease;
-    }
-
-    .impulso-hub .impulso-section-nav-item:hover { background: var(--ih-surface-soft); transform: translateY(-1px); }
-    .impulso-hub .impulso-section-nav-item.active { background: var(--ih-primary-soft); color: var(--ih-primary); }
-    .impulso-hub .impulso-section-nav-item svg { height: 15px; width: 15px; }
     .impulso-hub .impulso-command-button { align-items: center; display: inline-flex; gap: 7px; }
     .impulso-hub .impulso-command-button kbd,
     .impulso-hub .impulso-command-search kbd {
@@ -2642,7 +2667,6 @@
     .impulso-hub .impulso-suggestion-list button:hover { background: var(--ih-surface-soft); }
 
     @media (max-width: 991.98px) {
-        .impulso-hub .impulso-section-nav { display: none; }
         .impulso-hub .impulso-command-label,
         .impulso-hub .impulso-command-button kbd { display: none; }
         .impulso-hub .impulso-campaign-overview { grid-template-columns: minmax(160px,1fr) auto auto; }
@@ -2703,16 +2727,20 @@
     .impulso-hub .impulso-audio-message { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
     .impulso-hub .impulso-media-kind { align-items: center; display: inline-flex; gap: 4px; }
     .impulso-hub .impulso-media-kind svg { height: 14px; width: 14px; }
-    .impulso-hub .impulso-message-dialog-backdrop { align-items: center; background: rgba(0,0,0,.34); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 1090; }
-    .impulso-hub .impulso-message-dialog { background: var(--ih-surface); border: 1px solid var(--ih-border); border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.24); max-width: 460px; padding: 16px; width: 100%; }
+    .impulso-hub .impulso-message-dialog-backdrop,
+    .impulso-hub .impulso-inbox-dialog-backdrop { align-items: center; background: rgba(0,0,0,.34); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 1090; }
+    .impulso-hub .impulso-message-dialog,
+    .impulso-hub .impulso-inbox-dialog { background: var(--ih-surface); border: 1px solid var(--ih-border); border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.24); max-width: 460px; padding: 16px; width: 100%; }
     .impulso-hub .impulso-dialog-header,
     .impulso-hub .impulso-dialog-actions { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
     .impulso-hub .impulso-dialog-header { border-bottom: 1px solid var(--ih-border); margin-bottom: 12px; padding-bottom: 9px; }
     .impulso-hub .impulso-dialog-header h3 { font-size: 14px; margin: 0; }
     .impulso-hub .impulso-dialog-header button { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 20px; }
-    .impulso-hub .impulso-message-dialog-form label { display: block; font-size: 10px; font-weight: 700; margin-bottom: 9px; }
+    .impulso-hub .impulso-message-dialog-form label,
+    .impulso-hub .impulso-inbox-dialog-form label { display: block; font-size: 10px; font-weight: 700; margin-bottom: 9px; }
     .impulso-hub .impulso-message-dialog-form input,
-    .impulso-hub .impulso-message-dialog-form textarea { background: transparent; border: 1px solid var(--ih-border); border-radius: 7px; color: inherit; display: block; margin-top: 4px; padding: 8px; width: 100%; }
+    .impulso-hub .impulso-message-dialog-form textarea,
+    .impulso-hub .impulso-inbox-dialog-form input { background: transparent; border: 1px solid var(--ih-border); border-radius: 7px; color: inherit; display: block; margin-top: 4px; padding: 8px; width: 100%; }
     .impulso-hub .impulso-message-dialog-form textarea { min-height: 100px; resize: vertical; }
     .impulso-hub .impulso-dialog-error { color: var(--ih-danger); font-size: 10px; min-height: 16px; }
     .impulso-hub .impulso-dialog-actions { justify-content: flex-end; margin-top: 8px; }
@@ -2744,9 +2772,13 @@
         min-width: 0;
     }
 
-    #page-content.impulso-page-content--conversations .impulso-topbar,
-    #page-content.impulso-page-content--conversations .impulso-section-nav,
-    #page-content.impulso-page-content--conversations .impulso-mobile-nav {
+    #page-content.impulso-page-content--conversations .impulso-shell-card {
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    #page-content.impulso-page-content--conversations .impulso-topbar {
         flex: 0 0 auto;
     }
 
@@ -3311,7 +3343,7 @@
             max-height: 62vh;
         }
     }
-    /* Collapsible inbox rails: the conversation area receives the released width. */
+    /* Inbox 4 foundation: one conversation list, one message surface, and overlay drawers. */
     .impulso-sr-only {
         border: 0;
         clip: rect(0, 0, 0, 0);
@@ -3334,44 +3366,22 @@
     }
 
     .impulso-hub .impulso-chat-layout {
-        --impulso-channel-track: minmax(0, 205px);
-        --impulso-conversation-track: minmax(0, 315px);
-        grid-template-columns: var(--impulso-channel-track) var(--impulso-conversation-track) minmax(0, 1fr) minmax(0, 300px);
+        --impulso-conversation-track: minmax(340px, 380px);
+        grid-template-columns: var(--impulso-conversation-track) minmax(0, 1fr);
         transition: grid-template-columns .22s ease;
     }
 
-    @media (max-width: 1480px) {
-        .impulso-hub .impulso-chat-layout {
-            --impulso-channel-track: minmax(0, 190px);
-            --impulso-conversation-track: minmax(0, 300px);
-            grid-template-columns: var(--impulso-channel-track) var(--impulso-conversation-track) minmax(0, 1fr);
-        }
-    }
-
     @media (max-width: 1100px) {
-        .impulso-hub .impulso-chat-layout {
-            --impulso-channel-track: minmax(0, 68px);
-            --impulso-conversation-track: minmax(0, 290px);
-            grid-template-columns: var(--impulso-channel-track) var(--impulso-conversation-track) minmax(0, 1fr);
-        }
-    }
-
-    @media (max-width: 991.98px) {
         .impulso-hub .impulso-chat-layout {
             grid-template-columns: minmax(0, 1fr);
         }
     }
 
-    @media (min-width: 992px) {
-        .impulso-hub .impulso-chat-layout:not(.impulso-inbox-compact).impulso-channel-sidebar-collapsed {
-            --impulso-channel-track: 0px;
-        }
-
+    @media (min-width: 1101px) {
         .impulso-hub .impulso-chat-layout:not(.impulso-inbox-compact).impulso-conversation-sidebar-collapsed {
             --impulso-conversation-track: 0px;
         }
 
-        .impulso-hub .impulso-chat-layout:not(.impulso-inbox-compact).impulso-channel-sidebar-collapsed .impulso-channel-sidebar,
         .impulso-hub .impulso-chat-layout:not(.impulso-inbox-compact).impulso-conversation-sidebar-collapsed .impulso-chat-sidebar {
             border-color: transparent;
             opacity: 0;
@@ -3386,32 +3396,21 @@
         transition: none;
     }
 
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-sidebar,
     .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-chat-sidebar {
         background: var(--ih-surface, #fff);
         bottom: 0;
+        box-shadow: 14px 0 35px rgba(31, 41, 55, .12);
         display: flex;
+        left: -105%;
         max-width: none;
         position: fixed;
         top: 0;
+        transition: left .22s ease;
         width: min(92vw, 360px);
         z-index: 1050;
+        overscroll-behavior: contain;
     }
 
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-sidebar {
-        left: -105%;
-        transition: left .22s ease;
-        width: min(86vw, 300px);
-        z-index: 1052;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-chat-sidebar {
-        box-shadow: 14px 0 35px rgba(31, 41, 55, .12);
-        left: -105%;
-        transition: left .22s ease;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-sidebar.open,
     .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-chat-sidebar.open {
         left: 0;
     }
@@ -3424,55 +3423,11 @@
         z-index: 1040;
     }
 
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-header {
-        justify-content: space-between;
-        padding: 13px 12px;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-header > div {
-        display: block;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-header .impulso-count-badge,
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-copy,
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-unread,
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-manage span {
-        display: inline-flex;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-copy {
-        display: block;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-item {
-        justify-content: flex-start;
-        padding: 7px 8px;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-item.active {
-        box-shadow: inset 3px 0 0 var(--ih-primary);
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-manage {
-        justify-content: flex-start;
-        padding: 10px 13px;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-sidebar,
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-chat-sidebar {
-        overscroll-behavior: contain;
-    }
-
-    .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-panel-toggle,
     .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-open-conversation-list {
         display: inline-flex;
     }
 
     @media (max-width: 575.98px) {
-        .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-channel-sidebar {
-            width: min(88vw, 300px);
-        }
-
         .impulso-hub .impulso-chat-layout.impulso-inbox-compact .impulso-chat-sidebar {
             width: min(94vw, 360px);
         }
@@ -3681,31 +3636,6 @@
         color: #fff;
     }
 
-    .impulso-hub .impulso-section-nav {
-        background: #082744;
-        border-bottom-color: rgba(142, 181, 221, .16);
-        border-top: 0;
-        min-height: 57px;
-        padding: 8px 20px;
-    }
-
-    .impulso-hub .impulso-section-nav-item {
-        color: #c2d3e7;
-        font-size: 11px;
-        padding: 10px 13px;
-    }
-
-    .impulso-hub .impulso-section-nav-item:hover {
-        background: rgba(115, 87, 255, .12);
-        color: #fff;
-        transform: none;
-    }
-
-    .impulso-hub .impulso-section-nav-item.active {
-        background: var(--ih-primary-soft);
-        color: #a998ff;
-    }
-
     .impulso-hub .impulso-workspace {
         background: var(--ih-page-bg);
     }
@@ -3734,6 +3664,35 @@
     .impulso-hub .impulso-person-copy span {
         color: var(--ih-muted);
     }
+
+    .impulso-hub .impulso-channel-picker {
+        background: #0a2d52;
+        border-color: var(--ih-border);
+        box-shadow: 0 18px 42px rgba(1, 11, 25, .38);
+    }
+
+    .impulso-hub .impulso-channel-picker-heading {
+        border-bottom-color: var(--ih-border);
+    }
+
+    .impulso-hub .impulso-channel-picker-heading strong { color: #fff; }
+    .impulso-hub .impulso-channel-picker-heading span { color: var(--ih-muted); }
+
+    .impulso-hub .impulso-contact-drawer-header {
+        background: #0d355f;
+        border-bottom-color: var(--ih-border);
+    }
+
+    .impulso-hub .impulso-contact-drawer-header strong { color: #fff; }
+
+    .impulso-hub .impulso-contact-tabs {
+        background: #0a2d52;
+        border-bottom-color: var(--ih-border);
+    }
+
+    .impulso-hub .impulso-contact-tabs button { color: #a9c0db; }
+    .impulso-hub .impulso-contact-tabs button:hover,
+    .impulso-hub .impulso-contact-tabs button.active { color: #b5a8ff; }
 
     .impulso-hub .impulso-stat-icon,
     .impulso-hub .impulso-empty-icon {
@@ -3771,65 +3730,10 @@
     }
 
     .impulso-hub .impulso-chat-layout {
-        --impulso-channel-track: 68px;
-        --impulso-conversation-track: minmax(330px, 360px);
+        --impulso-conversation-track: minmax(340px, 380px);
         background: var(--ih-page-bg);
-        grid-template-columns: var(--impulso-channel-track) var(--impulso-conversation-track) minmax(0, 1fr);
+        grid-template-columns: var(--impulso-conversation-track) minmax(0, 1fr);
         position: relative;
-    }
-
-    .impulso-hub .impulso-channel-sidebar {
-        background: #082744;
-        border-right-color: var(--ih-border);
-    }
-
-    .impulso-hub .impulso-channel-header {
-        background: #0b2e54;
-        justify-content: center;
-        min-height: 64px;
-        padding: 10px 6px;
-    }
-
-    .impulso-hub .impulso-channel-header > div,
-    .impulso-hub .impulso-channel-header .impulso-count-badge,
-    .impulso-hub .impulso-channel-copy,
-    .impulso-hub .impulso-channel-unread,
-    .impulso-hub .impulso-channel-manage span {
-        display: none;
-    }
-
-    .impulso-hub .impulso-channel-list {
-        padding: 10px 7px;
-    }
-
-    .impulso-hub .impulso-channel-item {
-        justify-content: center;
-        min-height: 46px;
-        padding: 7px;
-    }
-
-    .impulso-hub .impulso-channel-item.active {
-        background: var(--ih-primary-soft);
-        box-shadow: inset 3px 0 0 var(--ih-primary);
-    }
-
-    .impulso-hub .impulso-channel-icon {
-        background: #123b64;
-        border-color: rgba(142, 181, 221, .15);
-        color: #b9d0e9;
-    }
-
-    .impulso-hub .impulso-channel-icon.all {
-        background: var(--ih-primary-soft);
-        color: #b3a6ff;
-    }
-
-    .impulso-hub .impulso-channel-manage {
-        background: #082744;
-        border-top-color: var(--ih-border);
-        justify-content: center;
-        min-height: 48px;
-        padding: 10px;
     }
 
     .impulso-hub .impulso-chat-sidebar {
@@ -3890,7 +3794,7 @@
         background: #0a2d52;
         border-bottom-color: var(--ih-border);
         gap: 2px;
-        overflow-x: auto;
+        flex-wrap: wrap;
         padding: 8px 10px;
         scrollbar-width: none;
     }
@@ -3914,6 +3818,12 @@
     .impulso-hub .impulso-queue-tab.active {
         background: var(--ih-primary-soft);
         color: #b5a8ff;
+    }
+
+    .impulso-hub .impulso-status-filter select {
+        background: #123d68;
+        border-color: rgba(142, 181, 221, .18);
+        color: #dbe8f7;
     }
 
     .impulso-hub .impulso-conversation-list {
@@ -4171,7 +4081,7 @@
 
     @media (max-width: 1280px) {
         .impulso-hub .impulso-chat-layout {
-            --impulso-conversation-track: minmax(300px, 340px);
+            --impulso-conversation-track: minmax(320px, 360px);
         }
     }
 
@@ -4180,17 +4090,16 @@
             grid-template-columns: minmax(0, 1fr);
         }
 
-        .impulso-hub .impulso-channel-sidebar {
-            display: none;
+        .impulso-hub .impulso-contact-sidebar {
+            bottom: 0;
+            max-width: 360px;
+            position: fixed;
+            right: -380px;
+            top: 0;
+            width: min(92vw, 360px);
         }
 
-        .impulso-hub .impulso-mobile-channel-picker {
-            display: block;
-        }
-
-        .impulso-hub .impulso-mobile-channel-picker .form-control {
-            min-height: 36px;
-        }
+        .impulso-hub .impulso-contact-sidebar.open { right: 0; }
     }
 
     @media (max-width: 575.98px) {
@@ -4207,18 +4116,15 @@
             font-size: 18px;
         }
 
-        .impulso-hub .impulso-section-nav {
-            padding-left: 10px;
-            padding-right: 10px;
-        }
-
         .impulso-hub .impulso-chat-body {
             padding: 15px 12px;
         }
 
         .impulso-hub .impulso-contact-sidebar {
             max-width: none;
+            position: fixed;
             right: -105%;
+            top: 0;
             width: 94%;
         }
     }

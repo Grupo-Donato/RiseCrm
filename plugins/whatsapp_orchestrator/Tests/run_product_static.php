@@ -110,6 +110,32 @@ $test('cabecalho de conversas concentra a nova conversa e retrai filtros', stati
     $assert(str_contains($styles, 'impulso-chat-heading-actions') && str_contains($styles, 'impulso-filter-toggle'), 'Estilos das ações compactas do cabeçalho ausentes.');
 });
 
+$test('Inbox 4 mantém a fundação focada sem rail ou painel permanente', static function () use ($read, $assert): void {
+    $view = $read('Views/partials/conversations.php');
+    $styles = $read('Views/partials/styles.php');
+    $scripts = $read('Views/partials/scripts.php');
+    $javascript = $read('Assets/js/chatwoot.js');
+    $layout = $read('Assets/js/inbox/inbox_layout.js');
+    $card = $read('Assets/js/inbox/conversation_card.js');
+    $dialogs = $read('Assets/js/inbox/dialogs.js');
+    $savedViews = $read('Assets/js/inbox/saved_views.js');
+    $bulk = $read('Assets/js/inbox/bulk_actions.js');
+    $assert(!str_contains($view, 'impulso-channel-sidebar'), 'Rail permanente de canais ainda está no markup.');
+    foreach (['data-inbox-channel-toggle', 'impulso-channel-picker', 'data-conversation-filter="mine"', 'data-conversation-filter="unassigned"', 'data-conversation-status-filter', 'data-contact-tab="contact"', 'data-contact-tab="service"', 'data-contact-tab="history"', 'data-inbox-more-toggle'] as $needle) {
+        $assert(str_contains($view, $needle), 'Fundação da inbox ausente: ' . $needle);
+    }
+    foreach (['grid-template-columns: var(--impulso-conversation-track) minmax(0, 1fr)', 'position: absolute', 'right: -380px', 'impulso-contact-tabs'] as $needle) {
+        $assert(str_contains($styles, $needle), 'Layout focado/drawer ausente: ' . $needle);
+    }
+    foreach (['inbox_layout.js', 'conversation_card.js', 'dialogs.js'] as $needle) $assert(str_contains($scripts, $needle), 'Módulo Inbox 4 não carregado: ' . $needle);
+    foreach (['queueScope', 'preserveActiveConversation', 'ImpulsoConversationCard'] as $needle) $assert(str_contains($javascript, $needle), 'Estado preservado ausente: ' . $needle);
+    $assert(str_contains($card, 'slice(0, 2)') && !str_contains($card, 'snoozed_until'), 'Card ainda exibe metadados operacionais em excesso.');
+    $assert(str_contains($layout, 'data-contact-tab') && str_contains($layout, 'data-inbox-channel-toggle'), 'Shell da inbox não controla canais e contato.');
+    $assert(str_contains($dialogs, 'window.ImpulsoDialogs') && str_contains($dialogs, 'aria-modal="true"'), 'Diálogo consistente da inbox ausente.');
+    $assert(!str_contains($savedViews, 'window.prompt') && !str_contains($savedViews, 'window.confirm'), 'Visualizações salvas ainda usam diálogo nativo.');
+    $assert(!str_contains($bulk, 'window.prompt') && !str_contains($bulk, 'window.confirm'), 'Ações em massa ainda usam diálogo nativo.');
+});
+
 $test('caixa de entrada usa leitura local imediata e sincronizacao remota limitada', static function () use ($read, $assert): void {
     $javascript = $read('Assets/js/chatwoot.js');
     $chat = $read('Services/Chat_service.php');

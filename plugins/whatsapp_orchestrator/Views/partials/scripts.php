@@ -9,6 +9,9 @@ $plugin_folder = defined('CHATWOOT_PLUGIN_FOLDER') ? CHATWOOT_PLUGIN_FOLDER : ba
 $message_safe_script = $plugin_root . '/Assets/js/inbox/message_safe_content.js';
 $message_renderers_script = $plugin_root . '/Assets/js/inbox/message_renderers.js';
 $message_actions_script = $plugin_root . '/Assets/js/inbox/message_actions.js';
+$conversation_card_script = $plugin_root . '/Assets/js/inbox/conversation_card.js';
+$dialogs_script = $plugin_root . '/Assets/js/inbox/dialogs.js';
+$inbox_layout_script = $plugin_root . '/Assets/js/inbox/inbox_layout.js';
 $chatwoot_script = $plugin_root . '/Assets/js/chatwoot.js';
 $polling_scheduler_script = $plugin_root . '/Assets/js/inbox/polling_scheduler.js';
 $workspace_script = $plugin_root . '/Assets/js/hub-workspace.js';
@@ -30,6 +33,9 @@ $polling_scheduler_version = is_file($polling_scheduler_script) ? (string) filem
 $message_safe_version = is_file($message_safe_script) ? (string) filemtime($message_safe_script) : '2.0.0';
 $message_renderers_version = is_file($message_renderers_script) ? (string) filemtime($message_renderers_script) : '2.0.0';
 $message_actions_version = is_file($message_actions_script) ? (string) filemtime($message_actions_script) : '2.0.0';
+$conversation_card_version = is_file($conversation_card_script) ? (string) filemtime($conversation_card_script) : '2.0.0';
+$dialogs_version = is_file($dialogs_script) ? (string) filemtime($dialogs_script) : '2.0.0';
+$inbox_layout_version = is_file($inbox_layout_script) ? (string) filemtime($inbox_layout_script) : '2.0.0';
 $workspace_version = is_file($workspace_script) ? (string) filemtime($workspace_script) : '2.0.0';
 $media_policy_version = is_file($media_policy_script) ? (string) filemtime($media_policy_script) : '2.0.0';
 $composer_state_version = is_file($composer_state_script) ? (string) filemtime($composer_state_script) : '2.0.0';
@@ -53,6 +59,8 @@ $asset_base = 'plugins/' . rawurlencode($plugin_folder) . '/Assets/js/';
 <script src="<?php echo base_url($asset_base . 'inbox/message_safe_content.js'); ?>?v=<?php echo rawurlencode($message_safe_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/message_renderers.js'); ?>?v=<?php echo rawurlencode($message_renderers_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/message_actions.js'); ?>?v=<?php echo rawurlencode($message_actions_version); ?>"></script>
+<script src="<?php echo base_url($asset_base . 'inbox/conversation_card.js'); ?>?v=<?php echo rawurlencode($conversation_card_version); ?>"></script>
+<script src="<?php echo base_url($asset_base . 'inbox/dialogs.js'); ?>?v=<?php echo rawurlencode($dialogs_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/template_picker.js'); ?>?v=<?php echo rawurlencode($template_picker_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/conversation_workflow.js'); ?>?v=<?php echo rawurlencode($conversation_workflow_version); ?>"></script>
 <?php } ?>
@@ -61,6 +69,7 @@ $asset_base = 'plugins/' . rawurlencode($plugin_folder) . '/Assets/js/';
 <?php if ($inbox_active) { ?><script src="<?php echo base_url($asset_base . 'inbox/media_policy.js'); ?>?v=<?php echo rawurlencode($media_policy_version); ?>"></script><?php } ?>
 <script src="<?php echo base_url($asset_base . 'hub-workspace.js'); ?>?v=<?php echo rawurlencode($workspace_version); ?>"></script>
 <?php if ($inbox_active) { ?>
+<script src="<?php echo base_url($asset_base . 'inbox/inbox_layout.js'); ?>?v=<?php echo rawurlencode($inbox_layout_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/composer_state.js'); ?>?v=<?php echo rawurlencode($composer_state_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/composer_quick_replies.js'); ?>?v=<?php echo rawurlencode($composer_quick_replies_version); ?>"></script>
 <script src="<?php echo base_url($asset_base . 'inbox/composer_clipboard.js'); ?>?v=<?php echo rawurlencode($composer_clipboard_version); ?>"></script>

@@ -78,9 +78,15 @@
             return done({ action: 'read_state', payload: { state: readState } });
         }
         if (kind === 'tags_add' || kind === 'tags_remove') {
-            var tags = window.prompt(kind === 'tags_add' ? 'Etiquetas a adicionar (separadas por virgula)' : 'Etiquetas a remover (separadas por virgula)', '');
-            if (tags == null) return;
-            return done({ action: kind, payload: { tags: tags.split(',').map(function (item) { return item.trim(); }).filter(Boolean) } });
+            if (!window.ImpulsoDialogs || typeof window.ImpulsoDialogs.prompt !== 'function') return;
+            return window.ImpulsoDialogs.prompt({
+                title: kind === 'tags_add' ? 'Adicionar etiquetas' : 'Remover etiquetas',
+                label: 'Etiquetas separadas por vírgula',
+                placeholder: 'Ex.: retorno, prioridade'
+            }).then(function (tags) {
+                if (tags == null) return;
+                done({ action: kind, payload: { tags: tags.split(',').map(function (item) { return item.trim(); }).filter(Boolean) } });
+            });
         }
         openForm(kind, done);
     }

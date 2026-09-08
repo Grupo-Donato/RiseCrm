@@ -1133,9 +1133,12 @@
 
     function editTags() {
         var conversation = activeConversation(); if (!conversation) return;
-        var value = window.prompt('Etiquetas separadas por vírgula:', (conversation.tags || []).join(', ')); if (value == null) return;
-        var tags = value.split(',').map(function (item) { return item.trim(); }).filter(Boolean);
-        conversationAction('tags', { tags: tags }).then(function () { conversation.tags = tags; toast('Etiquetas atualizadas', 'A conversa foi organizada.', 'tag'); if (bridge.loadConversations) bridge.loadConversations(true); }).catch(function (error) { backendError(error, 'etiquetas'); });
+        if (!window.ImpulsoDialogs || typeof window.ImpulsoDialogs.prompt !== 'function') return;
+        window.ImpulsoDialogs.prompt({ title: 'Editar etiquetas', label: 'Etiquetas separadas por vírgula', value: (conversation.tags || []).join(', '), placeholder: 'Ex.: retorno, prioridade' }).then(function (value) {
+            if (value == null) return;
+            var tags = value.split(',').map(function (item) { return item.trim(); }).filter(Boolean);
+            conversationAction('tags', { tags: tags }).then(function () { conversation.tags = tags; toast('Etiquetas atualizadas', 'A conversa foi organizada.', 'tag'); if (bridge.loadConversations) bridge.loadConversations(true); }).catch(function (error) { backendError(error, 'etiquetas'); });
+        });
     }
     function editAssignment() {
         var conversation = activeConversation(); if (!conversation) return;

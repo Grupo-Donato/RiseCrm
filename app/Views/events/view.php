@@ -149,22 +149,27 @@
 
 <div class="modal-footer">
     <?php
-    if (isset($editable) && $editable === "1") {
-
-        if ($login_user->id == $model_info->created_by || $login_user->is_admin) {
-            //recurring child event's can't be deleted
-            $show_delete = true;
-
-            if (isset($model_info->cycle) && $model_info->cycle) {
-                $show_delete = false;
-            }
-
-            if ($show_delete) {
-                echo js_anchor("<i data-feather='x-circle' class='icon-16'></i> " . app_lang('delete_event'), array("class" => "btn btn-default float-start", "id" => "delete_event", "data-encrypted_event_id" => $encrypted_event_id));
-            }
-
-            echo modal_anchor(get_uri("events/modal_form"), "<i data-feather='edit' class='icon-16'></i> " . app_lang('edit_event'), array("class" => "btn btn-default", "data-post-encrypted_event_id" => $encrypted_event_id, "title" => app_lang('edit_event')));
-        }
+    $can_manage_event = isset($editable) && $editable === "1" && ($login_user->id == $model_info->created_by || $login_user->is_admin);
+    if ($can_manage_event) {
+        //recurring child event's can't be deleted
+        $show_delete = !isset($model_info->cycle) || !$model_info->cycle;
+        ?>
+        <div class="dropdown float-start">
+            <button class="btn btn-default dropdown-toggle caret" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i data-feather="settings" class="icon-16"></i> <?php echo app_lang('actions'); ?>
+            </button>
+            <ul class="dropdown-menu" role="menu">
+                <li role="presentation">
+                    <?php echo modal_anchor(get_uri("events/modal_form"), "<i data-feather='edit' class='icon-16'></i> " . app_lang('edit_event'), array("class" => "dropdown-item", "data-post-encrypted_event_id" => $encrypted_event_id, "title" => app_lang('edit_event'))); ?>
+                </li>
+                <?php if ($show_delete) { ?>
+                    <li role="presentation">
+                        <?php echo js_anchor("<i data-feather='x-circle' class='icon-16'></i> " . app_lang('delete_event'), array("class" => "dropdown-item", "id" => "delete_event", "data-encrypted_event_id" => $encrypted_event_id)); ?>
+                    </li>
+                <?php } ?>
+            </ul>
+        </div>
+        <?php
     }
 
     //show a button to confirm or reject the event

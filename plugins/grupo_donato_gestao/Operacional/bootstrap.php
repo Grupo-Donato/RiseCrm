@@ -335,7 +335,6 @@ if (!function_exists("bombeiros_install_or_update")) {
             "mensagens",
             "messages",
             "Templates",
-            "Conversas",
             "Histórico",
             "Templates de mensagem",
             "Histórico de mensagens",

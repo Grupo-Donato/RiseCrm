@@ -61,6 +61,7 @@
         activeConversationRefreshLoading: false,
         composerMode: 'reply',
         channelId: 'all',
+        queueScope: 'all',
         status: 'all',
         search: '',
         filters: { assignee_id: '', team_id: '', priority: '', unread: '', conversation_type: '', bot_status: '', last_activity_from: '', last_activity_to: '', tags: '' },
@@ -122,7 +123,6 @@
     }
 
     var inboxPanelState = {
-        channelCollapsed: false,
         conversationCollapsed: false
     };
 
@@ -139,7 +139,7 @@
     }
 
     function isCompactInbox() {
-        return inboxWidth() <= 991.98;
+        return inboxWidth() <= 1100;
     }
 
     function readInboxPanelPreference(key) {
@@ -148,24 +148,18 @@
 
     function persistInboxPanelPreferences() {
         try {
-            window.localStorage.setItem('impulso_hub_channel_collapsed', inboxPanelState.channelCollapsed ? '1' : '0');
             window.localStorage.setItem('impulso_hub_conversation_collapsed', inboxPanelState.conversationCollapsed ? '1' : '0');
         } catch (error) { /* Private browsing or disabled storage. */ }
     }
 
     function updateInboxPanelButtons(compact) {
-        var labels = {
-            channel: { open: 'Recolher canais', closed: 'Expandir canais' },
-            conversation: { open: 'Recolher conversas', closed: 'Expandir conversas' }
-        };
+        var labels = { conversation: { open: 'Recolher conversas', closed: 'Expandir conversas' } };
         app.querySelectorAll('[data-panel-toggle]').forEach(function (button) {
             var panel = button.getAttribute('data-panel-toggle');
-            var element = panel === 'channel'
-                ? document.getElementById('impulso-channel-sidebar')
-                : document.getElementById('impulso-chat-sidebar');
+            var element = document.getElementById('impulso-chat-sidebar');
             var open = compact
                 ? !!(element && element.classList.contains('open'))
-                : (panel === 'channel' ? !inboxPanelState.channelCollapsed : !inboxPanelState.conversationCollapsed);
+                : !inboxPanelState.conversationCollapsed;
             var label = labels[panel] ? (open ? labels[panel].open : labels[panel].closed) : '';
             button.setAttribute('aria-expanded', open ? 'true' : 'false');
             button.setAttribute('aria-label', label);
@@ -179,62 +173,46 @@
         var layout = inboxLayout();
         if (!layout) return;
         var compact = isCompactInbox();
-        var channel = document.getElementById('impulso-channel-sidebar');
         var conversation = document.getElementById('impulso-chat-sidebar');
         var backdrop = document.querySelector('.impulso-inbox-drawer-backdrop');
 
         layout.classList.toggle('impulso-inbox-compact', compact);
-        layout.classList.toggle('impulso-channel-sidebar-collapsed', !compact && inboxPanelState.channelCollapsed);
         layout.classList.toggle('impulso-conversation-sidebar-collapsed', !compact && inboxPanelState.conversationCollapsed);
 
         if (!compact) {
-            if (channel) channel.classList.remove('open');
             if (conversation) conversation.classList.remove('open');
         }
 
-        var drawerOpen = compact && !!(
-            (channel && channel.classList.contains('open'))
-            || (conversation && conversation.classList.contains('open'))
-        );
+        var drawerOpen = compact && !!(conversation && conversation.classList.contains('open'));
         if (backdrop) {
             backdrop.classList.toggle('impulso-hidden', !drawerOpen);
             backdrop.setAttribute('aria-hidden', drawerOpen ? 'false' : 'true');
         }
-        if (channel) channel.setAttribute('aria-hidden', compact ? (channel.classList.contains('open') ? 'false' : 'true') : (inboxPanelState.channelCollapsed ? 'true' : 'false'));
         if (conversation) conversation.setAttribute('aria-hidden', compact ? (conversation.classList.contains('open') ? 'false' : 'true') : (inboxPanelState.conversationCollapsed ? 'true' : 'false'));
         updateInboxPanelButtons(compact);
     }
 
     function closeInboxDrawers() {
-        var channel = document.getElementById('impulso-channel-sidebar');
         var conversation = document.getElementById('impulso-chat-sidebar');
-        if (channel) channel.classList.remove('open');
         if (conversation) conversation.classList.remove('open');
         syncInboxPanels();
     }
 
     function toggleInboxPanel(panel) {
         var layout = inboxLayout();
-        if (!layout) return;
+        if (!layout || panel !== 'conversation') return;
         var compact = isCompactInbox();
-        var target = panel === 'channel'
-            ? document.getElementById('impulso-channel-sidebar')
-            : document.getElementById('impulso-chat-sidebar');
+        var target = document.getElementById('impulso-chat-sidebar');
         if (!target) return;
 
         if (compact) {
-            var other = panel === 'channel'
-                ? document.getElementById('impulso-chat-sidebar')
-                : document.getElementById('impulso-channel-sidebar');
             var opening = !target.classList.contains('open');
-            if (other) other.classList.remove('open');
             target.classList.toggle('open', opening);
             syncInboxPanels();
             return;
         }
 
-        if (panel === 'channel') inboxPanelState.channelCollapsed = !inboxPanelState.channelCollapsed;
-        else inboxPanelState.conversationCollapsed = !inboxPanelState.conversationCollapsed;
+        inboxPanelState.conversationCollapsed = !inboxPanelState.conversationCollapsed;
         persistInboxPanelPreferences();
         syncInboxPanels();
     }
@@ -791,8 +769,7 @@
 
     function renderChannels() {
         var list = document.querySelector('.impulso-channel-list');
-        var mobile = document.getElementById('impulso-mobile-channel-filter');
-        if (!list || !mobile) return;
+        if (!list) return;
         var totalConversations = 0;
         var totalUnread = 0;
         state.instances.forEach(function (instance) {
@@ -801,22 +778,20 @@
         });
         var allActive = state.channelId === 'all';
         var html = '<button class="impulso-channel-item' + (allActive ? ' active' : '') + '" type="button" aria-pressed="' + (allActive ? 'true' : 'false') + '" data-channel-filter="all" data-channel-label="Todos os canais">' +
-            '<span class="impulso-channel-icon all"><i data-feather="layers"></i></span><span class="impulso-channel-copy"><strong>Todos os canais</strong><small>' + totalConversations + ' conversa' + (totalConversations === 1 ? '' : 's') + '</small></span>' +
+            '<span class="impulso-channel-icon all"><i data-feather="layers"></i></span><span class="impulso-channel-copy"><strong>Todos os canais</strong><small>' + totalConversations + ' conversa' + (totalConversations === 1 ? '' : 's') + ' · ' + totalUnread + ' não lidas</small></span>' +
             (totalUnread > 0 ? '<span class="impulso-channel-unread">' + totalUnread + '</span>' : '') + '</button>';
-        var options = '<option value="all">Todos os canais</option>';
         state.instances.forEach(function (instance) {
             var active = String(state.channelId) === String(instance.id);
             var status = ['connected', 'attention', 'disconnected', 'error'].indexOf(instance.status) >= 0 ? instance.status : 'disconnected';
+            var statusLabel = status === 'connected' ? 'Conectado' : (status === 'attention' ? 'Atenção' : 'Desconectado');
+            var channelMeta = instance.phone ? escapeHtml(instance.phone) : statusLabel;
             html += '<button class="impulso-channel-item' + (active ? ' active' : '') + '" type="button" aria-pressed="' + (active ? 'true' : 'false') + '" data-channel-filter="' + instance.id + '" data-channel-label="' + escapeHtml(instance.name) + '" title="' + escapeHtml(instance.name + (instance.phone ? ' · ' + instance.phone : '')) + '">' +
                 '<span class="impulso-channel-icon status-' + status + '"><i data-feather="message-circle"></i><span class="impulso-channel-status-dot" aria-hidden="true"></span></span>' +
-                '<span class="impulso-channel-copy"><strong>' + escapeHtml(instance.name) + '</strong><small>' + instance.conversation_count + ' conversa' + (instance.conversation_count === 1 ? '' : 's') + '</small></span>' +
+                '<span class="impulso-channel-copy"><strong>' + escapeHtml(instance.name) + '</strong><small>' + channelMeta + ' · ' + instance.conversation_count + ' conversa' + (instance.conversation_count === 1 ? '' : 's') + '</small></span>' +
                 (instance.unread_count > 0 ? '<span class="impulso-channel-unread">' + instance.unread_count + '</span>' : '') + '</button>';
-            options += '<option value="' + instance.id + '"' + (active ? ' selected' : '') + '>' + escapeHtml(instance.name) + '</option>';
         });
         list.innerHTML = html;
-        mobile.innerHTML = options;
-        var count = document.querySelector('.impulso-channel-header .impulso-count-badge');
-        if (count) count.textContent = String(state.instances.length);
+        setText('impulso-current-channel', selectedInstance() ? selectedInstance().name : 'Todos os canais');
         bindChannelButtons();
         replaceIcons();
     }
@@ -824,20 +799,18 @@
     function conversationItemHtml(conversation) {
         var active = Number(conversation.id) === Number(state.activeConversationId);
         var selected = state.bulkSelectedIds.indexOf(Number(conversation.id)) >= 0;
-        var bulkCheckbox = config.permissions && config.permissions.manageConversations ? '<label class="impulso-bulk-select" title="Selecionar conversa"><input type="checkbox" data-bulk-select="' + conversation.id + '"' + (selected ? ' checked' : '') + ' aria-label="Selecionar ' + escapeHtml(conversation.name) + '"></label>' : '';
-        var priority = conversation.priority && conversation.priority !== 'none' ? '<span class="impulso-workflow-pill priority-' + escapeHtml(conversation.priority) + '">' + escapeHtml(conversation.priority) + '</span>' : '';
-        var tags = conversation.tags.slice(0, 2).map(function (tag) { return '<span class="impulso-workflow-tag">' + escapeHtml(tag) + '</span>'; }).join('') + (conversation.tags.length > 2 ? '<span class="impulso-workflow-tag">+' + (conversation.tags.length - 2) + '</span>' : '');
-        var snooze = conversation.status === 'snoozed' && conversation.snoozed_until ? '<span class="impulso-workflow-pill">até ' + escapeHtml(conversationTime(conversation.snoozed_until)) + '</span>' : '';
-        var group = conversation.conversation_type === 'group' ? '<span class="impulso-workflow-pill">Grupo</span>' : '';
-        var bot = conversation.bot_status === 'paused' || conversation.bot_status === 'handoff' ? '<span class="impulso-workflow-pill">Bot ' + escapeHtml(conversation.bot_status === 'handoff' ? 'handoff' : 'pausado') + '</span>' : '';
-        return '<article class="impulso-conversation-item impulso-conversation-card' + (active ? ' active' : '') + (conversation.unread > 0 ? ' unread' : '') + '" data-conversation-id="' + conversation.id + '" data-status="' + escapeHtml(conversation.status) + '" data-instance-id="' + conversation.instance_id + '">' +
-            '<button class="impulso-conversation-select" type="button" data-conversation-select="' + conversation.id + '" aria-label="Abrir conversa de ' + escapeHtml(conversation.name) + '"' + (active ? ' aria-current="page"' : '') + '>' +
-            '<div class="impulso-conversation-line"><div class="impulso-avatar">' + escapeHtml(conversation.avatar) + '</div><div class="impulso-conversation-copy">' +
-            '<div class="impulso-conversation-title"><strong>' + escapeHtml(conversation.name) + '</strong><span class="impulso-conversation-time">' + escapeHtml(conversationTime(conversation.last_activity_at)) + '</span></div>' +
-            '<div class="impulso-conversation-preview">' + escapeHtml(conversation.last_message || 'Sem mensagens') + '</div><div class="impulso-conversation-meta">' +
-            '<span class="impulso-instance-mini"><i data-feather="smartphone"></i> ' + escapeHtml(conversation.instance) + '</span><span>' + escapeHtml(conversation.assignee) + '</span><span>' + escapeHtml(conversation.team) + '</span>' +
-            (conversation.unread > 0 ? '<span class="impulso-unread">' + conversation.unread + '</span>' : '') + '</div><div class="impulso-workflow-tags">' + group + bot + priority + snooze + tags + '</div></div></div></button>' + bulkCheckbox +
-            '<button class="impulso-conversation-menu-trigger" type="button" data-conversation-menu="' + conversation.id + '" aria-label="Ações da conversa" aria-haspopup="menu"><i data-feather="more-vertical"></i></button></article>';
+        if (window.ImpulsoConversationCard && typeof window.ImpulsoConversationCard.render === 'function') {
+            return window.ImpulsoConversationCard.render(conversation, {
+                active: active,
+                selected: selected,
+                canBulkSelect: !!(config.permissions && config.permissions.manageConversations),
+                showAssignee: state.queueScope === 'all'
+            });
+        }
+        var fallbackBulk = config.permissions && config.permissions.manageConversations
+            ? '<label class="impulso-bulk-select" title="Selecionar conversa"><input type="checkbox" data-bulk-select="' + conversation.id + '" aria-label="Selecionar ' + escapeHtml(conversation.name) + '"></label>'
+            : '';
+        return '<article class="impulso-conversation-item' + (active ? ' active' : '') + '" data-conversation-id="' + conversation.id + '"><button type="button" data-conversation-select="' + conversation.id + '"><span class="impulso-avatar">' + escapeHtml(conversation.avatar) + '</span><strong>' + escapeHtml(conversation.name) + '</strong></button>' + fallbackBulk + '</article>';
     }
 
     function conversationSurfaceFingerprint(conversation) {
@@ -1133,11 +1106,17 @@
 
     function editConversationTags(id) {
         var conversation = state.conversations.find(function (item) { return Number(item.id) === Number(id); });
-        if (!conversation || typeof window.prompt !== 'function') return;
-        var value = window.prompt('Etiquetas separadas por virgula', conversation.tags.join(', '));
-        if (value === null) return;
-        var tags = value.split(',').map(function (tag) { return tag.trim(); }).filter(Boolean);
-        mutateConversation(id, '/tags', { tags: tags });
+        if (!conversation || !window.ImpulsoDialogs || typeof window.ImpulsoDialogs.prompt !== 'function') return;
+        window.ImpulsoDialogs.prompt({
+            title: 'Editar etiquetas',
+            label: 'Etiquetas separadas por vírgula',
+            value: conversation.tags.join(', '),
+            placeholder: 'Ex.: urgente, retorno'
+        }).then(function (value) {
+            if (value === null) return;
+            var tags = value.split(',').map(function (tag) { return tag.trim(); }).filter(Boolean);
+            mutateConversation(id, '/tags', { tags: tags });
+        });
     }
 
     document.addEventListener('click', function (event) {
@@ -1177,7 +1156,20 @@
     });
 
     function conversationContext() {
-        return [String(state.channelId), state.status, state.search, JSON.stringify(state.filters)].join('|');
+        return [String(state.channelId), state.queueScope, state.status, state.search, JSON.stringify(state.filters)].join('|');
+    }
+
+    function preserveActiveConversation(reason) {
+        var active = activeConversation();
+        if (active && state.activeConversationId) {
+            state.activeConversationRecord = Object.assign({}, active);
+            state.activeConversationDetached = true;
+        }
+        reason = String(reason || 'filter');
+        if (reason === 'search') return setActiveConversationId(null, 'search');
+        if (reason === 'channel') return setActiveConversationId(null, 'channel');
+        if (reason === 'filter_clear') return setActiveConversationId(null, 'filter_clear');
+        return setActiveConversationId(null, 'filter');
     }
 
     function currentConversationFilterState() {
@@ -1190,12 +1182,11 @@
     }
 
     function currentSavedViewFilters() {
-        var unassignedQueue = state.status === 'unassigned';
         return {
-            status: unassignedQueue || state.status === 'all' ? '' : state.status,
+            status: state.status === 'all' ? '' : state.status,
             channel: state.channelId === 'all' ? '' : state.channelId,
             search: state.search || '',
-            assignee: unassignedQueue ? 'unassigned' : (state.filters.assignee_id || ''),
+            assignee: state.queueScope === 'mine' ? 'me' : (state.queueScope === 'unassigned' ? 'unassigned' : (state.filters.assignee_id || '')),
             team: state.filters.team_id || '',
             priority: state.filters.priority || '',
             unread: state.filters.unread || '',
@@ -1210,23 +1201,21 @@
     function applySavedViewFilters(snapshot) {
         snapshot = snapshot && typeof snapshot === 'object' ? snapshot : {};
         var savedStatus = String(snapshot.status || '');
-        state.status = savedStatus === 'unassigned' ? 'unassigned' : (['open', 'pending', 'resolved', 'snoozed'].indexOf(savedStatus) >= 0 ? savedStatus : 'all');
+        var savedAssignee = String(snapshot.assignee || '');
+        state.queueScope = savedStatus === 'unassigned' || savedAssignee === 'unassigned' ? 'unassigned' : (savedAssignee === 'me' ? 'mine' : 'all');
+        state.status = savedStatus === 'unassigned' ? 'all' : (['open', 'pending', 'resolved', 'snoozed'].indexOf(savedStatus) >= 0 ? savedStatus : 'all');
         state.channelId = snapshot.channel || snapshot.instance ? String(snapshot.channel || snapshot.instance) : 'all';
         state.search = String(snapshot.search || '').trim();
-        state.filters.assignee_id = state.status === 'unassigned' ? 'unassigned' : String(snapshot.assignee || '');
+        state.filters.assignee_id = state.queueScope === 'unassigned' ? 'unassigned' : (state.queueScope === 'mine' ? 'me' : savedAssignee);
         state.filters.team_id = String(snapshot.team || '');
         ['priority', 'unread', 'conversation_type', 'bot_status', 'last_activity_from', 'last_activity_to', 'tags'].forEach(function (key) { state.filters[key] = String(snapshot[key] || ''); });
         state.bulkSelectedIds = [];
         var search = document.getElementById('impulso-conversation-search'); if (search) search.value = state.search;
         document.querySelectorAll('[data-conversation-filter-control]').forEach(function (control) { var key = control.getAttribute('data-conversation-filter-control'); control.value = state.filters[key] || ''; });
-        document.querySelectorAll('[data-conversation-filter]').forEach(function (item) {
-            var selected = (item.getAttribute('data-conversation-filter') || 'all') === state.status;
-            item.classList.toggle('active', selected);
-            item.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        });
+        updateQueueControls();
         renderChannels();
         renderFilterSummary(true);
-        setActiveConversationId(null, 'filter');
+        preserveActiveConversation('filter');
         return loadConversations(true);
     }
 
@@ -1259,25 +1248,42 @@
         }
     }
 
+    function updateQueueControls() {
+        document.querySelectorAll('[data-conversation-filter]').forEach(function (item) {
+            var selected = (item.getAttribute('data-conversation-filter') || 'all') === state.queueScope;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        var status = document.getElementById('impulso-queue-status-filter');
+        if (status) status.value = state.status || 'all';
+    }
+
     function renderFilterSummary(openIfActive) {
         var summary = document.getElementById('impulso-active-filter-summary');
         var summaryRow = document.getElementById('impulso-active-filter-row');
         var clear = document.querySelector('[data-conversation-filter-clear]');
         if (!summary) return;
         var active = [];
-        if (state.status !== 'all') active.push('Status: ' + state.status);
-        if (state.search) active.push('Busca: ' + state.search);
+        var queueLabels = { mine: 'Minhas', unassigned: 'Não atribuídas' };
+        var statusLabels = { open: 'Abertas', pending: 'Pendentes', snoozed: 'Adiadas', resolved: 'Resolvidas' };
+        if (state.queueScope !== 'all') active.push({ key: 'queue', label: 'Fila: ' + queueLabels[state.queueScope] });
+        if (state.status !== 'all') active.push({ key: 'status', label: 'Status: ' + (statusLabels[state.status] || state.status) });
+        if (state.search) active.push({ key: 'search', label: 'Busca: ' + state.search });
         Object.keys(state.filters).forEach(function (key) {
             if (!state.filters[key]) return;
+            if (key === 'assignee_id' && state.queueScope !== 'all') return;
             var control = document.querySelector('[data-conversation-filter-control="' + key + '"]');
             var label = control && control.options && control.selectedIndex >= 0 ? control.options[control.selectedIndex].textContent : state.filters[key];
-            active.push((control && control.getAttribute('aria-label') || key) + ': ' + label);
+            active.push({ key: key, label: (control && control.getAttribute('aria-label') || key) + ': ' + label });
         });
         summary.innerHTML = '';
-        active.forEach(function (label) {
-            var chip = document.createElement('span');
+        active.forEach(function (item) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
             chip.className = 'impulso-filter-chip';
-            chip.textContent = label;
+            chip.setAttribute('data-filter-chip-key', item.key);
+            chip.setAttribute('aria-label', 'Remover ' + item.label);
+            chip.textContent = item.label + ' ×';
             summary.appendChild(chip);
         });
         if (summaryRow) {
@@ -1300,20 +1306,39 @@
         }
     }
 
+    function removeFilterChip(key) {
+        key = String(key || '');
+        if (key === 'queue') {
+            state.queueScope = 'all';
+            if (state.filters.assignee_id === 'me' || state.filters.assignee_id === 'unassigned') state.filters.assignee_id = '';
+        } else if (key === 'status') {
+            state.status = 'all';
+        } else if (key === 'search') {
+            state.search = '';
+            var search = document.getElementById('impulso-conversation-search');
+            if (search) search.value = '';
+        } else if (Object.prototype.hasOwnProperty.call(state.filters, key)) {
+            state.filters[key] = '';
+            var control = document.querySelector('[data-conversation-filter-control="' + key + '"]');
+            if (control) control.value = '';
+        }
+        updateQueueControls();
+        renderFilterSummary(false);
+        preserveActiveConversation('filter');
+        loadConversations(true);
+    }
+
     function clearConversationFilters() {
+        preserveActiveConversation('filter_clear');
+        state.queueScope = 'all';
         state.status = 'all';
         state.search = '';
         Object.keys(state.filters).forEach(function (key) { state.filters[key] = ''; });
         var search = document.getElementById('impulso-conversation-search');
         if (search) search.value = '';
         document.querySelectorAll('[data-conversation-filter-control]').forEach(function (control) { control.value = ''; });
-        document.querySelectorAll('[data-conversation-filter]').forEach(function (item) {
-            var selected = item.getAttribute('data-conversation-filter') === 'all';
-            item.classList.toggle('active', selected);
-            item.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        });
+        updateQueueControls();
         renderFilterSummary(false);
-        setActiveConversationId(null, 'filter_clear');
         loadConversations(true);
     }
 
@@ -1421,7 +1446,10 @@
             var activeReconciliation = typeof workflowHelpers.reconcileActiveConversationRecord === 'function'
                 ? workflowHelpers.reconcileActiveConversationRecord(state.activeConversationId, state.activeConversationRecord, state.conversations, !!responseContainsFullList, state.activeConversationDetached)
                 : { activeId: Number(state.activeConversationId || 0), record: state.activeConversationRecord, cleared: !!(state.activeConversationId && responseContainsFullList && !state.activeConversationDetached), listed: false };
-            if (activeReconciliation.listed) state.activeConversationRecord = activeReconciliation.record;
+            if (activeReconciliation.listed) {
+                state.activeConversationRecord = activeReconciliation.record;
+                state.activeConversationDetached = false;
+            }
             var activeWasCleared = false;
             if (state.activeConversationId && reset && activeReconciliation.cleared) {
                 clearConversation();
@@ -1475,7 +1503,7 @@
         persistChannel();
         setText('impulso-current-channel', label || (selectedInstance() ? selectedInstance().name : 'Todos os canais'));
         renderChannels();
-        setActiveConversationId(null, 'channel');
+        preserveActiveConversation('channel');
         loadConversations(true).then(function () { return syncPollingChannel(true); });
     }
 
@@ -1554,7 +1582,7 @@
             var changed = renderAssignmentOptions();
             if (changed) {
                 renderFilterSummary();
-                setActiveConversationId(null, 'options_reconcile');
+                preserveActiveConversation('options_reconcile');
                 loadConversations(true);
             }
         }).catch(function () { /* selectors remain usable with the current DTO */ });
@@ -1639,6 +1667,14 @@
         setText('impulso-bot-conversation-state', conversation.bot_status === 'active' ? 'Ativo até um atendente responder' : (conversation.bot_status === 'handoff' ? 'Encaminhado para humano' : 'Pausado'));
         var botButton = document.querySelector('[data-impulso-action="toggle-conversation-bot"]');
         if (botButton) botButton.textContent = conversation.bot_status === 'active' ? 'Pausar' : 'Retomar';
+        var assumeButton = document.getElementById('impulso-assume-button');
+        if (assumeButton) {
+            var assumed = Number(conversation.assignee_id || 0) === Number(config.actorId || 0) && Number(config.actorId || 0) > 0;
+            assumeButton.disabled = assumed;
+            assumeButton.setAttribute('aria-label', assumed ? 'Atendimento assumido por você' : 'Assumir atendimento');
+            var assumeLabel = assumeButton.querySelector('span');
+            if (assumeLabel) assumeLabel.textContent = assumed ? 'Assumido' : 'Assumir';
+        }
         var tags = document.getElementById('impulso-contact-tags');
         if (tags) tags.innerHTML = conversation.tags.map(function (tag) { return '<span class="impulso-badge primary">' + escapeHtml(tag) + '</span>'; }).join('');
         applyWorkflowFields(conversation);
@@ -2308,27 +2344,37 @@
     function bindConversationControls() {
         var filterToggle = document.querySelector('[data-conversation-filter-toggle]');
         if (filterToggle) filterToggle.addEventListener('click', function () { setFilterPanelOpen(!state.filterPanelOpen); });
-        var mobile = document.getElementById('impulso-mobile-channel-filter');
-        if (mobile) mobile.addEventListener('change', function () {
-            var option = this.options[this.selectedIndex];
-            activateChannel(this.value, option ? option.textContent : 'Todos os canais');
-        });
         document.querySelectorAll('[data-conversation-filter]').forEach(function (button) {
             button.addEventListener('click', function () {
                 document.querySelectorAll('[data-conversation-filter]').forEach(function (item) { item.classList.remove('active'); item.setAttribute('aria-pressed', 'false'); });
                 this.classList.add('active');
                 this.setAttribute('aria-pressed', 'true');
-                state.status = this.getAttribute('data-conversation-filter') || 'all';
+                var scope = this.getAttribute('data-conversation-filter') || 'all';
+                state.queueScope = ['mine', 'unassigned', 'all'].indexOf(scope) >= 0 ? scope : 'all';
+                state.status = 'all';
+                state.filters.assignee_id = state.queueScope === 'mine' ? 'me' : (state.queueScope === 'unassigned' ? 'unassigned' : '');
+                updateQueueControls();
                 renderFilterSummary();
-                setActiveConversationId(null, 'filter');
+                preserveActiveConversation('filter');
                 loadConversations(true);
             });
         });
+        var queueStatus = document.getElementById('impulso-queue-status-filter');
+        if (queueStatus) queueStatus.addEventListener('change', function () {
+            state.status = this.value || 'all';
+            updateQueueControls();
+            renderFilterSummary();
+            preserveActiveConversation('filter');
+            loadConversations(true);
+        });
         document.querySelectorAll('[data-conversation-filter-control]').forEach(function (control) {
             control.addEventListener('change', function () {
-                state.filters[this.getAttribute('data-conversation-filter-control')] = this.value || '';
+                var key = this.getAttribute('data-conversation-filter-control');
+                state.filters[key] = this.value || '';
+                if (key === 'assignee_id') state.queueScope = this.value === 'me' ? 'mine' : (this.value === 'unassigned' ? 'unassigned' : 'all');
+                updateQueueControls();
                 renderFilterSummary(true);
-                setActiveConversationId(null, 'filter');
+                preserveActiveConversation('filter');
                 loadConversations(true);
             });
         });
@@ -2336,8 +2382,8 @@
         if (search) search.addEventListener('input', function () {
             state.search = this.value.trim();
             if (state.searchTimer) window.clearTimeout(state.searchTimer);
-            setActiveConversationId(null, 'search');
-            renderFilterSummary(true);
+            preserveActiveConversation('search');
+            renderFilterSummary(false);
             state.searchTimer = window.setTimeout(function () { loadConversations(true); }, 320);
             runtime.timers.push(state.searchTimer);
         });
@@ -2365,6 +2411,12 @@
         loadAssignmentOptions();
         var clearFilters = document.querySelector('[data-conversation-filter-clear]');
         if (clearFilters) clearFilters.addEventListener('click', clearConversationFilters);
+        var summary = document.getElementById('impulso-active-filter-summary');
+        if (summary) summary.addEventListener('click', function (event) {
+            var chip = event.target.closest('[data-filter-chip-key]');
+            if (chip) removeFilterChip(chip.getAttribute('data-filter-chip-key'));
+        });
+        updateQueueControls();
         renderFilterSummary();
     }
 
@@ -2833,6 +2885,10 @@
         if (submit) return;
         if (action === 'refresh-dashboard') { window.location.reload(); return; }
         if (action === 'toggle-conversation-bot') { toggleConversationBot(trigger); return; }
+        if (action === 'assign-self') {
+            if (state.activeConversationId) mutateConversation(Number(state.activeConversationId), '/assignment', workflowHelpers.assignmentMutationPayload ? workflowHelpers.assignmentMutationPayload({ assign_to_me: true }) : { assign_to_me: true });
+            return;
+        }
         if (action === 'new-bot') { openBotModal(0); return; }
         if (action === 'edit-bot') { openBotModal(trigger.getAttribute('data-bot-id')); return; }
         if (action === 'publish-bot') { publishOrToggleBot(trigger.getAttribute('data-bot-id'), 'publish', trigger); return; }
@@ -2850,7 +2906,6 @@
         if (action === 'save-settings') { saveSettings(trigger); return; }
         if (action === 'test-evolution') { testEvolutionSettings(trigger); return; }
         if (action === 'test-all-connections') { refreshAllInstances(trigger); return; }
-        if (action === 'toggle-channel-sidebar') { toggleInboxPanel('channel'); return; }
         if (action === 'toggle-conversation-sidebar' || action === 'open-conversation-list') { toggleInboxPanel('conversation'); return; }
         if (action === 'close-inbox-drawers') { closeInboxDrawers(); return; }
         if (action === 'open-contact') {
@@ -2875,7 +2930,6 @@
 
     document.addEventListener('click', function (event) {
         if (isCompactInbox()
-            && !event.target.closest('#impulso-channel-sidebar')
             && !event.target.closest('#impulso-chat-sidebar')
             && !event.target.closest('[data-panel-toggle]')) {
             closeInboxDrawers();
@@ -2944,7 +2998,6 @@
     applyInitialSettings();
     bindConversationControls();
     bindStaticControls();
-    inboxPanelState.channelCollapsed = readInboxPanelPreference('impulso_hub_channel_collapsed');
     inboxPanelState.conversationCollapsed = readInboxPanelPreference('impulso_hub_conversation_collapsed');
     syncInboxPanels();
     replaceIcons();

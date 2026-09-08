@@ -11,7 +11,7 @@
                     foreach ($events as $event) {
                         ?>
                         <div class="pb10 pt10 b-b">
-                            <div><?php echo modal_anchor(get_uri("events/view/"), "<i class='icon-16 mr5' style='color:" . $event->color . "; margin-top:-3px; ' data-feather='" . get_event_icon($event->share_with) . "'></i></span> " . $event->title, array("data-post-id" => encode_id($event->id, "event_id"), "data-post-cycle" => $event->cycle, "title" => app_lang("event_details"))); ?></div>
+                            <div><?php echo modal_anchor(get_uri("events/view/"), "<i class='icon-16 mr5' style='color:" . $event->color . "; margin-top:-3px; ' data-feather='" . get_event_icon($event->share_with) . "'></i></span> " . $event->title, array("data-post-id" => encode_id($event->id, "event_id"), "data-post-cycle" => $event->cycle, "data-post-editable" => "1", "title" => app_lang("event_details"))); ?></div>
                             <div class="ml20 pl5"><?php echo view("events/event_time", array("model_info" => $event)); ?></div>
                         </div>
                         <?php
@@ -35,4 +35,4 @@
             });
         }
     });
-</script> 
+</script>

@@ -169,6 +169,8 @@ class Chatwoot extends Security_Controller
                     'contacts' => get_uri('chatwoot_plugin/api/contacts'),
                     'contactRepairs' => get_uri('chatwoot_plugin/api/contact-repairs'),
                     'campaigns' => get_uri('chatwoot_plugin/api/campaigns'),
+                    'campaignAudienceImport' => get_uri('chatwoot_plugin/api/campaigns/audience-import'),
+                    'campaignAudienceTemplate' => get_uri('chatwoot_plugin/api/campaigns/audience-template'),
                     'campaignTemplates' => get_uri('chatwoot_plugin/api/campaign-templates'),
                     'bots' => get_uri('chatwoot_plugin/api/bots'),
                     'notifications' => get_uri('chatwoot_plugin/api/notifications'),

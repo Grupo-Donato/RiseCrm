@@ -104,6 +104,10 @@ function gd_costs_selftest(): void
         $cancelled = $costs->save(["description" => "Custo cancelável selftest", "issue_date" => $today, "gross_amount" => "8.00", "category_id" => $category_id]);
         $costs->cancel((int) $cancelled["id"], "Lançamento de teste cancelado");
         gd_assert("cancelamento exige motivo e preserva o registro", (string) $costs->get_scoped((int) $cancelled["id"])->status === "cancelled");
+        $deletable = $costs->save(["description" => "Custo excluível selftest", "issue_date" => $today, "gross_amount" => "7.00", "category_id" => $category_id]);
+        $costs->delete((int) $deletable["id"]);
+        $deleted_cost = $db->table($prefix . "gd_expenses")->where("id", (int) $deletable["id"])->where("unit_id", $unit_id)->get(1)->getRow();
+        gd_assert("exclusão de custo é lógica", $deleted_cost && (int) $deleted_cost->deleted === 1 && $costs->get_scoped((int) $deletable["id"]) === null);
 
         echo "# Custos: pagamentos, caixa e estorno\n";
         $payments = new CostPaymentService($unit_id);
@@ -123,6 +127,7 @@ function gd_costs_selftest(): void
         gd_assert("estorno recompõe saldo do custo", (string) $after_reversal->status === "partial" && (string) $after_reversal->balance_amount === "71.50");
         gd_assert("estorno não duplica movimento inverso", $db->table($prefix . "gd_cash_movements")->where("source_type", "expense_payment_reversal")->where("source_id", (int) $second_payment["id"])->where("movement_type", "in")->countAllResults() === 1 && (int) $reversal["cash_movement_id"] > 0);
         gd_assert("estorno duplicado é bloqueado", gd_throws(fn() => $payments->reverse((int) $second_payment["id"], "duplicado"), "gd_cost_payment_already_reversed"));
+        gd_assert("custo com pagamento não pode ser excluído", gd_throws(fn() => $costs->delete($expense_id), "gd_cost_with_payments_cannot_delete"));
 
         echo "# Custos: recorrência, orçamento e legado\n";
         $recurrences = new CostRecurrenceService($unit_id);

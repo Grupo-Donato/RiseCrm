@@ -35,6 +35,7 @@
         historySearchTimer: null,
         pendingCampaignMediaId: null,
         officialTemplates: {},
+        campaignRecipients: null,
         activeContext: null,
         activeCampaignId: null,
         activeCampaignRunId: null,
@@ -181,14 +182,19 @@
     function resetCampaignForm() {
         ['impulso-campaign-id','impulso-campaign-name','impulso-campaign-description','impulso-campaign-include-tags','impulso-campaign-exclude-tags','impulso-campaign-manual-numbers','impulso-campaign-message'].forEach(function (id) { var el = byId(id); if (el) el.value = ''; });
         ['impulso-campaign-instance'].forEach(function (id) { var el = byId(id); if (el) el.value = ''; });
+        var audienceSource = byId('impulso-campaign-audience-source'); if (audienceSource) audienceSource.value = 'students';
+        var studentStatus = byId('impulso-campaign-student-status'); if (studentStatus) studentStatus.value = 'active';
         var channelType = byId('impulso-campaign-channel-type'); if (channelType) channelType.value = 'unofficial';
         var template = byId('impulso-campaign-template'); if (template) template.innerHTML = '<option value="">Selecione um canal oficial primeiro</option>';
         var parameters = byId('impulso-campaign-template-parameters'); if (parameters) parameters.value = '[]';
         var rate = byId('impulso-campaign-rate-limit'); if (rate) rate.value = '20';
         var dispatch = byId('impulso-campaign-dispatch-mode'); if (dispatch) dispatch.value = 'internal_queue';
         var count = byId('impulso-campaign-audience-count'); if (count) count.textContent = '0';
+        workspace.campaignRecipients = [];
+        renderCampaignRecipients();
         workspace.pendingCampaignMediaId = null; var campaignFile = byId('impulso-campaign-file'); if (campaignFile) campaignFile.value = '';
         updateCampaignChannelUi(false);
+        updateCampaignAudienceUi();
         updateCampaignPreview();
         campaignStep(1);
     }
@@ -304,6 +310,7 @@
             'impulso-campaign-id': campaign.id || '', 'impulso-campaign-name': campaign.name || '',
             'impulso-campaign-instance': campaign.instance_id || '', 'impulso-campaign-type': campaign.type || 'one_time',
             'impulso-campaign-description': campaign.description || '', 'impulso-campaign-audience-source': campaign.audience_source || 'contacts',
+            'impulso-campaign-student-status': campaign.student_status || 'active',
             'impulso-campaign-include-tags': Array.isArray(campaign.include_tags) ? campaign.include_tags.join(', ') : '',
             'impulso-campaign-exclude-tags': Array.isArray(campaign.exclude_tags) ? campaign.exclude_tags.join(', ') : '',
             'impulso-campaign-manual-numbers': Array.isArray(campaign.numbers) ? (campaign.numbers.some(function (n) { return typeof n === 'object'; }) ? JSON.stringify(campaign.numbers, null, 2) : campaign.numbers.join('\n')) : '',
@@ -316,12 +323,15 @@
             'impulso-campaign-template-parameters': JSON.stringify(campaign.template_parameters || [], null, 2)
         };
         Object.keys(values).forEach(function (id) { var el = byId(id); if (el) el.value = values[id]; });
+        workspace.campaignRecipients = Array.isArray(campaign.numbers) ? campaign.numbers.slice() : [];
+        renderCampaignRecipients();
         if (Array.isArray(campaign.weekdays)) {
             var dayMap = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
             all('#impulso-campaign-weekdays input').forEach(function (el) { el.checked = campaign.weekdays.indexOf(dayMap[el.value]) >= 0; });
         }
         workspace.campaignIdempotencyKey = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
         updateCampaignChannelUi(true, campaign.template_id || null);
+        updateCampaignAudienceUi();
         var title = byId('impulso-campaign-modal-title'); if (title) title.textContent = campaign.id ? 'Editar campanha' : 'Nova campanha';
         updateCampaignPreview();
         modal('impulso-campaign-modal');
@@ -334,6 +344,88 @@
         if (title) title.textContent = name && name.value.trim() ? name.value.trim() : 'Campanha';
         if (preview) preview.innerHTML = escapeHtml(message && message.value.trim() ? message.value.trim() : 'Sua mensagem aparecerá aqui.').replace(/\n/g, '<br>') + '<span class="impulso-wa-time">agora</span>';
     }
+
+    function updateCampaignAudienceUi() {
+        var source = text((byId('impulso-campaign-audience-source') || {}).value || 'students');
+        var contacts = byId('impulso-campaign-contact-filters');
+        var students = byId('impulso-campaign-students-panel');
+        var manual = byId('impulso-campaign-recipient-editor');
+        var spreadsheet = byId('impulso-campaign-spreadsheet-panel');
+        if (contacts) contacts.classList.toggle('impulso-hidden', source !== 'contacts');
+        if (students) students.classList.toggle('impulso-hidden', source !== 'students');
+        if (manual) manual.classList.toggle('impulso-hidden', source !== 'manual');
+        if (spreadsheet) spreadsheet.classList.toggle('impulso-hidden', source !== 'csv');
+        renderCampaignRecipients();
+    }
+
+    function campaignRecipientField(entry, key) {
+        entry = entry || {};
+        var variables = entry.variaveis || entry.variables || {};
+        if (key === 'phone') return entry.numero || entry.phone || '';
+        if (key === 'name') return variables.nome || variables.nome_responsavel || variables.responsavel || entry.name || '';
+        if (key === 'student') return variables.nome_aluno || variables.aluno || '';
+        return variables[key] || '';
+    }
+
+    function renderCampaignRecipients() {
+        var list = byId('impulso-campaign-manual-recipient-list');
+        if (!list) return;
+        var entries = Array.isArray(workspace.campaignRecipients) ? workspace.campaignRecipients : [];
+        if (!entries.length) entries = [{}];
+        list.innerHTML = entries.map(function (entry, index) {
+            return '<div class="impulso-recipient-row" data-campaign-recipient-row>' +
+                '<div><label>Telefone *</label><input class="form-control" data-campaign-recipient-field="phone" value="' + escapeHtml(campaignRecipientField(entry, 'phone')) + '" placeholder="5511999999999" inputmode="tel"></div>' +
+                '<div><label>Responsável</label><input class="form-control" data-campaign-recipient-field="name" value="' + escapeHtml(campaignRecipientField(entry, 'name')) + '" placeholder="Nome do responsável"></div>' +
+                '<div><label>Aluno</label><input class="form-control" data-campaign-recipient-field="student" value="' + escapeHtml(campaignRecipientField(entry, 'student')) + '" placeholder="Nome do aluno"></div>' +
+                '<div><label>Var. 1</label><input class="form-control" data-campaign-recipient-field="var1" value="' + escapeHtml(campaignRecipientField(entry, 'var1')) + '" placeholder="teste 1"></div>' +
+                '<div><label>Var. 2</label><input class="form-control" data-campaign-recipient-field="var2" value="' + escapeHtml(campaignRecipientField(entry, 'var2')) + '" placeholder="teste 2"></div>' +
+                '<button class="impulso-icon-button btn btn-default" type="button" data-impulso-action="remove-campaign-recipient" data-campaign-recipient-index="' + index + '" title="Remover contato"><i data-feather="trash-2"></i></button>' +
+                '</div>';
+        }).join('');
+        iconRefresh();
+    }
+
+    function readCampaignRecipientRows() {
+        var list = byId('impulso-campaign-manual-recipient-list');
+        if (!list) return [];
+        return all('[data-campaign-recipient-row]', list).map(function (row) {
+            var entry = { numero: '', variaveis: {} };
+            all('[data-campaign-recipient-field]', row).forEach(function (input) {
+                var key = input.getAttribute('data-campaign-recipient-field');
+                var value = text(input.value).trim();
+                if (key === 'phone') entry.numero = value;
+                else if (key === 'name') {
+                    if (value) { entry.variaveis.nome = value; entry.variaveis.responsavel = value; entry.variaveis.nome_responsavel = value; }
+                } else if (key === 'student') {
+                    if (value) { entry.variaveis.aluno = value; entry.variaveis.nome_aluno = value; entry.variaveis.alunos = value; }
+                } else if (value) entry.variaveis[key] = value;
+            });
+            return entry;
+        });
+    }
+
+    function syncCampaignRecipientRows() {
+        var source = text((byId('impulso-campaign-audience-source') || {}).value || 'students');
+        if (source === 'manual' && byId('impulso-campaign-manual-recipient-list')) workspace.campaignRecipients = readCampaignRecipientRows();
+    }
+
+    function addCampaignRecipient() {
+        syncCampaignRecipientRows();
+        workspace.campaignRecipients.push({ numero: '', variaveis: {} });
+        renderCampaignRecipients();
+        var rows = all('[data-campaign-recipient-row]');
+        var last = rows[rows.length - 1];
+        var phone = last && last.querySelector('[data-campaign-recipient-field="phone"]');
+        if (phone) phone.focus();
+    }
+
+    function removeCampaignRecipient(button) {
+        syncCampaignRecipientRows();
+        var index = Number(button.getAttribute('data-campaign-recipient-index'));
+        if (Number.isInteger(index) && index >= 0) workspace.campaignRecipients.splice(index, 1);
+        renderCampaignRecipients();
+    }
+
     function validateCampaignStep() {
         if (workspace.campaignStep === 1) {
             if (!byId('impulso-campaign-name').value.trim() || !byId('impulso-campaign-instance').value) { toast('Dados incompletos', 'Informe o nome e a instância da campanha.', 'alert-circle'); return false; }
@@ -840,6 +932,7 @@
         var empty = byId('impulso-campaign-empty'); if (empty) empty.classList.toggle('impulso-hidden', visible > 0);
     }
     function campaignNumbers() {
+        if (Array.isArray(workspace.campaignRecipients)) return workspace.campaignRecipients.filter(function (entry) { return entry && (entry.numero || entry.phone); });
         var value = ((byId('impulso-campaign-manual-numbers') || {}).value || '').trim();
         if (value.charAt(0) === '[') {
             var entries;
@@ -850,6 +943,7 @@
         return value.split(/\r?\n/).map(function (v) { return v.replace(/\D/g, ''); }).filter(Boolean);
     }
     function campaignPayload() {
+        if (typeof syncCampaignRecipientRows === 'function') syncCampaignRecipientRows();
         var weekdays = all('#impulso-campaign-weekdays input:checked').map(function (item) { return item.value; });
         var templateParameters = [];
         try {
@@ -864,7 +958,7 @@
             template_id: Number((byId('impulso-campaign-template') || {}).value || 0) || null, template_parameters: templateParameters,
             rate_limit_per_minute: Number((byId('impulso-campaign-rate-limit') || {}).value || 20),
             description: (byId('impulso-campaign-description') || {}).value.trim(), audience_source: (byId('impulso-campaign-audience-source') || {}).value,
-            include_tags: (byId('impulso-campaign-include-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean), exclude_tags: (byId('impulso-campaign-exclude-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean),
+            include_tags: (byId('impulso-campaign-include-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean), exclude_tags: (byId('impulso-campaign-exclude-tags') || {}).value.split(',').map(function (v) { return v.trim(); }).filter(Boolean), student_status: (byId('impulso-campaign-student-status') || {}).value || 'active',
             numbers: campaignNumbers(), idempotency_key: workspace.campaignIdempotencyKey, ends_at: (byId('impulso-campaign-ends-at') || {}).value || null, interval_seconds: Number((byId('impulso-campaign-interval') || {}).value || 0), message: (byId('impulso-campaign-message') || {}).value.trim(), media_id: workspace.pendingCampaignMediaId, start_date: (byId('impulso-campaign-start-date') || {}).value, start_time: (byId('impulso-campaign-start-time') || {}).value, timezone: (byId('impulso-campaign-timezone') || {}).value || 'America/Sao_Paulo', weekdays: weekdays, start_immediately: !!((byId('impulso-campaign-start-immediately') || {}).checked)
         };
     }
@@ -873,28 +967,35 @@
         toast('Enviando mídia', 'Aguarde a validação do arquivo.', 'upload');
         api(endpoint('mediaUpload'), { method: 'POST', body: form }).then(function (payload) { var data = payloadData(payload, {}); workspace.pendingCampaignMediaId = Number(data.media_id || data.id || 0) || null; toast('Mídia anexada', data.name || 'Arquivo pronto para a campanha.', 'paperclip'); }).catch(function (error) { workspace.pendingCampaignMediaId = null; var input = byId('impulso-campaign-file'); if (input) input.value = ''; backendError(error, 'mídia da campanha'); });
     }
-    function importCampaignAudienceCsv() {
-        var input = document.createElement('input'); input.type = 'file'; input.accept = '.csv,text/csv';
-        input.addEventListener('change', function () {
-            var file = input.files && input.files[0]; if (!file) return;
-            if (file.size > 2 * 1024 * 1024) { toast('CSV muito grande', 'Use um arquivo de até 2 MB.', 'alert-circle'); return; }
-            var reader = new FileReader();
-            reader.onload = function () {
-                var numbers = []; var seen = {};
-                text(reader.result).split(/\r?\n/).forEach(function (line) {
-                    line.split(/[;,\t]/).some(function (cell) {
-                        var digits = text(cell).replace(/\D/g, '');
-                        if (digits.length >= 10 && digits.length <= 15) { if (!seen[digits]) { seen[digits] = true; numbers.push(digits); } return true; }
-                        return false;
-                    });
-                });
-                var target = byId('impulso-campaign-manual-numbers'); if (target) target.value = numbers.join('\n');
-                toast(numbers.length ? 'Público importado' : 'CSV sem telefones', numbers.length ? numbers.length + ' número(s) prontos para validação no servidor.' : 'Nenhum telefone válido foi identificado.', numbers.length ? 'users' : 'alert-circle');
-            };
-            reader.onerror = function () { toast('Falha ao ler CSV', 'Selecione outro arquivo.', 'alert-circle'); };
-            reader.readAsText(file, 'UTF-8');
+    function importCampaignAudienceFile() {
+        var input = byId('impulso-campaign-audience-file');
+        if (input) input.click();
+    }
+
+    function processCampaignAudienceFile(file) {
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { toast('Planilha muito grande', 'Use um arquivo de até 5 MB.', 'alert-circle'); return; }
+        var status = byId('impulso-campaign-import-status');
+        if (status) status.textContent = 'Lendo a planilha...';
+        var form = new FormData(); form.append('file', file);
+        var instance = Number((byId('impulso-campaign-instance') || {}).value || 0); if (instance) form.append('instance_id', instance);
+        api(endpoint('campaignAudienceImport'), { method: 'POST', body: form }).then(function (payload) {
+            var data = payloadData(payload, {});
+            workspace.campaignRecipients = Array.isArray(data.entries) ? data.entries : [];
+            var imported = Number(data.count || workspace.campaignRecipients.length);
+            if (status) status.textContent = imported + ' contato(s) carregado(s)' + (Number(data.invalid || 0) ? ' · ' + Number(data.invalid) + ' linha(s) ignorada(s)' : '') + '.';
+            toast(imported ? 'Planilha carregada' : 'Nenhum contato encontrado', imported ? imported + ' destinatário(s) pronto(s) para conferência.' : 'Confira a coluna telefone do arquivo.', imported ? 'users' : 'alert-circle');
+            calculateAudience(null);
+        }).catch(function (error) {
+            if (status) status.textContent = 'Não foi possível carregar a planilha.';
+            backendError(error, 'importação da planilha');
         });
-        input.click();
+    }
+
+    function downloadCampaignAudienceTemplate() {
+        var url = endpoint('campaignAudienceTemplate');
+        if (!url) { toast('Modelo indisponível', 'A instalação não disponibilizou o modelo de planilha.', 'alert-circle'); return; }
+        window.location.href = url;
     }
     function saveCampaign(button) {
         var data;
@@ -1126,6 +1227,10 @@
         if (action === 'campaign-next') { if (validateCampaignStep()) campaignStep(workspace.campaignStep + 1); return true; }
         if (action === 'campaign-previous') { campaignStep(workspace.campaignStep - 1); return true; }
         if (action === 'preview-campaign-audience') { calculateAudience(trigger); return true; }
+        if (action === 'add-campaign-recipient') { addCampaignRecipient(); return true; }
+        if (action === 'remove-campaign-recipient') { removeCampaignRecipient(trigger); return true; }
+        if (action === 'import-campaign-audience') { importCampaignAudienceFile(); return true; }
+        if (action === 'download-campaign-audience-template') { downloadCampaignAudienceTemplate(); return true; }
         if (action === 'campaign-variable') { insertAtCursor(byId('impulso-campaign-message'), trigger.getAttribute('data-variable') || ''); updateCampaignPreview(); return true; }
         if (action === 'campaign-emoji') { workspace.emojiTarget = 'campaign'; toggleEmojiPicker(); return true; }
         if (action === 'campaign-attachment') { var campaignFile = byId('impulso-campaign-file'); if (campaignFile) campaignFile.click(); return true; }
@@ -1245,7 +1350,7 @@
         if (trigger.hasAttribute('data-notification-id')) { event.preventDefault(); event.stopImmediatePropagation(); var notificationId = trigger.getAttribute('data-notification-id'); var notificationKind = trigger.getAttribute('data-notification-kind') || ''; api(endpointWithId('notifications', notificationId, '/read'), { method: 'POST', body: {} }).then(function (payload) { var notification = payloadData(payload, {}); if (notificationKind === 'mention' && notification.resource_type === 'conversation' && Number(notification.resource_id) > 0 && window.ImpulsoHubBridge && window.ImpulsoHubBridge.openConversationById) window.ImpulsoHubBridge.openConversationById(Number(notification.resource_id), { loadAuxiliary: true }); }).catch(function () {}); trigger.classList.remove('is-unread'); return; }
         var submit = trigger.getAttribute('data-impulso-modal-submit'); if (submit && submit !== 'instance') { event.preventDefault(); event.stopImmediatePropagation(); submitForm(submit, trigger); return; }
         var action = trigger.getAttribute('data-impulso-action');
-        if (['search-history','close-history-search','call-contact','toggle-priority','resolve-conversation','edit-contact','edit-tags','edit-assignment','contact-menu','remove-attachment','retry-attachment'].indexOf(action) >= 0 || ['global-search','notifications','close-notifications','new-conversation','new-contact','new-campaign','refresh-contacts','view-contact','contact-row-menu','clear-contact-selection','bulk-export-contacts','bulk-tag-contacts','load-more-contacts','campaign-next','campaign-previous','preview-campaign-audience','campaign-variable','campaign-emoji','campaign-attachment','campaign-menu','view-campaign','refresh-campaigns','test-campaign-backend','campaign-templates','campaign-calendar','sync-official-templates','import-contacts','repair-contact-names','mark-all-notifications-read','manage-quick-replies','load-more-campaign-recipients','edit-viewed-campaign'].indexOf(action) >= 0) {
+        if (['search-history','close-history-search','call-contact','toggle-priority','resolve-conversation','edit-contact','edit-tags','edit-assignment','contact-menu','remove-attachment','retry-attachment'].indexOf(action) >= 0 || ['global-search','notifications','close-notifications','new-conversation','new-contact','new-campaign','refresh-contacts','view-contact','contact-row-menu','clear-contact-selection','bulk-export-contacts','bulk-tag-contacts','load-more-contacts','campaign-next','campaign-previous','preview-campaign-audience','add-campaign-recipient','remove-campaign-recipient','import-campaign-audience','download-campaign-audience-template','campaign-variable','campaign-emoji','campaign-attachment','campaign-menu','view-campaign','refresh-campaigns','test-campaign-backend','campaign-templates','campaign-calendar','sync-official-templates','import-contacts','repair-contact-names','mark-all-notifications-read','manage-quick-replies','load-more-campaign-recipients','edit-viewed-campaign'].indexOf(action) >= 0) {
             event.preventDefault(); event.stopImmediatePropagation(); handleAction(action, trigger, event);
         }
     }, true);
@@ -1254,7 +1359,9 @@
     var campaignMessage = byId('impulso-campaign-message'); if (campaignMessage) campaignMessage.addEventListener('input', updateCampaignPreview);
     var campaignName = byId('impulso-campaign-name'); if (campaignName) campaignName.addEventListener('input', updateCampaignPreview);
     var campaignFileInput = byId('impulso-campaign-file'); if (campaignFileInput) campaignFileInput.addEventListener('change', function () { uploadCampaignMedia(this.files && this.files[0]); });
-    var campaignAudienceSource = byId('impulso-campaign-audience-source'); if (campaignAudienceSource) campaignAudienceSource.addEventListener('change', function () { if (this.value === 'csv') importCampaignAudienceCsv(); });
+    var campaignAudienceSource = byId('impulso-campaign-audience-source'); if (campaignAudienceSource) campaignAudienceSource.addEventListener('change', function () { updateCampaignAudienceUi(); });
+    var campaignAudienceFile = byId('impulso-campaign-audience-file'); if (campaignAudienceFile) campaignAudienceFile.addEventListener('change', function () { processCampaignAudienceFile(this.files && this.files[0]); this.value = ''; });
+    var campaignRecipientList = byId('impulso-campaign-manual-recipient-list'); if (campaignRecipientList) campaignRecipientList.addEventListener('input', syncCampaignRecipientRows);
     all('[data-campaign-step]').forEach(function (button) { button.addEventListener('click', function () { var target = Number(button.getAttribute('data-campaign-step')); if (target <= workspace.campaignStep || validateCampaignStep()) campaignStep(target); }); });
     var contactSearch = byId('impulso-contact-search'); if (contactSearch) contactSearch.addEventListener('input', applyContactFilters);
     var contactInstance = byId('impulso-contact-instance-filter'); if (contactInstance) contactInstance.addEventListener('change', applyContactFilters);

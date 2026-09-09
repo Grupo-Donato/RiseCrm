@@ -1889,6 +1889,11 @@
         .impulso-settings-nav { display: flex; overflow-x: auto; position: static; }
         .impulso-settings-nav button { flex: 0 0 auto; width: auto; }
         .impulso-field-grid { grid-template-columns: 1fr; }
+        .impulso-recipient-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .impulso-recipient-row > :last-child { justify-self: end; }
+        .impulso-audience-source-callout,
+        .impulso-spreadsheet-callout { align-items: flex-start; flex-direction: column; }
+        .impulso-audience-source-callout .form-control { flex-basis: auto; width: 100%; }
         .impulso-field.full { grid-column: auto; }
         .impulso-builder-steps { grid-template-columns: repeat(2, 1fr); }
         .impulso-donut-wrap { flex-direction: column; }
@@ -2578,6 +2583,30 @@
     .impulso-hub .impulso-audience-count span,
     .impulso-hub .impulso-audience-count strong { display: block; }
     .impulso-hub .impulso-audience-count strong { font-size: 34px; margin-top: 4px; }
+    .impulso-hub .impulso-audience-source-callout,
+    .impulso-hub .impulso-spreadsheet-callout { align-items: center; background: var(--ih-surface-soft); border: 1px solid var(--ih-border); border-radius: 8px; display: flex; gap: 10px; justify-content: space-between; padding: 11px 12px; }
+    .impulso-hub .impulso-audience-source-callout > svg,
+    .impulso-hub .impulso-spreadsheet-copy > svg { color: var(--ih-primary); flex: 0 0 auto; height: 19px; width: 19px; }
+    .impulso-hub .impulso-audience-source-callout > div,
+    .impulso-hub .impulso-spreadsheet-copy { align-items: flex-start; display: flex; gap: 9px; min-width: 0; }
+    .impulso-hub .impulso-audience-source-callout strong,
+    .impulso-hub .impulso-audience-source-callout span,
+    .impulso-hub .impulso-spreadsheet-copy strong,
+    .impulso-hub .impulso-spreadsheet-copy span { display: block; }
+    .impulso-hub .impulso-audience-source-callout span,
+    .impulso-hub .impulso-spreadsheet-copy span { font-size: 10px; line-height: 1.45; margin-top: 3px; opacity: .7; }
+    .impulso-hub .impulso-audience-source-callout .form-control { flex: 0 0 180px; font-size: 10px; min-height: 34px; }
+    .impulso-hub .impulso-recipient-toolbar { align-items: center; display: flex; gap: 10px; justify-content: space-between; margin-bottom: 8px; }
+    .impulso-hub .impulso-recipient-toolbar strong,
+    .impulso-hub .impulso-recipient-toolbar span { display: block; }
+    .impulso-hub .impulso-recipient-toolbar span { font-size: 10px; margin-top: 3px; opacity: .68; }
+    .impulso-hub .impulso-recipient-list { border: 1px solid var(--ih-border); border-radius: 8px; overflow: hidden; }
+    .impulso-hub .impulso-recipient-row { align-items: end; background: var(--ih-surface); border-bottom: 1px solid var(--ih-border); display: grid; gap: 8px; grid-template-columns: minmax(145px,1.15fr) minmax(135px,1fr) minmax(135px,1fr) minmax(90px,.7fr) minmax(90px,.7fr) 34px; padding: 9px; }
+    .impulso-hub .impulso-recipient-row:last-child { border-bottom: 0; }
+    .impulso-hub .impulso-recipient-row label { font-size: 8px; margin-bottom: 4px; }
+    .impulso-hub .impulso-recipient-row .form-control { font-size: 10px; min-height: 34px; }
+    .impulso-hub .impulso-recipient-row .impulso-icon-button { height: 34px; width: 34px; }
+    .impulso-hub .impulso-import-status { font-size: 10px; margin-top: 7px; opacity: .7; }
     .impulso-hub .impulso-weekdays { display: flex; flex-wrap: wrap; gap: 6px; }
     .impulso-hub .impulso-weekdays input { position: absolute; opacity: 0; }
     .impulso-hub .impulso-weekdays span { border: 1px solid var(--ih-border); border-radius: 8px; cursor: pointer; display: block; font-size: 10px; padding: 7px 10px; }
@@ -4204,6 +4233,16 @@
             min-width: 32px;
             padding-left: 8px;
             padding-right: 8px;
+        }
+    }
+
+    @media (max-width: 991.98px) {
+        .impulso-hub .impulso-recipient-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .impulso-hub .impulso-recipient-row > :last-child {
+            justify-self: end;
         }
     }
 </style>

@@ -318,6 +318,7 @@ $routes->group("grupo_donato", ["namespace" => "grupo_donato_gestao\\Controllers
     $routes->post("finance/costs/pay", "Costs::pay");
     $routes->post("finance/costs/payment/reverse", "Costs::reverse_payment");
     $routes->post("finance/costs/cancel", "Costs::cancel");
+    $routes->post("finance/costs/delete", "Costs::delete");
     $routes->post("finance/costs/allocations", "Costs::allocations");
     $routes->get("finance/costs/export", "Costs::export");
     $routes->post("finance/costs/categories/data", "Costs::categories_data");

@@ -992,6 +992,7 @@ return [
     "gd_cost_payment_already_reversed" => "Este pagamento já foi estornado.",
     "gd_cost_payment_movement_missing" => "O movimento de caixa original não foi encontrado.",
     "gd_finance_partial_cost_cancel" => "Custo com pagamento não pode ser cancelado; estorne os pagamentos primeiro.",
+    "gd_cost_with_payments_cannot_delete" => "Custo com pagamento não pode ser excluído; estorne os pagamentos primeiro.",
     "gd_cancelled_cost_immutable" => "Custo cancelado não pode ser alterado.",
     "gd_attachment_invalid" => "Arquivo inválido. Aceitamos PDF, JPG, PNG ou WebP até 15 MB.",
     "gd_attachment_storage_failed" => "Não foi possível armazenar o anexo.",

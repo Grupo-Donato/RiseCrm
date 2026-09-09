@@ -201,6 +201,21 @@ $test('campanhas usam fila interna e histórico por ocorrência', static functio
     $assert(str_contains($dispatcher, 'GET_LOCK'), 'Dispatcher não possui serialização concorrente.');
 });
 
+$test('campanhas oferecem público escolar, cadastro manual e modelo de planilha', static function () use ($read, $assert): void {
+    $routes = $read('Config/Routes.php');
+    $controller = $read('Controllers/Campaigns.php');
+    $service = $read('Services/Campaign_service.php');
+    $workspace = $read('Assets/js/hub-workspace.js');
+    $modal = $read('Views/modals/common.php');
+    foreach (['api/campaigns/audience-import', 'api/campaigns/audience-template'] as $route) {
+        $assert(str_contains($routes, "'{$route}'"), 'Rota de público ausente: ' . $route);
+    }
+    foreach (['audience_import', 'audience_template'] as $method) $assert(str_contains($controller, 'function ' . $method), 'Endpoint ausente: ' . $method);
+    foreach (['students', 'studentAudienceRows', 'import_audience', 'spreadsheetAutoloadPath', 'readAudienceCsv'] as $needle) $assert(str_contains($service, $needle), 'Suporte de público ausente: ' . $needle);
+    foreach (['impulso-campaign-manual-recipient-list', 'impulso-campaign-audience-file', 'download-campaign-audience-template', 'import-campaign-audience', 'student_status'] as $needle) $assert(str_contains($modal . $workspace, $needle), 'Jornada simplificada ausente: ' . $needle);
+    $assert(substr_count($modal, 'id="impulso-campaign-recipient-list"') === 1, 'ID do histórico de destinatários colide com o editor manual.');
+});
+
 
 $test('worker interno e histórico operacional estão disponíveis', static function () use ($read, $assert): void {
     $command = $read('Commands/Chatwoot_jobs.php');

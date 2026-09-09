@@ -190,6 +190,7 @@ final class RoleAccessService
         "academy_student_search" => "eventos",
         "add_event_participant" => "eventos",
         "update_event_participant" => "eventos",
+        "delete_event_participant" => "eventos",
         "save_event_lineup" => "eventos",
         "save_event_confirmation" => "eventos",
         "event_charge" => "eventos",

@@ -5,7 +5,7 @@ $roots = array_values(array_filter($categories, static fn($c) => !$c->parent_id)
 $children = array_values(array_filter($categories, static fn($c) => (bool) $c->parent_id));
 ?>
 <?php echo form_open(get_uri("grupo_donato/finance/costs/save"), ["id" => "gd-cost-form", "class" => "general-form"]); ?>
-<div class="modal-body">
+<div class="modal-body gd-cost-form-body">
     <input type="hidden" name="id" value="<?php echo $cost ? (int) $cost->id : 0; ?>">
     <input type="hidden" name="lock_version" value="<?php echo $cost ? (int) $cost->lock_version : ""; ?>">
     <div class="row">

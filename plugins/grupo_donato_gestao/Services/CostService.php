@@ -183,6 +183,45 @@ final class CostService extends CatalogDataService
         $this->audit_change("cancel", "cost", $id, (array) $expense, (array) $this->get_scoped($id), ["reason" => $reason]);
     }
 
+    public function delete(int $id): void
+    {
+        $expense = $this->get_scoped($id);
+        if (!$expense) throw new \DomainException("gd_record_not_found");
+        if ($this->compare($this->paid_amount($id), "0.00") > 0) throw new \DomainException("gd_cost_with_payments_cannot_delete");
+
+        $now = gmdate("Y-m-d H:i:s");
+        $this->db->transBegin();
+        try {
+            $changed = $this->db->table($this->expenses_table)
+                ->where("id", $id)
+                ->where("unit_id", $this->unit_id)
+                ->where("deleted", 0)
+                ->where("lock_version", (int) $expense->lock_version)
+                ->update([
+                    "deleted" => 1,
+                    "lock_version" => (int) $expense->lock_version + 1,
+                    "updated_at" => $now,
+                    "updated_by" => $this->actor_id ?: null,
+                ]);
+            if (!$changed || $this->db->affectedRows() !== 1) throw new \DomainException("gd_finance_edit_conflict");
+
+            $allocations = $this->db->prefixTable("gd_expense_allocations");
+            if ($this->db->tableExists($allocations)) {
+                $this->db->table($allocations)->where("unit_id", $this->unit_id)->where("expense_id", $id)->where("deleted", 0)->update(["deleted" => 1]);
+            }
+            $attachments = $this->db->prefixTable("gd_expense_attachments");
+            if ($this->db->tableExists($attachments)) {
+                $this->db->table($attachments)->where("unit_id", $this->unit_id)->where("expense_id", $id)->where("deleted", 0)->update(["deleted" => 1]);
+            }
+
+            $this->audit_change("delete", "cost", $id, (array) $expense, null);
+            if ($this->db->transCommit() === false) throw new \RuntimeException("delete_failed");
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+    }
+
     /** @return object|null */
     public function get_scoped(int $id): ?object
     {

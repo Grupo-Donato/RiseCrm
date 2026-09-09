@@ -1504,7 +1504,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     {title: "WhatsApp", "class": "w140"},
                     {title: "Turma", "class": "w120"},
                     {
-                        title: "Faltas este mês",
+                        title: "Faltas consecutivas",
                         "class": "text-center w100",
                         type: "num",
                         render: function (data, type) {

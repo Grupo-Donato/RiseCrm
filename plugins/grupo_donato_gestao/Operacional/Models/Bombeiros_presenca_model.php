@@ -62,40 +62,83 @@ class Bombeiros_presenca_model extends Crud_model
     }
 
     /**
-     * Retorna a quantidade de faltas registradas por aluno no mês atual.
-     * Feriados, aulas canceladas e dias sem registro não contam como falta.
+     * Conta a sequência atual de faltas de cada aluno.
+     * Os status recebidos devem estar ordenados da aula mais recente para a mais antiga.
      */
-    public function get_absence_counts($unidade_id = 0)
+    public static function count_consecutive_absences(array $statuses)
+    {
+        $count = 0;
+
+        foreach ($statuses as $status) {
+            $status = strtolower(trim((string) $status));
+
+            if ($status === "falta") {
+                $count++;
+                continue;
+            }
+
+            // Estes registros não representam uma aula frequentada ou perdida.
+            if ($status === "feriado" || $status === "aula_cancelada") {
+                continue;
+            }
+
+            // Presença, sem registro ou status desconhecido encerra a sequência.
+            break;
+        }
+
+        return $count;
+    }
+
+    public function get_consecutive_absence_counts($unidade_id = 0, array $aluno_ids = [])
     {
         $presenca_table = $this->db->prefixTable("grupo_donato_presenca");
         $alunos_table = $this->db->prefixTable("grupo_donato_alunos");
         $where = "$alunos_table.deleted=0";
-        $mes_atual = (int) date("m");
-        $ano_atual = (int) date("Y");
 
         if ($unidade_id) {
             $where .= " AND $alunos_table.unidade_id=" . (int) $unidade_id;
         }
 
-        $where .= " AND MONTH($presenca_table.data_aula)=$mes_atual";
-        $where .= " AND YEAR($presenca_table.data_aula)=$ano_atual";
+        $aluno_ids = array_values(array_unique(array_filter(array_map("intval", $aluno_ids), static function ($id) {
+            return $id > 0;
+        })));
+        if ($aluno_ids) {
+            $where .= " AND $presenca_table.aluno_id IN (" . implode(",", $aluno_ids) . ")";
+        }
 
         $sql = "SELECT $presenca_table.aluno_id,
-                    SUM(CASE
-                        WHEN $presenca_table.status_tipo='falta'
-                            OR ($presenca_table.status=0 AND ($presenca_table.status_tipo IS NULL OR $presenca_table.status_tipo='falta'))
-                        THEN 1 ELSE 0
-                    END) AS faltas_count
+                    $presenca_table.status,
+                    $presenca_table.status_tipo,
+                    $presenca_table.data_aula,
+                    $presenca_table.id
                 FROM $presenca_table
                 INNER JOIN $alunos_table ON $alunos_table.id=$presenca_table.aluno_id
                 WHERE $where
-                GROUP BY $presenca_table.aluno_id";
+                ORDER BY $presenca_table.aluno_id ASC, $presenca_table.data_aula DESC, $presenca_table.id DESC";
+
+        $statuses_by_student = [];
+        foreach ($this->db->query($sql)->getResult() as $row) {
+            $student_id = (int) $row->aluno_id;
+            $status = trim((string) ($row->status_tipo ?? ""));
+            if (!$status) {
+                $status = (int) $row->status ? "presente" : "falta";
+            }
+            $statuses_by_student[$student_id][] = $status;
+        }
 
         $counts = [];
-        foreach ($this->db->query($sql)->getResult() as $row) {
-            $counts[(int) $row->aluno_id] = (int) $row->faltas_count;
+        foreach ($statuses_by_student as $student_id => $statuses) {
+            $counts[(int) $student_id] = self::count_consecutive_absences($statuses);
         }
 
         return $counts;
+    }
+
+    /**
+     * Mantém compatibilidade com chamadas antigas que usam este nome.
+     */
+    public function get_absence_counts($unidade_id = 0)
+    {
+        return $this->get_consecutive_absence_counts($unidade_id);
     }
 }

@@ -55,9 +55,15 @@ final class Costs extends Gd_Controller
         try {
             $result = $this->costs->page($this->filters(["status", "nature", "cost_behavior", "category_id", "subcategory_id", "business_area_id", "cost_center_id", "resource_id", "reference_month", "date_from", "date_to", "search_by", "sort", "sort_dir", "limit", "skip"]));
             $result["data"] = array_map(function ($row) {
-                $actions = modal_anchor(get_uri("grupo_donato/finance/costs/view"), '<i data-feather="eye" class="icon-16"></i>', ["title" => app_lang("gd_cost_view"), "data-post-id" => (int) $row->id]);
-                if ($this->access->can("gd_costs_manage") && (string) $row->status !== "cancelled") $actions .= modal_anchor(get_uri("grupo_donato/finance/costs/modal"), '<i data-feather="edit" class="icon-16"></i>', ["title" => app_lang("gd_cost_edit"), "data-post-id" => (int) $row->id]);
-                if ($this->access->can("gd_costs_pay") && in_array((string) $row->display_status, ["planned", "pending", "partial", "overdue"], true) && DataNormalizationService::decimalCompare((string) $row->balance_amount, "0.00") > 0) $actions .= modal_anchor(get_uri("grupo_donato/finance/costs/payment-modal"), '<i data-feather="dollar-sign" class="icon-16"></i>', ["title" => app_lang("gd_cost_register_payment"), "data-post-id" => (int) $row->id]);
+                $action_content = static function (string $icon, string $label): string {
+                    return '<i data-feather="' . $icon . '" class="icon-16"></i><span class="gd-cost-action-label">' . esc(app_lang($label)) . '</span>';
+                };
+                $actions = '<div class="gd-cost-actions">';
+                $actions .= modal_anchor(get_uri("grupo_donato/finance/costs/view"), $action_content("eye", "gd_cost_view"), ["class" => "gd-cost-action", "title" => app_lang("gd_cost_view"), "aria-label" => app_lang("gd_cost_view"), "data-post-id" => (int) $row->id, "data-modal-class" => "gd-cost-mobile-modal"]);
+                if ($this->access->can("gd_costs_manage") && (string) $row->status !== "cancelled") $actions .= modal_anchor(get_uri("grupo_donato/finance/costs/modal"), $action_content("edit", "gd_cost_edit"), ["class" => "gd-cost-action", "title" => app_lang("gd_cost_edit"), "aria-label" => app_lang("gd_cost_edit"), "data-post-id" => (int) $row->id, "data-modal-class" => "gd-cost-mobile-modal"]);
+                if ($this->access->can("gd_costs_pay") && in_array((string) $row->display_status, ["planned", "pending", "partial", "overdue"], true) && DataNormalizationService::decimalCompare((string) $row->balance_amount, "0.00") > 0) $actions .= modal_anchor(get_uri("grupo_donato/finance/costs/payment-modal"), $action_content("dollar-sign", "gd_cost_register_payment"), ["class" => "gd-cost-action", "title" => app_lang("gd_cost_register_payment"), "aria-label" => app_lang("gd_cost_register_payment"), "data-post-id" => (int) $row->id, "data-modal-class" => "gd-cost-mobile-modal"]);
+                if ($this->access->can("gd_costs_manage")) $actions .= js_anchor($action_content("trash-2", "delete"), ["class" => "delete gd-cost-action", "title" => app_lang("delete"), "aria-label" => app_lang("delete"), "data-id" => (int) $row->id, "data-action-url" => get_uri("grupo_donato/finance/costs/delete"), "data-action" => "delete-confirmation", "data-undo" => "0"]);
+                $actions .= "</div>";
                 return ["number" => $this->escape($row->expense_number), "description" => $this->escape($row->description), "payee" => $this->escape($row->payee ?: "-"), "competence" => $this->escape($row->reference_month), "due" => $row->due_date ? format_to_date($row->due_date, false) : "-", "category" => $this->escape($row->subcategory_name ?: ($row->category_name ?: "-")), "center" => $this->escape($row->cost_center_name ?: "-"), "amount" => $row->final_amount, "paid" => $row->paid_amount, "balance" => $row->balance_amount, "status" => '<span class="badge bg-' . $this->status_class((string) $row->display_status) . '">' . $this->escape(app_lang("gd_cost_status_" . $row->display_status)) . "</span>", "options" => $actions];
             }, $result["data"]);
             return $this->response->setJSON($result);
@@ -132,6 +138,12 @@ final class Costs extends Gd_Controller
     public function cancel()
     {
         try { $this->access->require("gd_costs_manage"); $this->costs->cancel((int) $this->request->getPost("id"), (string) $this->request->getPost("reason"), $this->request->getPost("lock_version") === null ? null : (int) $this->request->getPost("lock_version")); $this->json_success(app_lang("record_saved")); }
+        catch (\Throwable $e) { $this->gd_fail($e); }
+    }
+
+    public function delete()
+    {
+        try { $this->access->require("gd_costs_manage"); $this->costs->delete((int) $this->request->getPost("id")); $this->json_success(app_lang("record_deleted")); }
         catch (\Throwable $e) { $this->gd_fail($e); }
     }
 

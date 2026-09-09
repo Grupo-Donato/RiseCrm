@@ -187,8 +187,9 @@ $(function(){
                 button.prop("disabled", false).html("<i data-feather='trash-2' class='icon-14'></i> Excluir convocação");
                 if (window.feather) feather.replace();
             },
-            error: function(){
-                appAlert.error("Não foi possível excluir a convocação.");
+            error: function(xhr){
+                var response = xhr && xhr.responseJSON ? xhr.responseJSON : {};
+                appAlert.error(response.message || "Não foi possível excluir a convocação.");
                 button.prop("disabled", false).html("<i data-feather='trash-2' class='icon-14'></i> Excluir convocação");
                 if (window.feather) feather.replace();
             }

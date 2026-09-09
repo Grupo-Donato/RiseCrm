@@ -179,7 +179,7 @@ if (!function_exists("bombeiros_install_or_update")) {
         $count = max(0, (int) $count);
         $level = min($count, 4);
         $state = $count >= 4 ? "critical" : ($count > 0 ? "warning" : "clear");
-        $label = ($count === 1 ? "1 falta" : $count . " faltas") . " neste mês";
+        $label = $count === 1 ? "1 falta consecutiva" : $count . " faltas consecutivas";
         $accessible_label = $count >= 4
             ? $label . ". Entrar em contato com o responsável."
             : $label;

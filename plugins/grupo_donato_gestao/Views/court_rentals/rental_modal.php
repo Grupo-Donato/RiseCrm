@@ -249,7 +249,6 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
             </div>
         <?php } ?>
 
-        <?php if (!$is_edit) { ?>
         <div id="gd-rental-available-courts" class="card bg-light mb20" style="display:none">
             <div class="card-body">
                 <h5 class="mb5"><?php echo app_lang("gd_available_times"); ?></h5>
@@ -258,7 +257,6 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                 <div id="gd-rental-available-courts-results" class="gd-available-courts-grid"></div>
             </div>
         </div>
-        <?php } ?>
 
         <div class="mb20">
             <h5 class="mb15"><?php echo app_lang("gd_select_court"); ?></h5>
@@ -384,9 +382,9 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
 </div>
 
 <div class="modal-footer">
-    <?php if (!$is_edit) { ?><button type="button" id="gd-rental-check" class="btn btn-info">
+    <button type="button" id="gd-rental-check" class="btn btn-info">
         <i data-feather="check-circle" class="icon-16"></i> <?php echo app_lang("gd_check_availability"); ?>
-    </button><?php } ?>
+    </button>
     <button type="button" class="btn btn-default" data-bs-dismiss="modal"><?php echo app_lang("close"); ?></button>
     <button type="submit" class="btn btn-primary" id="gd-rental-submit">
         <i data-feather="save" class="icon-16"></i> <span><?php echo $is_edit ? app_lang("save") : app_lang("gd_create_single_rental"); ?></span>
@@ -790,7 +788,7 @@ $(document).ready(function(){
     }
     function loadAvailableCourts() {
         var schedule = scheduleValues();
-        if (isEdit || !dateInput.val() || !startTime.val() || !schedule) { hideAvailableCourts(); return; }
+        if (!dateInput.val() || !startTime.val() || !schedule) { hideAvailableCourts(); return; }
         availableCourts.show();
         availablePeriod.text(formatDate(schedule.startDate) + " · " + schedule.startTime + " às " + schedule.endTime);
         availableCourtsResults.html('<div class="text-muted"><i data-feather="loader" class="icon-16"></i> ' + escapeHtml(messages.checking) + '</div>');
@@ -798,6 +796,7 @@ $(document).ready(function(){
         var data = form.serializeArray();
         setPostValue(data, "starts_at_local", schedule.startsAt);
         setPostValue(data, "ends_at_local", schedule.endsAt);
+        if (isEdit) { setPostValue(data, "rental_id", editData.id || ""); }
         if (availableCourtsXhr) { availableCourtsXhr.abort(); }
         availableCourtsXhr = $.ajax({
             url: '<?php echo_uri("grupo_donato/court-rentals/availability-options"); ?>',
@@ -815,7 +814,7 @@ $(document).ready(function(){
     }
     function scheduleAvailableCourts() {
         clearTimeout(availableCourtsTimer);
-        if (isEdit || !dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableCourts(); return; }
+        if (!dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableCourts(); return; }
         availableCourtsTimer = setTimeout(loadAvailableCourts, 250);
     }
     function renderAvailableBarbecues(rows) {
@@ -837,7 +836,7 @@ $(document).ready(function(){
     }
     function loadAvailableBarbecues() {
         var schedule = scheduleValues();
-        if (isEdit || !comboEnabled() || !dateInput.val() || !startTime.val() || !schedule) { hideAvailableBarbecues(); return; }
+        if (!comboEnabled() || !dateInput.val() || !startTime.val() || !schedule) { hideAvailableBarbecues(); return; }
         availableBarbecues.show();
         availableBarbecuePeriod.text(formatDate(schedule.startDate) + " · " + schedule.startTime + " às " + schedule.endTime);
         availableBarbecuesResults.html('<div class="text-muted"><i data-feather="loader" class="icon-16"></i> ' + escapeHtml(messages.checking) + '</div>');
@@ -845,6 +844,7 @@ $(document).ready(function(){
         var data = form.serializeArray();
         setPostValue(data, "starts_at_local", schedule.startsAt);
         setPostValue(data, "ends_at_local", schedule.endsAt);
+        if (isEdit) { setPostValue(data, "rental_id", editData.id || ""); }
         if (availableBarbecuesXhr) { availableBarbecuesXhr.abort(); }
         availableBarbecuesXhr = $.ajax({
             url: '<?php echo_uri("grupo_donato/court-rentals/barbecue-availability-options"); ?>',
@@ -862,7 +862,7 @@ $(document).ready(function(){
     }
     function scheduleAvailableBarbecues() {
         clearTimeout(availableBarbecuesTimer);
-        if (isEdit || !comboEnabled() || !dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableBarbecues(); return; }
+        if (!comboEnabled() || !dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableBarbecues(); return; }
         availableBarbecuesTimer = setTimeout(loadAvailableBarbecues, 250);
     }
     function unavailableMessage(response) {
@@ -905,7 +905,7 @@ $(document).ready(function(){
         if (!exempt && amountCents === null) { return messages.amount_required; }
         if (mode() === "recurring" && (!dueDay.val() || parseInt(dueDay.val(), 10) < 1 || parseInt(dueDay.val(), 10) > 31)) { return messages.due_day_required; }
         if (selectedDuration() < 1 || selectedDuration() > 10080) { return messages.duration_required; }
-        if (!exempt && mode() === "single") {
+        if (!isEdit && !exempt && mode() === "single") {
             var depositCents = moneyCents(depositInput.val());
             if (depositCents === null || depositCents > amountCents) { return messages.deposit_invalid; }
             if (depositCents > 0 && !depositMethod.val()) { return messages.deposit_method_required; }
@@ -921,11 +921,14 @@ $(document).ready(function(){
         setPostValue(data, "contact_person_id", $("#gd-rental-contact-id").val());
         setPostValue(data, "contact_phone", digitsOnly(phone.val()).substring(0, 11));
         setPostValue(data, "financial_status", exemptInput.is(":checked") ? "exempt" : "chargeable");
+        if (isEdit) { setPostValue(data, "rental_id", editData.id || ""); }
         setPostValue(data, "negotiated_amount", comboEnabled() ? currentListAmount() : currentAmount());
         setPostValue(data, "list_amount", currentListAmount());
         setPostValue(data, "discount_amount", currentDiscount());
         setPostValue(data, "discount_reason", comboEnabled() ? $.trim(comboDiscountReasonInput.val()) : "");
-        setPostValue(data, "deposit_amount", !exemptInput.is(":checked") && mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
+        if (!isEdit) {
+            setPostValue(data, "deposit_amount", !exemptInput.is(":checked") && mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
+        }
         if (mode() === "recurring") {
             setPostValue(data, "weekdays[]", isoWeekday(dateInput.val()));
         }
@@ -972,7 +975,6 @@ $(document).ready(function(){
         clearTimeout(checkTimer);
         clearAvailability();
         updateSummary();
-        if (isEdit) { return; }
         if (validationMessage()) { return; }
         checkTimer = setTimeout(checkAvailability, 550);
     }

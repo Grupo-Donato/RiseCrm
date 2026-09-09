@@ -87,6 +87,8 @@ $routes->group('chatwoot_plugin', $route_options, static function ($routes): voi
     $routes->delete('api/quick-replies/(:num)', 'Quick_replies::delete/$1');
 
     $routes->post('api/campaigns/audience-preview', 'Campaigns::audience_preview');
+    $routes->post('api/campaigns/audience-import', 'Campaigns::audience_import');
+    $routes->get('api/campaigns/audience-template', 'Campaigns::audience_template');
     $routes->get('api/campaigns/health', 'Campaigns::health');
     $routes->get('api/campaigns', 'Campaigns::index');
     $routes->post('api/campaigns', 'Campaigns::create');

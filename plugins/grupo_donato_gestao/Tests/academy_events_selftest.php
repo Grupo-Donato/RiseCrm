@@ -14,6 +14,10 @@ function gd_academy_events_selftest(): void
         "gd_academy_evaluation_scores", "gd_academy_match_player_stats",
     ];
     gd_assert("schema de eventos aplicado", array_reduce($tables, static fn(bool $ok, string $table): bool => $ok && $db->tableExists($prefix . $table), true));
+    $operationalRoutes = (string) @file_get_contents(__DIR__ . "/../Operacional/Config/Routes.php");
+    $roleAccess = (string) @file_get_contents(__DIR__ . "/../Services/RoleAccessService.php");
+    $controller = (string) @file_get_contents(__DIR__ . "/../Operacional/Controllers/Bombeiros.php");
+    gd_assert("exclusão de convocação passa pelo controle de acesso", strpos($operationalRoutes, "delete_event_participant") !== false && strpos($roleAccess, '"delete_event_participant" => "eventos"') !== false && strpos($controller, "public function delete_event_participant") !== false);
 
     $professor = (object) ["user_type" => "staff", "job_title" => "Professor", "permissions" => ["gd_academy_events_view" => "1"]];
     $professorAccess = new \grupo_donato_gestao\Services\AccessService($professor);

@@ -55,6 +55,12 @@ $singleInput = [
 $single = $rentalService->createWithBooking($singleInput);
 gd_assert("avulso cria locação + reserva + vínculo", $single["id"] > 0 && $single["booking_id"] > 0 && str_starts_with($single["rental_number"], "LOC-" . gmdate("Y") . "-"));
 $singleRow = $rentalService->get($single["id"]);
+$editAvailability = (new \grupo_donato_gestao\Services\BookingService($unit_id))->checkAvailability([
+    "starts_at_local" => "2099-12-01T10:00",
+    "ends_at_local" => "2099-12-01T11:00",
+    "resources" => $singleInput["resources"],
+], (int) $single["booking_id"]);
+gd_assert("edição consulta disponibilidade sem conflitar com a própria reserva", $editAvailability["available"] === true);
 $singleVest = $rentalService->createDraft(array_replace($singleInput, ["title" => "Avulso com colete", "has_vest" => 1, "has_ball" => 0, "vest_amount" => "30.00"]), "single");
 $singleBall = $rentalService->createDraft(array_replace($singleInput, ["title" => "Avulso com bola", "has_vest" => 0, "has_ball" => 1, "ball_amount" => "20.00"]), "single");
 $singleBoth = $rentalService->createDraft(array_replace($singleInput, ["title" => "Avulso com colete e bola", "has_vest" => 1, "has_ball" => 1, "vest_amount" => "30.00", "ball_amount" => "20.00"]), "single");

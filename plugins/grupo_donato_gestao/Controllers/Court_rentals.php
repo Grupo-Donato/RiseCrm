@@ -422,7 +422,7 @@ class Court_rentals extends Gd_Controller
                     throw new \DomainException("gd_invalid_local_datetime");
                 }
             }
-            $this->json_success("", ["data" => $this->bookings->checkAvailability($input)]);
+            $this->json_success("", ["data" => $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId())]);
         }
         catch (\Throwable $e) { $this->gd_fail($e); }
     }
@@ -449,7 +449,7 @@ class Court_rentals extends Gd_Controller
                     "buffer_after_minutes" => 0,
                 ], $resources),
             ];
-            $result = $this->bookings->checkAvailability($input);
+            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId());
             $conflicts = [];
             foreach (($result["conflicts"] ?? []) as $conflict) {
                 $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
@@ -493,7 +493,7 @@ class Court_rentals extends Gd_Controller
                     "buffer_after_minutes" => 0,
                 ], $resources),
             ];
-            $result = $this->bookings->checkAvailability($input);
+            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId());
             $conflicts = [];
             foreach (($result["conflicts"] ?? []) as $conflict) {
                 $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
@@ -770,6 +770,26 @@ class Court_rentals extends Gd_Controller
         $row = (new CourtRentalLifecycleService($this->unit_id, $this->user_id(), $this->login_user))->activate($id, $lock_version, $this->access->can("gd_court_rentals_price_override"), (string) $this->request->getPost("justification"));
         $result["status"] = (string) $row->status;
         $result["lock_version"] = (int) $row->lock_version;
+    }
+
+    /** Exclui a própria reserva ao consultar disponibilidade durante a edição. */
+    private function availabilityExclusionBookingId(): int
+    {
+        $rental_id = (int) $this->request->getPost("rental_id");
+        if ($rental_id <= 0) { return 0; }
+
+        $rental = $this->service->get($rental_id);
+        if (!$rental || (string) ($rental->rental_type ?? "") !== "single") {
+            throw new \DomainException("gd_court_rental_not_found");
+        }
+
+        foreach ($rental->links as $link) {
+            if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0) {
+                return (int) $link->booking_id;
+            }
+        }
+
+        throw new \DomainException("gd_court_rental_booking_not_found");
     }
 
     /** Statuses operacionais que podem ser alterados no formulário do mensalista. */

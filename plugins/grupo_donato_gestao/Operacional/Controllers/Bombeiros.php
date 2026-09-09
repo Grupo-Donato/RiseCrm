@@ -2792,7 +2792,14 @@ class Bombeiros extends Security_Controller
 
     private function _append_absence_counts(array &$students)
     {
-        $counts = $this->Bombeiros_presenca_model->get_absence_counts($this->_active_unit_id());
+        $student_ids = [];
+        foreach ($students as $student) {
+            if (is_object($student) && !empty($student->id)) {
+                $student_ids[] = (int) $student->id;
+            }
+        }
+
+        $counts = $this->Bombeiros_presenca_model->get_consecutive_absence_counts($this->_active_unit_id(), $student_ids);
         foreach ($students as $student) {
             if (is_object($student)) {
                 $student->faltas_count = $counts[(int) ($student->id ?? 0)] ?? 0;
@@ -6132,6 +6139,8 @@ class Bombeiros extends Security_Controller
                 "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
                 "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",
                 "gd_invalid_event_transition" => "A transicao deste evento nao e permitida.",
+                "gd_record_not_found" => "A convocacao nao foi encontrada ou ja foi excluida.",
+                "gd_edit_conflict" => "A convocacao foi alterada por outra pessoa. Atualize a pagina e tente novamente.",
                 "gd_finance_paid_cannot_cancel" => "Nao e possivel excluir um convocado com pagamento registrado. Estorne o pagamento antes.",
             ];
             $key = $e->getMessage();

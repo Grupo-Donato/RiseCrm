@@ -81,7 +81,7 @@ class Campaign_service
         $include = $this->normalizeTags($input['include_tags'] ?? []);
         $exclude = $this->normalizeTags($input['exclude_tags'] ?? []);
         $source = strtolower(trim((string) ($input['audience_source'] ?? 'contacts')));
-        if (!in_array($source, ['contacts', 'manual', 'csv'], true)) {
+        if (!in_array($source, ['contacts', 'manual', 'csv', 'students'], true)) {
             throw new InvalidArgumentException('Fonte de publico invalida.');
         }
         $contactsTable = $this->db->prefixTable('chat_contacts');
@@ -118,7 +118,60 @@ class Campaign_service
             $recipients[$phone] = ['contact_id' => (int) $row['id'], 'phone' => $phone, 'name' => (string) $row['name'], 'company' => (string) ($row['company'] ?? ''), 'city' => (string) ($row['city'] ?? '')];
         }
         $invalid = 0;
-        $manualNumbers = is_array($input['manual_numbers'] ?? null) ? $input['manual_numbers'] : (is_array($input['numbers'] ?? null) ? $input['numbers'] : []);
+        if ($source === 'students') {
+            foreach ($this->studentAudienceRows($input) as $row) {
+                try {
+                    $phone = $this->contacts->normalize_phone((string) ($row['responsavel_phone'] ?? ''));
+                    $contact = $this->db->table($contactsTable)
+                        ->select('id, opt_out')
+                        ->where('phone_normalized', $phone)
+                        ->where('deleted', 0)
+                        ->groupStart()->where('instance_id', $instanceId)->orWhere('instance_id IS NULL', null, false)->groupEnd()
+                        ->orderBy('opt_out', 'DESC')->get(1)->getRowArray();
+                    if ($contact && !empty($contact['opt_out'])) {
+                        $excludedOptOut++;
+                        continue;
+                    }
+                    $studentName = trim((string) ($row['nome_aluno'] ?? ''));
+                    $responsibleName = trim((string) ($row['responsavel_nome'] ?? ''));
+                    $variables = array_filter([
+                        'nome' => $responsibleName,
+                        'responsavel' => $responsibleName,
+                        'nome_responsavel' => $responsibleName,
+                        'aluno' => $studentName,
+                        'nome_aluno' => $studentName,
+                        'matricula' => trim((string) ($row['matricula'] ?? '')),
+                        'turma' => trim((string) ($row['turma'] ?? '')),
+                        'unidade' => trim((string) ($row['unidade_nome'] ?? '')),
+                    ], static fn ($value): bool => $value !== '');
+                    $entry = [
+                        'contact_id' => $contact ? (int) $contact['id'] : null,
+                        'phone' => $phone,
+                        'name' => $responsibleName ?: $phone,
+                        'company' => trim((string) ($row['unidade_nome'] ?? '')),
+                        'city' => trim((string) ($row['unidade_cidade'] ?? '')),
+                        'variables' => $variables,
+                    ];
+                    if (isset($recipients[$phone])) {
+                        $previous = $recipients[$phone];
+                        $names = array_filter(array_map('trim', explode(', ', (string) ($previous['variables']['alunos'] ?? ''))));
+                        if ($studentName && !in_array($studentName, $names, true)) $names[] = $studentName;
+                        if ($names) {
+                            $entry['variables']['alunos'] = implode(', ', $names);
+                            $entry['variables']['aluno'] = $entry['variables']['alunos'];
+                            $entry['variables']['nome_aluno'] = $entry['variables']['alunos'];
+                        }
+                        $recipients[$phone]['variables'] = array_merge($previous['variables'] ?? [], $entry['variables']);
+                    } else {
+                        $entry['variables']['alunos'] = $studentName;
+                        $recipients[$phone] = $entry;
+                    }
+                } catch (InvalidArgumentException $exception) {
+                    $invalid++;
+                }
+            }
+        }
+        $manualNumbers = $source === 'students' ? [] : (is_array($input['manual_numbers'] ?? null) ? $input['manual_numbers'] : (is_array($input['numbers'] ?? null) ? $input['numbers'] : []));
         foreach ($manualNumbers as $entry) {
             $number = is_array($entry) ? ($entry['phone'] ?? $entry['numero'] ?? $entry['number'] ?? '') : $entry;
             $customVariables = is_array($entry) ? ($entry['variables'] ?? $entry['variaveis'] ?? []) : [];
@@ -272,6 +325,7 @@ class Campaign_service
             'source' => (string) ($input['audience_source'] ?? 'contacts'),
             'include_tags' => $this->normalizeTags($input['include_tags'] ?? []),
             'exclude_tags' => $this->normalizeTags($input['exclude_tags'] ?? []),
+            'student_status' => strtolower(trim((string) ($input['student_status'] ?? 'active'))) === 'all' ? 'all' : 'active',
             'manual_numbers_count' => count(is_array($input['manual_numbers'] ?? null) ? $input['manual_numbers'] : (is_array($input['numbers'] ?? null) ? $input['numbers'] : [])),
             'recipient_count' => $preview['count'],
             'excluded_opt_out' => $preview['excluded_opt_out'],
@@ -553,6 +607,230 @@ class Campaign_service
         $this->templates->soft_delete($id);
     }
 
+    /** @return array{count:int,invalid:int,duplicates:int,entries:array<int,array<string,mixed>>} */
+    public function import_audience(string $path, ?string $extension = null): array
+    {
+        [$header, $grid] = $this->readAudienceFile($path, $extension);
+        $headerIndexes = [];
+        foreach ($header as $index => $label) $headerIndexes[$this->normalizeAudienceHeader((string) $label)] = (int) $index;
+
+        $phoneIndex = $this->audienceColumn($headerIndexes, ['telefone', 'celular', 'whatsapp', 'numero', 'phone', 'fone']);
+        $hasHeader = $phoneIndex !== null || $this->audienceColumn($headerIndexes, ['nome', 'name', 'nome_responsavel', 'responsavel']) !== null;
+        if (!$hasHeader) {
+            $rows = array_merge([$header], $grid);
+            $phoneIndex = $this->detectPhoneColumn($rows);
+            $headerIndexes = [];
+        } else {
+            if ($phoneIndex === null) throw new InvalidArgumentException('A planilha precisa ter uma coluna Telefone.');
+            $rows = $grid;
+        }
+
+        $columns = [
+            'nome' => $this->audienceColumn($headerIndexes, ['nome', 'name', 'nome_responsavel', 'responsavel']),
+            'nome_aluno' => $this->audienceColumn($headerIndexes, ['nome_aluno', 'aluno', 'student', 'nome_do_aluno']),
+            'matricula' => $this->audienceColumn($headerIndexes, ['matricula', 'registro', 'registration']),
+            'turma' => $this->audienceColumn($headerIndexes, ['turma', 'classe', 'class']),
+            'unidade' => $this->audienceColumn($headerIndexes, ['unidade', 'unidade_nome', 'filial']),
+            'var1' => $this->audienceColumn($headerIndexes, ['var1', 'variavel1', 'variavel_1']),
+            'var2' => $this->audienceColumn($headerIndexes, ['var2', 'variavel2', 'variavel_2']),
+        ];
+
+        $entries = [];
+        $seen = [];
+        $invalid = 0;
+        $duplicates = 0;
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            $rawPhone = trim((string) ($row[$phoneIndex] ?? ''));
+            $phone = preg_replace('/\D+/', '', $rawPhone) ?: '';
+            if (strlen($phone) < 10 || strlen($phone) > 15) {
+                $invalid++;
+                continue;
+            }
+            if (isset($seen[$phone])) {
+                $duplicates++;
+                continue;
+            }
+            $seen[$phone] = true;
+            $variables = [];
+            foreach ($columns as $key => $index) {
+                if ($index === null) continue;
+                $value = mb_substr(trim((string) ($row[$index] ?? '')), 0, 500);
+                if ($value !== '') $variables[$key] = $value;
+            }
+            if (isset($variables['nome'])) {
+                $variables['responsavel'] = $variables['nome'];
+                $variables['nome_responsavel'] = $variables['nome'];
+            }
+            if (isset($variables['nome_aluno'])) {
+                $variables['aluno'] = $variables['nome_aluno'];
+                $variables['alunos'] = $variables['nome_aluno'];
+            }
+            $entries[] = ['numero' => $phone, 'variaveis' => $variables];
+        }
+
+        return ['count' => count($entries), 'invalid' => $invalid, 'duplicates' => $duplicates, 'entries' => $entries];
+    }
+
+    /** @return array{body:string,content_type:string,filename:string} */
+    public function audience_template(): array
+    {
+        $headers = ['telefone', 'nome_responsavel', 'nome_aluno', 'matricula', 'turma', 'unidade', 'var1', 'var2'];
+        if (!is_file($this->spreadsheetAutoloadPath())) {
+            $handle = fopen('php://temp', 'r+');
+            if ($handle === false) throw new RuntimeException('Nao foi possivel montar o modelo de destinatarios.', 503);
+            fputcsv($handle, $headers, ';');
+            fputcsv($handle, ['5511999999999', 'Maria', 'Joao', '123', 'Infantil', 'Unidade Centro', 'teste 1', 'teste 2'], ';');
+            rewind($handle);
+            $contents = (string) stream_get_contents($handle);
+            fclose($handle);
+            return [
+                'body' => "\xEF\xBB\xBF" . $contents,
+                'content_type' => 'text/csv; charset=UTF-8',
+                'filename' => 'modelo-destinatarios-whatsapp.csv',
+            ];
+        }
+        $this->loadSpreadsheetLibrary();
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Destinatarios');
+        foreach ($headers as $column => $header) $sheet->setCellValueByColumnAndRow($column + 1, 1, $header);
+        $sheet->setCellValueByColumnAndRow(1, 2, '5511999999999');
+        $sheet->setCellValueByColumnAndRow(2, 2, 'Maria');
+        $sheet->setCellValueByColumnAndRow(3, 2, 'Joao');
+        $sheet->setCellValueByColumnAndRow(4, 2, '123');
+        $sheet->setCellValueByColumnAndRow(5, 2, 'Infantil');
+        $sheet->setCellValueByColumnAndRow(6, 2, 'Unidade Centro');
+        $sheet->setCellValueByColumnAndRow(7, 2, 'teste 1');
+        $sheet->setCellValueByColumnAndRow(8, 2, 'teste 2');
+        $sheet->freezePane('A2');
+        foreach (range(1, count($headers)) as $column) $sheet->getColumnDimensionByColumn($column)->setAutoSize(true);
+        $sheet->getStyle('A1:H1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:H1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('DCEBFA');
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        ob_start();
+        $writer->save('php://output');
+        $contents = (string) ob_get_clean();
+        $spreadsheet->disconnectWorksheets();
+        return [
+            'body' => $contents,
+            'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'filename' => 'modelo-destinatarios-whatsapp.xlsx',
+        ];
+    }
+
+    /** @return array{0:array<int,string>,1:array<int,array<int,mixed>>} */
+    private function readAudienceFile(string $path, ?string $extension = null): array
+    {
+        if (!is_file($path)) throw new InvalidArgumentException('Nao foi possivel ler a planilha.');
+        $extension = strtolower(trim((string) ($extension ?: pathinfo($path, PATHINFO_EXTENSION))));
+        if ($extension === 'csv') return $this->readAudienceCsv($path);
+        $this->loadSpreadsheetLibrary();
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $grid = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+            $spreadsheet->disconnectWorksheets();
+        } catch (\Throwable $exception) {
+            throw new InvalidArgumentException('Nao foi possivel ler a planilha. Salve o arquivo como XLSX ou CSV e tente novamente.');
+        }
+        $grid = array_values(array_filter($grid, static fn ($row): bool => is_array($row) && array_filter($row, static fn ($cell): bool => trim((string) $cell) !== '')));
+        if (!$grid) throw new InvalidArgumentException('A planilha esta vazia.');
+        $header = array_map(static fn ($cell): string => trim((string) $cell), array_shift($grid));
+        return [$header, array_values($grid)];
+    }
+
+    /** @return array{0:array<int,string>,1:array<int,array<int,mixed>>} */
+    private function readAudienceCsv(string $path): array
+    {
+        $handle = @fopen($path, 'r');
+        if ($handle === false) throw new InvalidArgumentException('Nao foi possivel ler a planilha.');
+        $delimiter = $this->audienceDelimiter($path);
+        $grid = [];
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $row = array_map(static fn ($cell): string => trim((string) $cell), $row);
+            if (array_filter($row, static fn (string $cell): bool => $cell !== '')) $grid[] = $row;
+        }
+        fclose($handle);
+        if (!$grid) throw new InvalidArgumentException('A planilha esta vazia.');
+        $grid[0][0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($grid[0][0] ?? '')) ?: '';
+        $header = array_map(static fn ($cell): string => trim((string) $cell), array_shift($grid));
+        return [$header, array_values($grid)];
+    }
+
+    private function spreadsheetAutoloadPath(): string
+    {
+        return rtrim(APPPATH, '/\\') . '/ThirdParty/PHPOffice-PhpSpreadsheet/vendor/autoload.php';
+    }
+
+    private function loadSpreadsheetLibrary(): void
+    {
+        $autoload = $this->spreadsheetAutoloadPath();
+        if (!is_file($autoload)) throw new RuntimeException('Leitor de arquivos Excel indisponivel nesta instalacao. Baixe o modelo e envie o CSV compativel com Excel.', 503);
+        require_once $autoload;
+    }
+
+    private function audienceDelimiter(string $path): string
+    {
+        $handle = @fopen($path, 'r');
+        if (!$handle) return ',';
+        $line = (string) fgets($handle);
+        fclose($handle);
+        return substr_count($line, ';') > substr_count($line, ',') ? ';' : ',';
+    }
+
+    private function normalizeAudienceHeader(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = strtr($value, ['á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a','é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','í'=>'i','ì'=>'i','î'=>'i','ï'=>'i','ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o','ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u','ç'=>'c']);
+        return trim((string) preg_replace('/[^a-z0-9]+/', '_', $value), '_');
+    }
+
+    private function audienceColumn(array $headers, array $aliases): ?int
+    {
+        foreach ($aliases as $alias) {
+            $key = $this->normalizeAudienceHeader((string) $alias);
+            if (array_key_exists($key, $headers)) return (int) $headers[$key];
+        }
+        return null;
+    }
+
+    private function detectPhoneColumn(array $rows): ?int
+    {
+        $scores = [];
+        foreach (array_slice($rows, 0, 20) as $row) {
+            foreach ((array) $row as $index => $value) {
+                $digits = preg_replace('/\D+/', '', (string) $value) ?: '';
+                if (strlen($digits) >= 10 && strlen($digits) <= 15) $scores[$index] = ($scores[$index] ?? 0) + 1;
+            }
+        }
+        if (!$scores) throw new InvalidArgumentException('A planilha precisa ter uma coluna Telefone.');
+        arsort($scores);
+        return (int) array_key_first($scores);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function studentAudienceRows(array $input): array
+    {
+        $students = $this->db->prefixTable('grupo_donato_alunos');
+        $responsibles = $this->db->prefixTable('grupo_donato_responsaveis');
+        $units = $this->db->prefixTable('grupo_donato_unidades');
+        if (!$this->db->tableExists($students) || !$this->db->tableExists($responsibles)) return [];
+        $builder = $this->db->table($students)
+            ->select($responsibles . '.id AS responsavel_id, ' . $responsibles . '.nome AS responsavel_nome, COALESCE(NULLIF(' . $responsibles . '.whats, \'\'), NULLIF(' . $responsibles . '.celular, \'\'), \'\') AS responsavel_phone, ' . $students . '.nome_aluno, ' . $students . '.matricula, ' . $students . '.turma', false)
+            ->where($students . '.deleted', 0)
+            ->where($responsibles . '.deleted', 0)
+            ->join($responsibles, $responsibles . '.id=' . $students . '.responsavel_id', 'inner');
+        if ($this->db->tableExists($units)) {
+            $builder->select($units . '.nome_unidade AS unidade_nome, ' . $units . '.cidade AS unidade_cidade', false)
+                ->join($units, $units . '.id=' . $students . '.unidade_id', 'left');
+        }
+        if (strtolower(trim((string) ($input['student_status'] ?? 'active'))) !== 'all') $builder->where($students . '.status', 'Ativo');
+        $unitId = (int) ($input['unit_id'] ?? 0);
+        if ($unitId > 0) $builder->where($students . '.unidade_id', $unitId);
+        return $builder->orderBy($students . '.nome_aluno', 'ASC')->limit(10000)->get()->getResultArray();
+    }
+
     private function storeRecipients(int $campaignId, array $recipients): void
     {
         $now = gmdate('Y-m-d H:i:s');
@@ -600,7 +878,7 @@ class Campaign_service
             'rate_limit_per_minute'=>(int)($row['rate_limit_per_minute']??20),
             'audience_count'=>(int)($audience['recipient_count']??$metrics['audience']??0), 'last_error'=>$row['last_error']?:null,
             'audience_source'=>(string)($audience['source']??'contacts'), 'include_tags'=>is_array($audience['include_tags']??null)?$audience['include_tags']:[],
-            'exclude_tags'=>is_array($audience['exclude_tags']??null)?$audience['exclude_tags']:[], 'numbers'=>[],
+            'exclude_tags'=>is_array($audience['exclude_tags']??null)?$audience['exclude_tags']:[], 'student_status'=>(string)($audience['student_status']??'active'), 'numbers'=>[],
             'type'=>(($schedule['type']??'')==='recurring'?'recurring':'one_time'), 'start_date'=>$localAt ? $localAt->format('Y-m-d') : '',
             'start_time'=>$localAt ? $localAt->format('H:i:s') : '',
             'ends_at'=>$schedule['ends_at']??null, 'interval_seconds'=>(int)($schedule['interval_seconds']??0),

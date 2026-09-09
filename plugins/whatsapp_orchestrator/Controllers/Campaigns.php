@@ -56,6 +56,36 @@ class Campaigns extends Api_controller
     }
 
     public function audience_preview(): ResponseInterface { $this->requireManageCampaignsPermission(); try { $data = $this->service->audience_preview($this->input()); unset($data['recipients']); return $this->success($data); } catch (Throwable $e) { return $this->failure($e); } }
+    public function audience_import(): ResponseInterface
+    {
+        $this->requireManageCampaignsPermission();
+        $file = $this->request->getFile('file');
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return $this->error('Envie uma planilha valida.', 422);
+        }
+        if ((int) $file->getSize() > 5 * 1024 * 1024) {
+            return $this->error('A planilha deve ter no maximo 5 MB.', 422);
+        }
+        $extension = strtolower((string) $file->getExtension());
+        if (!in_array($extension, ['xlsx', 'xls', 'csv'], true)) {
+            return $this->error('Use uma planilha XLSX, XLS ou CSV.', 422);
+        }
+        try {
+            return $this->success($this->service->import_audience($file->getTempName(), $extension));
+        } catch (Throwable $e) { return $this->failure($e); }
+    }
+
+    public function audience_template(): ResponseInterface
+    {
+        $this->requireManageCampaignsPermission();
+        try {
+            $template = $this->service->audience_template();
+            return $this->response
+                ->setHeader('Content-Type', $template['content_type'])
+                ->setHeader('Content-Disposition', 'attachment; filename="' . $template['filename'] . '"')
+                ->setBody($template['body']);
+        } catch (Throwable $e) { return $this->failure($e); }
+    }
     public function health(): ResponseInterface { $this->requireManageCampaignsPermission(); return $this->success($this->service->health()); }
 
     private function save(?int $id): ResponseInterface { try { return $this->success($this->service->save($this->input(), $this->actorId(), $id), [], $id ? 200 : 201); } catch (Throwable $e) { return $this->failure($e); } }

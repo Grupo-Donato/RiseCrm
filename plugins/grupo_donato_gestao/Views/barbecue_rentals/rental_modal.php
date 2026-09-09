@@ -603,7 +603,7 @@ $(document).ready(function(){
         if (!exempt && amountCents === null) { return messages.amount_required; }
         if (mode() === "recurring" && (!dueDay.val() || parseInt(dueDay.val(), 10) < 1 || parseInt(dueDay.val(), 10) > 31)) { return messages.due_day_required; }
         if (selectedDuration() < 1 || selectedDuration() > 10080) { return messages.duration_required; }
-        if (!exempt && mode() === "single") {
+        if (!isEdit && !exempt && mode() === "single") {
             var depositCents = moneyCents(depositInput.val());
             if (depositCents === null || depositCents > amountCents) { return messages.deposit_invalid; }
             if (depositCents > 0 && !depositMethod.val()) { return messages.deposit_method_required; }
@@ -621,7 +621,9 @@ $(document).ready(function(){
         setPostValue(data, "financial_status", exemptInput.is(":checked") ? "exempt" : "chargeable");
         setPostValue(data, "negotiated_amount", currentAmount());
         setPostValue(data, "list_amount", currentAmount());
-        setPostValue(data, "deposit_amount", !exemptInput.is(":checked") && mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
+        if (!isEdit) {
+            setPostValue(data, "deposit_amount", !exemptInput.is(":checked") && mode() === "single" ? normalizeMoney(depositInput.val()) : "0.00");
+        }
         if (mode() === "recurring") {
             setPostValue(data, "weekdays[]", isoWeekday(dateInput.val()));
         }

@@ -722,13 +722,20 @@ if ($task === "selftest") {
         "rota de alunos por turma pertence à aba Alunos",
         RoleAccessService::operational_route_section("alunos_por_turma") === "alunos"
     );
-    $absence_counts = model("grupo_donato_gestao\\Operacional\\Models\\Bombeiros_presenca_model")->get_absence_counts($unit_id);
+    $presence_model_class = "grupo_donato_gestao\\Operacional\\Models\\Bombeiros_presenca_model";
+    $absence_counts = model($presence_model_class)->get_consecutive_absence_counts($unit_id);
     $critical_absence_indicator = bombeiros_faltas_indicator(4);
     gd_assert(
         "contador de faltas por aluno e alerta de contato estão disponíveis",
         is_array($absence_counts)
             && str_contains($critical_absence_indicator, "gd-absence-critical")
             && str_contains($critical_absence_indicator, "Contato")
+    );
+    gd_assert(
+        "contador de faltas consecutivas zera depois de uma presença",
+        $presence_model_class::count_consecutive_absences(["presente", "falta", "falta"]) === 0
+            && $presence_model_class::count_consecutive_absences(["falta", "falta", "presente"]) === 2
+            && $presence_model_class::count_consecutive_absences(["falta", "aula_cancelada", "falta", "feriado"]) === 2
     );
     gd_assert(
         "secretaria acessa todos os menus internos da GD Academy sem acessar Administrativos",

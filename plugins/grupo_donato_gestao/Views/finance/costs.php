@@ -118,7 +118,7 @@ for ($month_index = 0; $month_index < 12; $month_index++) {
     }
 
     /* O modal de custo fica confortável para editar com uma só mão no celular. */
-    @media (max-width: 767.98px) {
+    @media (max-width: 1024px), (pointer: coarse) {
         .gd-costs-page {
             padding-left: 12px !important;
             padding-right: 12px !important;
@@ -272,9 +272,9 @@ for ($month_index = 0; $month_index < 12; $month_index++) {
 
         .gd-costs-page #gd-costs-table td.option,
         .gd-costs-page #gd-costs-table th.option {
-            background: var(--bs-body-bg, #fff);
-            box-shadow: -4px 0 8px rgba(0, 0, 0, .08);
-            min-width: 176px;
+            background: var(--gd-surface, #082A52) !important;
+            box-shadow: -4px 0 8px var(--gd-shadow, rgba(0, 0, 0, .22));
+            min-width: 156px;
             position: sticky;
             right: 0;
             z-index: 2;
@@ -287,23 +287,29 @@ for ($month_index = 0; $month_index < 12; $month_index++) {
         .gd-costs-page #gd-costs-table .gd-cost-actions {
             display: grid;
             gap: 6px;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            min-width: 164px;
+            grid-template-columns: 1fr;
+            min-width: 144px;
+            width: 100%;
         }
 
         .gd-costs-page #gd-costs-table .gd-cost-action {
-            background: var(--bs-secondary-bg, rgba(0, 0, 0, .04));
-            gap: 4px;
+            align-items: center;
+            background: var(--gd-surface-2, #0B315F) !important;
+            border: 1px solid var(--gd-border, #244D78);
+            color: var(--gd-text, #FFFFFF) !important;
+            gap: 8px;
+            justify-content: flex-start;
             min-height: 42px;
-            padding: 8px 5px;
+            padding: 8px;
             width: 100%;
         }
 
         .gd-costs-page #gd-costs-table .gd-cost-action-label {
             display: inline;
-            font-size: 11px;
-            line-height: 1.1;
-            overflow-wrap: anywhere;
+            font-size: 12px;
+            line-height: 1.2;
+            overflow-wrap: normal;
+            word-break: normal;
         }
 
         .gd-costs-page #gd-costs-table .gd-cost-action .icon-16 {
@@ -378,7 +384,7 @@ for ($month_index = 0; $month_index < 12; $month_index++) {
     <div class="card mb15">
         <div class="page-title clearfix">
             <h1><?php echo app_lang("gd_costs_title"); ?></h1>
-            <div class="title-button-group">
+            <div class="title-button-group skip-dropdown-migration">
                 <?php if ($can_categories) echo modal_anchor(get_uri("grupo_donato/finance/costs/categories/modal"), '<i data-feather="tag" class="icon-16"></i> ' . app_lang("gd_costs_category"), ["class" => "btn btn-default", "title" => app_lang("gd_costs_category"), "data-modal-class" => "gd-cost-mobile-modal"]); ?>
                 <?php if ($can_budget) echo modal_anchor(get_uri("grupo_donato/finance/costs/budgets/modal"), '<i data-feather="target" class="icon-16"></i> ' . app_lang("gd_costs_budget"), ["class" => "btn btn-default", "title" => app_lang("gd_costs_budget"), "data-modal-class" => "gd-cost-mobile-modal"]); ?>
                 <?php if ($can_manage) echo modal_anchor(get_uri("grupo_donato/finance/costs/recurrences/modal"), '<i data-feather="repeat" class="icon-16"></i> ' . app_lang("gd_costs_recurring"), ["class" => "btn btn-default", "title" => app_lang("gd_costs_recurring"), "data-modal-class" => "gd-cost-mobile-modal"]); ?>
@@ -516,8 +522,16 @@ for ($month_index = 0; $month_index < 12; $month_index++) {
 $(document).ready(function () {
     "use strict";
 
+    var gdCostsIsMobile = isMobile();
+    if (!gdCostsIsMobile && window.matchMedia("(pointer: coarse)").matches && window.innerWidth <= 1024) {
+        gdCostsIsMobile = true;
+    }
+    var gdCostsResponsiveTable = gdCostsIsMobile && AppHelper.settings.disableResponsiveDataTable !== "1" && AppHelper.settings.disableResponsiveDataTableForMobile !== "1";
+
     $("#gd-costs-table").appTable({
         source: "<?php echo_uri("grupo_donato/finance/costs/data"); ?>",
+        isMobile: gdCostsIsMobile,
+        responsive: gdCostsResponsiveTable,
         order: [[3, "desc"]],
         smartFilterIdentity: "gd_costs",
         tableRefreshButton: true,

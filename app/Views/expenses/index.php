@@ -1,23 +1,20 @@
-<div id="page-content" class="page-wrapper clearfix grid-button expenses-list-page">
+<div id="page-content" class="page-wrapper clearfix grid-button">
     <div class="card clearfix">
-        <div class="expenses-page-header">
-            <ul id="expenses-tabs" data-bs-toggle="ajax-tab" class="nav nav-tabs bg-white title scrollable-tabs expenses-page-tabs" role="tablist">
-                <li class="title-tab"><h4 class="pl15 pt10 pr15"><?php echo app_lang("expenses"); ?></h4></li>
-                <li><a id="monthly-expenses-button" role="presentation" data-bs-toggle="tab" href="javascript:;" data-bs-target="#all-expenses"><?php echo app_lang("list"); ?></a></li>
-                <li><a role="presentation" data-bs-toggle="tab" href="<?php echo_uri("expenses/recurring/"); ?>" data-bs-target="#recurring-expenses"><?php echo app_lang('recurring'); ?></a></li>
-            </ul>
-
-            <div class="expenses-page-actions">
-                <div class="title-button-group skip-dropdown-migration">
-                    <?php echo modal_anchor(get_uri("expenses/import_modal_form"), "<i data-feather='upload' class='icon-16'></i> " . app_lang('import_expense'), array("class" => "btn btn-default", "title" => app_lang('import_expense'))); ?>
-                    <?php echo modal_anchor(get_uri("expenses/modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> " . app_lang('add_expense'), array("id" => "add-expense-button", "class" => "btn btn-primary", "title" => app_lang('add_expense'))); ?>
+        <ul id="expenses-tabs" data-bs-toggle="ajax-tab" class="nav nav-tabs bg-white title scrollable-tabs" role="tablist">
+            <li class="title-tab"><h4 class="pl15 pt10 pr15"><?php echo app_lang("expenses"); ?></h4></li>
+            <li><a id="monthly-expenses-button" role="presentation" data-bs-toggle="tab" href="javascript:;" data-bs-target="#all-expenses"><?php echo app_lang("list"); ?></a></li>
+            <li><a role="presentation" data-bs-toggle="tab" href="<?php echo_uri("expenses/recurring/"); ?>" data-bs-target="#recurring-expenses"><?php echo app_lang('recurring'); ?></a></li>
+            <div class="tab-title clearfix no-border expenses-page-title">
+                <div class="title-button-group">
+                    <?php echo modal_anchor(get_uri("expenses/import_modal_form"), "<i data-feather='upload' class='icon-16'></i> " . app_lang('import_expense'), array("class" => "btn btn-default mb0", "title" => app_lang('import_expense'))); ?>
+                    <?php echo modal_anchor(get_uri("expenses/modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> " . app_lang('add_expense'), array("class" => "btn btn-default mb0", "title" => app_lang('add_expense'))); ?>
                 </div>
             </div>
-        </div>
+        </ul>
 
         <div class="tab-content">
             <div role="tabpanel" class="tab-pane fade" id="all-expenses">
-                <div class="table-responsive expenses-table-container">
+                <div class="table-responsive">
                     <table id="expense-table" class="display" cellspacing="0" width="100%">
                     </table>
                 </div>
@@ -39,13 +36,8 @@
         rangeRadioButtonOptions = "";
     }
 
-    var expensesIsMobile = isMobile();
-    var expensesResponsiveTable = expensesIsMobile && AppHelper.settings.disableResponsiveDataTable !== "1" && AppHelper.settings.disableResponsiveDataTableForMobile !== "1";
-
     $(selector).appTable({
     source: '<?php echo_uri("expenses/list_data") ?>/' + recurring,
-            isMobile: expensesIsMobile,
-            responsive: expensesResponsiveTable,
             smartFilterIdentity: smartFilterContext, //a to z and _ only. should be unique to avoid conflicts
             rangeRadioButtons: rangeRadioButtonOptions,
             filterDropdown: [

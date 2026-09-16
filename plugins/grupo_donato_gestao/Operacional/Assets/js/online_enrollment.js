@@ -18,7 +18,7 @@
     var automaticStartDate = startDateInput ? startDateInput.value : "";
 
     function nextClassDate(schedule) {
-        var dayNames = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6, "Sab": 6 };
+        var dayNames = { "Dom": 0, "Domingo": 0, "Seg": 1, "Segunda": 1, "Ter": 2, "Terça": 2, "Qua": 3, "Quarta": 3, "Qui": 4, "Quinta": 4, "Sex": 5, "Sexta": 5, "Sáb": 6, "Sab": 6, "Sábado": 6 };
         var dayPart = String(schedule || "").split(" ")[0];
         var weekdays = dayPart.split("/").map(function (name) { return dayNames[name]; }).filter(function (day) { return day !== undefined; });
         if (!weekdays.length) return "";

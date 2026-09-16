@@ -442,8 +442,16 @@ final class OnlineEnrollmentService
         $cpf = substr(preg_replace("/\D+/", "", $text("responsavel_cpf", 30)), 0, 11);
         $studentCpf = substr(preg_replace("/\D+/", "", $text("cpf_aluno", 30)), 0, 11);
         $horario = $text("horario", 50);
-        if (function_exists("bombeiros_turmas_grouped")) {
-            $available = (array) bombeiros_turmas_grouped(false, "");
+        if (function_exists("bombeiros_turmas_values")) {
+            $available = (array) bombeiros_turmas_values();
+            if ($horario !== "" && !array_key_exists($horario, $available)) throw new RuntimeException("Selecione um horário de turma válido.", 422);
+        } elseif (function_exists("bombeiros_turmas_grouped")) {
+            $available = [];
+            foreach ((array) bombeiros_turmas_grouped(false, "") as $options) {
+                foreach ((array) $options as $value => $label) {
+                    $available[(string) $value] = (string) $label;
+                }
+            }
             if ($horario !== "" && !array_key_exists($horario, $available)) throw new RuntimeException("Selecione um horário de turma válido.", 422);
         }
 

@@ -10,9 +10,47 @@
     var message = document.getElementById("gd-enrollment-message");
     var idempotencyInput = document.getElementById("gd-idempotency-key");
     var canvas = document.getElementById("gd-signature-canvas");
+    var classSelect = document.getElementById("horario");
+    var startDateInput = document.getElementById("data_inicio");
     var context = canvas.getContext("2d");
     var drawing = false;
     var lastPoint = null;
+    var automaticStartDate = startDateInput ? startDateInput.value : "";
+
+    function nextClassDate(schedule) {
+        var dayNames = { "Dom": 0, "Seg": 1, "Ter": 2, "Qua": 3, "Qui": 4, "Sex": 5, "Sáb": 6, "Sab": 6 };
+        var dayPart = String(schedule || "").split(" ")[0];
+        var weekdays = dayPart.split("/").map(function (name) { return dayNames[name]; }).filter(function (day) { return day !== undefined; });
+        if (!weekdays.length) return "";
+
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var next = null;
+        weekdays.forEach(function (weekday) {
+            var daysAhead = (weekday - today.getDay() + 7) % 7;
+            // "Próximo dia" significa a próxima ocorrência, não o dia atual.
+            if (daysAhead === 0) daysAhead = 7;
+            if (next === null || daysAhead < next) next = daysAhead;
+        });
+        if (next === null) return "";
+
+        var result = new Date(today);
+        result.setDate(result.getDate() + next);
+        return result.getFullYear() + "-" + String(result.getMonth() + 1).padStart(2, "0") + "-" + String(result.getDate()).padStart(2, "0");
+    }
+
+    function updateDefaultStartDate() {
+        if (!classSelect || !startDateInput) return;
+        var next = nextClassDate(classSelect.value);
+        if (!next) return;
+        if (!startDateInput.value || startDateInput.value === automaticStartDate) {
+            startDateInput.value = next;
+            automaticStartDate = next;
+        }
+    }
+
+    if (classSelect) classSelect.addEventListener("change", updateDefaultStartDate);
+    if (startDateInput) startDateInput.addEventListener("input", function () { automaticStartDate = ""; });
 
     function randomKey() {
         if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -124,7 +162,7 @@
         request(endpoint(root.dataset.finalizeUrl), new FormData(form), button).then(function (data) { applyState(data); setMessage("", ""); }).catch(function (error) { setMessage(error.message, "error"); });
     });
     document.getElementById("gd-retry-whatsapp").addEventListener("click", function () { request(endpoint(root.dataset.whatsappUrl), new FormData(form), this).then(applyState).catch(function (error) { setMessage(error.message, "error"); }); });
-    document.getElementById("gd-new-enrollment").addEventListener("click", function () { clearSaved(); state = { token: "", data: null, signatureData: "", hasInk: false }; idempotencyInput.value = randomKey(); form.reset(); setMessage("", ""); setStep("1"); });
+    document.getElementById("gd-new-enrollment").addEventListener("click", function () { clearSaved(); state = { token: "", data: null, signatureData: "", hasInk: false }; idempotencyInput.value = randomKey(); form.reset(); automaticStartDate = startDateInput ? startDateInput.value : ""; setMessage("", ""); setStep("1"); });
 
     restore();
 }());

@@ -27,7 +27,7 @@ function gd_online_enrollment_selftest(): void
         "nascimento_aluno" => "2015-06-07",
         "cpf_aluno" => "987.654.321-00",
         "rg_aluno" => "ALUNO-" . $suffix,
-        "horario" => "",
+        "horario" => "Ter/Qui Tarde 14:15-15:45",
         "tamanho_camisa" => "M",
         "data_inicio" => date("Y-m-d"),
     ];

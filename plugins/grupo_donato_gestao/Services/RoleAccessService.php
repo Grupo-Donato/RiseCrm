@@ -183,6 +183,7 @@ final class RoleAccessService
         "academy_evaluation" => "eventos",
         "evento_modal_form" => "eventos",
         "save_event" => "eventos",
+        "delete_event" => "eventos",
         "save_event_category" => "eventos",
         "save_event_match" => "eventos",
         "save_event_match_score" => "eventos",

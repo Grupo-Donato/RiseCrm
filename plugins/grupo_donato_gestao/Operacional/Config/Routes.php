@@ -61,6 +61,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("eventos_list_data", "Bombeiros::eventos_list_data");
     $routes->post("evento_modal_form", "Bombeiros::evento_modal_form");
     $routes->post("save_event", "Bombeiros::save_event");
+    $routes->post("delete_event", "Bombeiros::delete_event");
     $routes->post("save_event_category", "Bombeiros::save_event_category");
     $routes->post("save_event_match", "Bombeiros::save_event_match");
     $routes->post("save_event_match_score", "Bombeiros::save_event_match_score");

@@ -83,6 +83,10 @@
     .gd-academy-page .gd-academy-card { border-radius: 10px; height: 100%; padding: 17px; }
     .gd-academy-page .gd-academy-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 9px; }
     .gd-academy-page .gd-academy-card h4 { font-size: 14px; font-weight: 600; margin: 0 0 7px; }
+    .gd-academy-page .gd-academy-category-editor summary { cursor: pointer; list-style: none; }
+    .gd-academy-page .gd-academy-category-editor summary::-webkit-details-marker { display: none; }
+    .gd-academy-page .gd-academy-category-editor summary::after { content: "＋"; margin-left: 6px; }
+    .gd-academy-page .gd-academy-category-editor[open] summary::after { content: "－"; }
     .gd-academy-page .gd-academy-muted { color: var(--academy-muted) !important; font-size: 13px; }
 
     .gd-academy-page .gd-academy-kpi { border-radius: 10px; min-height: 82px; padding: 13px 15px; }

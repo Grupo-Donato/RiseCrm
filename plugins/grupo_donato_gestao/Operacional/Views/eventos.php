@@ -131,7 +131,7 @@ $activeUnitSlug = (string) ($unidade_atual->slug ?? "sao_bernardo_do_campo");
                     <div class="gd-event-meta"><div><i data-feather="calendar" class="icon-14"></i> <?php echo esc(date("d/m/Y", strtotime((string) $event->starts_on))); ?><?php if (!empty($event->event_time)): ?> às <?php echo esc(substr((string) $event->event_time, 0, 5)); ?><?php endif; ?></div><div><i data-feather="map-pin" class="icon-14"></i> <?php echo esc($event->location ?: "Local não informado"); ?></div><div><i data-feather="award" class="icon-14"></i> <?php echo esc($eventTypes[$event->event_type] ?? $event->event_type); ?></div></div>
                     <div class="gd-event-categories"><?php echo esc($metrics["category_names"] ?? "Nenhuma categoria cadastrada"); ?></div>
                     <div class="gd-event-stats"><div><strong><?php echo (int) ($metrics["called"] ?? 0); ?></strong><span>convocados</span></div><div><strong><?php echo (int) ($metrics["confirmed"] ?? 0); ?></strong><span>confirmados</span></div><div><strong><?php echo $money($metrics["open_amount"] ?? 0); ?></strong><span>em aberto</span></div></div>
-                    <div class="d-flex align-items-center justify-content-between mt15"><a class="btn btn-primary btn-sm" href="<?php echo esc($eventUrl); ?>">Abrir evento</a><a class="btn btn-link btn-sm" href="<?php echo esc($eventUrl); ?>" target="_blank" rel="noopener" title="Abrir evento em nova aba"><i data-feather="external-link" class="icon-14"></i><span class="sr-only">Nova aba</span></a></div>
+                    <div class="d-flex align-items-center justify-content-between mt15"><div class="d-flex align-items-center gap-2"><a class="btn btn-primary btn-sm" href="<?php echo esc($eventUrl); ?>">Abrir evento</a><?php if ($can_manage): ?><?php echo form_open(get_uri("grupo_donato/operacional/delete_event"), ["class" => "gd-event-delete-form", "data-event-name" => (string) $event->name]); ?><input type="hidden" name="event_id" value="<?php echo (int) $event->id; ?>"><button class="btn btn-danger btn-sm" type="submit" title="Excluir evento"><i data-feather="trash-2" class="icon-14"></i> Excluir</button><?php echo form_close(); ?><?php endif; ?></div><a class="btn btn-link btn-sm" href="<?php echo esc($eventUrl); ?>" target="_blank" rel="noopener" title="Abrir evento em nova aba"><i data-feather="external-link" class="icon-14"></i><span class="sr-only">Nova aba</span></a></div>
                 </article></div>
             <?php endforeach; ?>
         </div>
@@ -143,6 +143,24 @@ $(function(){
     $("#gd-event-unit").on("change",function(){
         var slug=$(this).val();
         appAjaxRequest({url:"<?php echo get_uri("grupo_donato/operacional/trocar_unidade"); ?>",type:"POST",data:{unidade_slug:slug},dataType:"json",success:function(r){if(r&&r.success){window.location.reload();}else{appAlert.error((r&&r.message)||"Não foi possível trocar a unidade.");}}});
+    });
+
+    $(document).off("submit.gdEventDelete", ".gd-event-delete-form").on("submit.gdEventDelete", ".gd-event-delete-form", function(e){
+        e.preventDefault();
+        var form=$(this), button=form.find("button[type='submit']"), eventName=form.data("event-name")||"este evento";
+        if(!window.confirm("Excluir "+eventName+"? As categorias, convocações, partidas e checklist serão removidos da operação.")) return;
+        button.prop("disabled",true).html("<i data-feather='loader' class='icon-14'></i>");
+        appAjaxRequest({url:form.attr("action"),type:"POST",data:form.serialize(),dataType:"json",success:function(result){
+            if(result&&result.success){window.location.reload();return;}
+            appAlert.error((result&&result.message)||"Não foi possível excluir o evento.");
+            button.prop("disabled",false).html("<i data-feather='trash-2' class='icon-14'></i> Excluir");
+            if(window.feather) feather.replace();
+        },error:function(xhr){
+            var response=xhr&&xhr.responseJSON?xhr.responseJSON:{};
+            appAlert.error(response.message||"Não foi possível excluir o evento.");
+            button.prop("disabled",false).html("<i data-feather='trash-2' class='icon-14'></i> Excluir");
+            if(window.feather) feather.replace();
+        }});
     });
 });
 </script>

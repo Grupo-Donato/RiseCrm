@@ -203,6 +203,12 @@ class Bombeiros extends Security_Controller
         return $this->_event_json(fn() => $this->_academy_event_service()->saveEvent($this->request->getPost(), (int) $this->request->getPost("id")));
     }
 
+    public function delete_event()
+    {
+        $this->_event_require("gd_academy_events_manage");
+        return $this->_event_json(fn() => $this->_academy_event_service()->deleteEvent((int) $this->request->getPost("event_id")));
+    }
+
     public function save_event_category()
     {
         $this->_event_require("gd_academy_events_manage");
@@ -6353,6 +6359,7 @@ class Bombeiros extends Security_Controller
                 "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
                 "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",
                 "gd_invalid_event_transition" => "A transicao deste evento nao e permitida.",
+                "gd_event_delete_paid" => "Nao e possivel excluir o evento enquanto houver recebimentos registrados. Estorne os pagamentos antes.",
                 "gd_record_not_found" => "A convocacao nao foi encontrada ou ja foi excluida.",
                 "gd_edit_conflict" => "A convocacao foi alterada por outra pessoa. Atualize a pagina e tente novamente.",
                 "gd_finance_paid_cannot_cancel" => "Nao e possivel excluir um convocado com pagamento registrado. Estorne o pagamento antes.",

@@ -525,6 +525,133 @@ final class AcademyEventService extends CustomerDataService
         return ["saved" => true, "id" => $saved];
     }
 
+    /**
+     * Remove logicamente um evento e todos os registros operacionais que
+     * pertencem a ele. Cobranças abertas são canceladas antes da remoção;
+     * recebimentos já realizados bloqueiam a operação para preservar o
+     * histórico financeiro.
+     */
+    public function deleteEvent(int $eventId): array
+    {
+        $event = $this->assertEvent($eventId);
+        $now = gmdate("Y-m-d H:i:s");
+        $participantTable = $this->table("gd_academy_event_participants");
+        $matchTable = $this->table("gd_academy_event_matches");
+        $evaluationTable = $this->table("gd_academy_athlete_evaluations");
+
+        $participants = $this->db->table($participantTable)
+            ->where("unit_id", $this->unit_id)
+            ->where("event_id", $eventId)
+            ->where("deleted", 0)
+            ->get()->getResult();
+        $participantIds = array_values(array_filter(array_map(static fn($row): int => (int) $row->id, $participants)));
+        $receivableIds = array_values(array_filter(array_map(static fn($row): int => (int) ($row->receivable_id ?? 0), $participants)));
+
+        $matches = $this->db->table($matchTable)
+            ->select("id")
+            ->where("unit_id", $this->unit_id)
+            ->where("event_id", $eventId)
+            ->where("deleted", 0)
+            ->get()->getResult();
+        $matchIds = array_values(array_filter(array_map(static fn($row): int => (int) $row->id, $matches)));
+
+        $evaluations = $this->db->table($evaluationTable)
+            ->select("id")
+            ->where("unit_id", $this->unit_id)
+            ->where("event_id", $eventId)
+            ->where("deleted", 0)
+            ->get()->getResult();
+        $evaluationIds = array_values(array_filter(array_map(static fn($row): int => (int) $row->id, $evaluations)));
+        $categoryCount = (int) $this->db->table($this->table("gd_academy_event_categories"))
+            ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->countAllResults();
+
+        $this->db->transBegin();
+        try {
+            if ($receivableIds) {
+                $finance = new FinanceService($this->unit_id, $this->actor_id, $this->login_user);
+                foreach (array_unique($receivableIds) as $receivableId) {
+                    $receivable = $finance->getReceivable($receivableId);
+                    if (!$receivable) throw new \DomainException("gd_record_not_found");
+                    if ((string) ($receivable->status ?? "") === "paid"
+                        || DataNormalizationService::decimalCompare((string) ($receivable->paid_amount ?? "0.00"), "0.00") > 0
+                    ) {
+                        throw new \DomainException("gd_event_delete_paid");
+                    }
+                    if ((string) ($receivable->status ?? "") !== "cancelled") {
+                        $finance->cancelReceivable($receivableId, "Evento excluido: " . (string) $event->name);
+                    }
+                }
+            }
+
+            $this->markDeleted($this->table("gd_academy_event_staff"), $eventId, "event_id", ["deleted" => 1]);
+            $this->markDeleted($this->table("gd_academy_event_checklist"), $eventId, "event_id", [
+                "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            ]);
+            $this->markDeleted($this->table("gd_academy_event_categories"), $eventId, "event_id", [
+                "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            ]);
+            $this->markDeleted($matchTable, $eventId, "event_id", [
+                "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            ]);
+            $this->markDeleted($evaluationTable, $eventId, "event_id", [
+                "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            ]);
+
+            if ($evaluationIds) {
+                $this->db->table($this->table("gd_academy_evaluation_scores"))
+                    ->where("unit_id", $this->unit_id)
+                    ->whereIn("evaluation_id", $evaluationIds)
+                    ->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+            }
+            if ($matchIds || $participantIds) {
+                $stats = $this->db->table($this->table("gd_academy_match_player_stats"))
+                    ->where("unit_id", $this->unit_id)->where("deleted", 0);
+                $stats->groupStart();
+                if ($matchIds && $participantIds) {
+                    $stats->whereIn("match_id", $matchIds)->orWhereIn("participant_id", $participantIds);
+                } elseif ($matchIds) {
+                    $stats->whereIn("match_id", $matchIds);
+                } else {
+                    $stats->whereIn("participant_id", $participantIds);
+                }
+                $stats->groupEnd()->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+            }
+            if ($participantIds) {
+                $this->db->table($this->table("gd_academy_event_confirmations"))
+                    ->where("unit_id", $this->unit_id)->whereIn("participant_id", $participantIds)->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+                $this->db->table($participantTable)
+                    ->where("unit_id", $this->unit_id)->whereIn("id", $participantIds)->where("deleted", 0)
+                    ->update(["deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null]);
+            }
+
+            $eventTable = $this->table("gd_academy_events");
+            $changed = $this->db->table($eventTable)
+                ->where("id", $eventId)->where("unit_id", $this->unit_id)->where("deleted", 0)
+                ->where("lock_version", (int) $event->lock_version)
+                ->update([
+                    "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+                    "lock_version" => (int) $event->lock_version + 1,
+                ]);
+            if (!$changed || $this->db->affectedRows() !== 1) throw new \DomainException("gd_edit_conflict");
+            if ($this->db->transCommit() === false) throw new \RuntimeException("delete_failed");
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+
+        $this->audit_change("delete", "academy_event", $eventId, (array) $event, [
+            "deleted" => 1, "event_id" => $eventId,
+        ], [
+            "categories" => $categoryCount,
+            "participants" => count($participantIds),
+            "matches" => count($matchIds),
+            "receivables_cancelled" => count(array_unique($receivableIds)),
+        ]);
+        return ["saved" => true, "id" => $eventId, "deleted" => true];
+    }
+
     public function saveCategory(int $eventId, array $input, int $id = 0): array
     {
         $this->assertEvent($eventId);
@@ -1099,6 +1226,14 @@ final class AcademyEventService extends CustomerDataService
             ->where("id", $categoryId)->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->get(1)->getRow();
         if (!$category) throw new \DomainException("gd_record_not_found");
         return $category;
+    }
+    private function markDeleted(string $table, int $parentId, string $foreignKey, array $extra = []): void
+    {
+        $this->db->table($table)
+            ->where("unit_id", $this->unit_id)
+            ->where($foreignKey, $parentId)
+            ->where("deleted", 0)
+            ->update($extra + ["deleted" => 1]);
     }
     private function scopedRow(string $table, int $id): ?object { return $this->db->table($table)->where("id", $id)->where("unit_id", $this->unit_id)->where("deleted", 0)->get(1)->getRow(); }
     private function table(string $name): string { return $this->db->prefixTable($name); }

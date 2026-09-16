@@ -32,10 +32,10 @@ class BookingService extends CustomerDataService
         try{$result=$this->save($input,0,true,$external_transaction,$locks_already_held);$result["idempotent"]=false;return $result;}finally{$this->trusted_series_context=null;}
     }
 
-    public function save(array $input,int $id=0,bool $allow_confirmed=false,bool $external_transaction=false,bool $locks_already_held=false):array
+    public function save(array $input,int $id=0,bool $allow_confirmed=false,bool $external_transaction=false,bool $locks_already_held=false,bool $allow_past=false):array
     {
         $existing=$id?$this->bookings->get_scoped($id,$this->unit_id):null;if($id&&!$existing){throw new \DomainException("gd_booking_not_found");}
-        if($existing&&(!in_array((string)$existing->status,Constants::BOOKING_EDITABLE_STATUSES,true)||(string)$existing->starts_at_utc<=gmdate("Y-m-d H:i:s"))){throw new \DomainException("gd_booking_not_editable");}
+        if($existing&&(!in_array((string)$existing->status,Constants::BOOKING_EDITABLE_STATUSES,true)||(!$allow_past&&(string)$existing->starts_at_utc<=gmdate("Y-m-d H:i:s")))){throw new \DomainException("gd_booking_not_editable");}
         $prepared=$this->prepare($input,$existing,$allow_confirmed);$old_resources=$existing?$this->booking_resources->for_booking($id,$this->unit_id):[];$lock_ids=array_merge(array_column($prepared["resources"],"resource_id"),array_map(static fn($r)=>(int)$r->resource_id,$old_resources));$locks=new BookingResourceLockService();$number=$existing?(string)$existing->booking_number:"";$in_tx=false;
         try{if(!$locks_already_held){$locks->acquire($this->unit_id,$lock_ids);}if(!$existing){$seq=new SequenceService();$seq->ensure($this->unit_id,"booking","RES-".gmdate("Y")."-",6,true);$number=$seq->next($this->unit_id,"booking");}
             if(!$external_transaction){if($this->db->transBegin()===false){throw new \RuntimeException("booking transaction");}$in_tx=true;}if($existing){$fresh=$this->bookings->get_scoped($id,$this->unit_id);if(!$fresh||(int)$fresh->lock_version!==(int)$prepared["lock_version"]){throw new \DomainException("gd_booking_edit_conflict");}$existing=$fresh;}

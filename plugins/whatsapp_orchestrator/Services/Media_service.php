@@ -66,10 +66,11 @@ class Media_service
     }
 
     /** Validate a reusable campaign attachment without consuming the original file. */
-    public function validateCampaignMedia(int $mediaId, int $instanceId): array
+    public function validateCampaignMedia(int $mediaId, int $instanceId, ?int $conversationId = null): array
     {
         $row = $this->media->get_by_id($mediaId);
-        if (!$row || (int) ($row['instance_id'] ?? 0) !== $instanceId || !empty($row['conversation_id'])) {
+        $ownedConversation = (int) ($row['conversation_id'] ?? 0);
+        if (!$row || (int) ($row['instance_id'] ?? 0) !== $instanceId || ($ownedConversation > 0 && $ownedConversation !== (int) $conversationId)) {
             throw new InvalidArgumentException('Selecione um anexo de campanha deste canal.');
         }
         $root = realpath(rtrim(WRITEPATH, '/\\') . '/uploads');
@@ -89,7 +90,7 @@ class Media_service
         if (!$this->sendLocks->acquireFor($conversationId, $clientMessageId, 0)) throw new RuntimeException('Envio em andamento.', 409);
         try {
             $context = $this->sendContext($conversationId);
-            $source = $this->validateCampaignMedia($mediaId, (int) $context['instance']['id']);
+            $source = $this->validateCampaignMedia($mediaId, (int) $context['instance']['id'], $conversationId);
             $file = new UploadedFile($source['path'], $source['row']['original_name'], $source['row']['mime_type'], filesize($source['path']), UPLOAD_ERR_OK);
             $identity = ['source_sha256' => hash_file('sha256', $source['path']), 'source_size' => filesize($source['path']), 'source_detected_mime' => Media_policy_service::detectMime($source['path'])];
             $existing = $this->messages->find_by_client_message_id($conversationId, $clientMessageId);

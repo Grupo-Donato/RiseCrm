@@ -19,13 +19,13 @@ final class Constants
     public const ROUTE_PREFIX = "grupo_donato";
 
     /** Versão do plugin (deve bater com o cabeçalho de metadados do index.php). */
-    public const PLUGIN_VERSION = "0.10.1";
+    public const PLUGIN_VERSION = "0.11.0";
 
     /**
      * Versão-alvo do schema. O SchemaRunner aplica até esta versão.
      * Corresponde ao maior arquivo em Database/Schema/Versions.
      */
-    public const SCHEMA_TARGET = "068";
+    public const SCHEMA_TARGET = "073";
 
     /** Prefixo lógico das tabelas (o Rise antepõe o DBPrefix 'rise_'). */
     public const TABLE_PREFIX = "gd_";
@@ -145,7 +145,7 @@ final class Constants
     public const COURT_RENTAL_TYPE_CYCLE = ["single" => "one_time", "recurring" => "monthly"];
 
     public const COURT_RENTAL_STATUSES = ["draft", "active", "suspended", "cancelled", "completed", "archived"];
-    public const COURT_RENTAL_LINK_KINDS = ["primary", "replacement", "historical"];
+    public const COURT_RENTAL_LINK_KINDS = ["primary", "companion", "replacement", "historical"];
     public const COURT_RENTAL_EVENT_TYPES = ["created", "updated", "activated", "suspended", "resumed", "cancelled", "completed", "schedule_linked", "schedule_replaced", "price_resolved", "price_overridden", "commercial_terms_changed", "extra_time_added"];
 
     /** Tratamento das ocorrências futuras ao suspender/cancelar (decisão explícita). */

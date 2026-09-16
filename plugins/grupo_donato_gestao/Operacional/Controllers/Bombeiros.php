@@ -8,6 +8,7 @@ use grupo_donato_gestao\Services\AccessService;
 use grupo_donato_gestao\Services\RoleAccessService;
 use grupo_donato_gestao\Services\StudentPhotoService;
 use grupo_donato_gestao\Services\UnitContextService;
+use grupo_donato_gestao\Services\OnlineEnrollmentService;
 
 class Bombeiros extends Security_Controller
 {
@@ -19,6 +20,7 @@ class Bombeiros extends Security_Controller
     private const EXAME_IMAGE_JPEG_QUALITY = 78;
 
     private StudentPhotoService $studentPhotoService;
+    private ?OnlineEnrollmentService $onlineEnrollmentService = null;
 
     public $General_files_model;
     public $Bombeiros_unidades_model;
@@ -432,7 +434,12 @@ class Bombeiros extends Security_Controller
                 "valor_mensalidade" => "237.00",
                 "valor_inscricao" => "100.00",
                 "data_inicio" => date("Y-m-d")
-            ]
+            ],
+            "state_url" => get_uri("matricula-online/" . $unidade->slug . "/estado/"),
+            "accept_url" => get_uri("matricula-online/" . $unidade->slug . "/aceite/"),
+            "signature_url" => get_uri("matricula-online/" . $unidade->slug . "/assinatura/"),
+            "finalize_url" => get_uri("matricula-online/" . $unidade->slug . "/finalizar/"),
+            "whatsapp_url" => get_uri("matricula-online/" . $unidade->slug . "/whatsapp/")
         ]);
     }
 
@@ -440,22 +447,93 @@ class Bombeiros extends Security_Controller
     {
         $unidade = $this->_public_unidade($slug);
         if (!$unidade) {
-            echo json_encode(["success" => false, "message" => "Link de matrícula não encontrado."]);
-            return;
+            return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
         }
-
-        if (!$this->_bool_value($this->request->getPost("li_ciente"))) {
-            echo json_encode(["success" => false, "message" => "Confirme a ciência dos termos para concluir a matrícula."]);
-            return;
-        }
-
-        if (!trim((string) $this->request->getPost("assinatura_contratante"))) {
-            echo json_encode(["success" => false, "message" => "Informe a assinatura digital do responsável."]);
-            return;
-        }
-
         $this->_set_unidade_ativa($unidade->slug);
-        $this->save_aluno(true, (int) $unidade->id, "telemarketing");
+        return $this->_online_enrollment_json(fn() => $this->_online_enrollment()->createDraft((int) $unidade->id, (array) $this->request->getPost()));
+    }
+
+    public function estado_matricula_publica($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
+        return $this->_online_enrollment_json(fn() => $this->_online_enrollment()->state((string) $token, (int) $unidade->id));
+    }
+
+    public function aceitar_contrato_matricula($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
+        return $this->_online_enrollment_json(fn() => $this->_online_enrollment()->accept(
+            (string) $token,
+            (int) $unidade->id,
+            $this->_bool_value($this->request->getPost("li_ciente")),
+            (string) $this->request->getIPAddress(),
+            (string) $this->request->getHeaderLine("User-Agent")
+        ));
+    }
+
+    public function assinar_matricula_publica($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
+        return $this->_online_enrollment_json(fn() => $this->_online_enrollment()->saveSignature(
+            (string) $token,
+            (int) $unidade->id,
+            (string) $this->request->getPost("signature_data")
+        ));
+    }
+
+    public function finalizar_matricula_publica($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
+        return $this->_online_enrollment_json(function () use ($token, $unidade) {
+            $result = $this->_online_enrollment()->finalize((string) $token, (int) $unidade->id);
+            // O fluxo legado garante uma cobrança do mês corrente para aluno
+            // ativo. Reexecutar esta chamada é seguro porque o helper é
+            // idempotente; assim retries preservam o efeito colateral antigo.
+            if ((int) ($result["student_id"] ?? 0) > 0) {
+                $this->_garantir_mensalidade_atual_aluno((int) $result["student_id"], (int) $unidade->id);
+            }
+            return $result;
+        });
+    }
+
+    public function reprocessar_whatsapp_matricula($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->_online_enrollment_json(fn() => throw new \RuntimeException("Link de matrícula não encontrado.", 404));
+        return $this->_online_enrollment_json(fn() => $this->_online_enrollment()->retryWhatsapp((string) $token, (int) $unidade->id));
+    }
+
+    public function contrato_matricula_publica($slug = "", $token = "")
+    {
+        $unidade = $this->_public_unidade($slug);
+        if (!$unidade) return $this->response->setStatusCode(404)->setBody("Contrato não encontrado.");
+        try {
+            $file = $this->_online_enrollment()->download((string) $token, (int) $unidade->id);
+            $body = file_get_contents($file["path"]);
+            if ($body === false) throw new \RuntimeException("Contrato não encontrado.");
+            return $this->response
+                ->setHeader("Content-Type", "application/pdf")
+                ->setHeader("Content-Disposition", "inline; filename=\"" . str_replace('"', "", $file["filename"]) . "\"")
+                ->setHeader("Content-Length", (string) strlen($body))
+                ->setBody($body);
+        } catch (\Throwable $e) {
+            log_message("error", "Matrícula online: download de contrato: " . $e->getMessage());
+            return $this->response->setStatusCode(404)->setBody("Contrato não encontrado ou expirado.");
+        }
+    }
+
+    public function matricula_publica_asset($asset = "")
+    {
+        if ((string) $asset !== "online_enrollment.js") {
+            return $this->response->setStatusCode(404)->setBody("Arquivo não encontrado.");
+        }
+        $path = dirname(__DIR__) . "/Assets/js/online_enrollment.js";
+        if (!is_file($path)) return $this->response->setStatusCode(404)->setBody("Arquivo não encontrado.");
+        return $this->response->setHeader("Content-Type", "application/javascript; charset=utf-8")->setBody((string) file_get_contents($path));
     }
 
     public function trocar_unidade()
@@ -827,6 +905,7 @@ class Bombeiros extends Security_Controller
 
         $view_data["model_info"] = $model_info ?: $this->_empty_aluno();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown();
+        $view_data["cross_unit_units"] = empty($id) ? $this->_unidades_cross_unit_dropdown() : [];
         $view_data["can_manage_student_photo"] = $this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students");
         $view_data["student_sport_history"] = [];
         $view_data["student_sport_report"] = [];
@@ -839,6 +918,45 @@ class Bombeiros extends Security_Controller
             }
         }
         return $this->template->view('grupo_donato_gestao\Operacional\Views\modal_aluno', $view_data);
+    }
+
+    /** Pesquisa controlada para reaproveitar o cadastro de uma unidade irmã. */
+    public function alunos_outra_unidade_search()
+    {
+        $active_unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($active_unit_id, "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar alunos nesta unidade."]);
+            return;
+        }
+
+        $target_unit_id = (int) ($this->request->getPost("target_unit_id") ?: $active_unit_id);
+        $source_unit_id = (int) $this->request->getPost("source_unit_id");
+        $query = trim((string) $this->request->getPost("query"));
+
+        if (!$this->_usuario_tem_acesso_unidade($target_unit_id, "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar alunos na unidade selecionada."]);
+            return;
+        }
+        if (!$this->_usuario_tem_acesso_unidade($source_unit_id, "can_view_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para consultar alunos nesta unidade."]);
+            return;
+        }
+        if ($target_unit_id <= 0 || $source_unit_id <= 0 || $target_unit_id === $source_unit_id) {
+            echo json_encode(["success" => false, "message" => "Selecione uma unidade de origem diferente da unidade de destino."]);
+            return;
+        }
+        if (!$this->Bombeiros_unidades_model->get_details(["id" => $target_unit_id, "status" => "Ativo"])->getRow()
+            || !$this->Bombeiros_unidades_model->get_details(["id" => $source_unit_id, "status" => "Ativo"])->getRow()) {
+            echo json_encode(["success" => false, "message" => "A unidade selecionada não está ativa."]);
+            return;
+        }
+
+        echo json_encode([
+            "success" => true,
+            "data" => mb_strlen($query) >= 2
+                ? $this->Bombeiros_alunos_model->search_cross_unit_students($query, $target_unit_id, $source_unit_id, 20)
+                : []
+        ]);
     }
 
     public function responsavel_modal_form()
@@ -954,9 +1072,52 @@ class Bombeiros extends Security_Controller
             $id = $public_matricula ? 0 : (int) $this->request->getPost("id");
             $unidade_id = $public_matricula ? (int) $public_unidade_id : (int) ($this->request->getPost("unidade_id") ?: $this->_active_unit_id());
             $responsavel_id = $public_matricula ? 0 : (int) $this->request->getPost("responsavel_id");
+            $source_student = null;
+            $source_student_id = !$public_matricula && !$id ? (int) $this->request->getPost("origem_aluno_id") : 0;
+            $source_unit_id = !$public_matricula && !$id ? (int) $this->request->getPost("origem_unidade_id") : 0;
+            $student_group_unit_id = null;
+            $student_group_id = null;
+
+            if (!$public_matricula && !$this->Bombeiros_unidades_model->get_details(["id" => $unidade_id, "status" => "Ativo"])->getRow()) {
+                echo json_encode(["success" => false, "message" => "A unidade selecionada não está ativa."]);
+                return;
+            }
             if (!$public_matricula && !$this->_usuario_tem_acesso_unidade($unidade_id, "can_manage_students")) {
                 echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar alunos na unidade selecionada."]);
                 return;
+            }
+            if (!$public_matricula && ($source_student_id || $source_unit_id)) {
+                if (!$source_student_id || !$source_unit_id || $source_unit_id === $unidade_id) {
+                    echo json_encode(["success" => false, "message" => "Selecione um aluno válido de outra unidade."]);
+                    return;
+                }
+                if (!$this->_usuario_tem_acesso_unidade($source_unit_id, "can_view_students")) {
+                    echo json_encode(["success" => false, "message" => "Você não tem permissão para consultar a unidade de origem."]);
+                    return;
+                }
+                $source_student = $this->Bombeiros_alunos_model->get_cross_unit_student($source_student_id, $source_unit_id);
+                if (!$source_student) {
+                    echo json_encode(["success" => false, "message" => "O aluno selecionado não está mais disponível na unidade de origem."]);
+                    return;
+                }
+
+                $student_group_unit_id = (int) ($source_student->student_group_unit_id ?: $source_unit_id);
+                $student_group_id = (int) ($source_student->student_group_id ?: $source_student_id);
+                $alunos_table = $db->prefixTable("grupo_donato_alunos");
+                $already_linked = $db->query(
+                    "SELECT id, matricula FROM `{$alunos_table}`
+                     WHERE unidade_id = ? AND student_group_unit_id = ? AND student_group_id = ? AND deleted = 0 LIMIT 1",
+                    [$unidade_id, $student_group_unit_id, $student_group_id]
+                )->getRow();
+                if ($already_linked) {
+                    $matricula_existente = $already_linked->matricula ?: $already_linked->id;
+                    echo json_encode(["success" => false, "message" => "Este aluno já está cadastrado nesta unidade (matrícula {$matricula_existente})."]);
+                    return;
+                }
+
+                // O responsável é uma entidade global no modelo legado. Ao
+                // trazer o aluno, preservamos a mesma pessoa responsável.
+                $responsavel_id = (int) ($source_student->responsavel_id ?? 0);
             }
             $whats_limpo = $this->_digits($this->request->getPost("responsavel_whats"));
             $aluno_atual = null;
@@ -1067,9 +1228,14 @@ class Bombeiros extends Security_Controller
                 $origem_matricula = $aluno_atual->origem_matricula;
             }
             $origem_matricula = $origem_matricula ?: "manual";
+            if ($source_student) {
+                $origem_matricula = "unidade_compartilhada";
+            }
 
             $dados_aluno = [
                 "unidade_id" => $unidade_id,
+                "student_group_unit_id" => $student_group_unit_id,
+                "student_group_id" => $student_group_id,
                 "matricula" => trim((string) ($aluno_atual->matricula ?? "")),
                 "nome_aluno" => trim($this->request->getPost("nome_aluno")),
                 "rg_aluno" => trim($this->request->getPost("rg_aluno")),
@@ -1157,6 +1323,18 @@ class Bombeiros extends Security_Controller
             }
 
             if (!$id) {
+                // Cadastro novo é a própria raiz do grupo; cadastro trazido de
+                // outra unidade aponta para a raiz já existente.
+                $db->table($db->prefixTable("grupo_donato_alunos"))
+                    ->where("id", (int) $save_id)
+                    ->where("unidade_id", $unidade_id)
+                    ->update([
+                        "student_group_unit_id" => $student_group_unit_id ?: $unidade_id,
+                        "student_group_id" => $student_group_id ?: (int) $save_id
+                    ]);
+            }
+
+            if (!$id) {
                 $this->_gerar_cobrancas_matricula($save_id, $dados_aluno["data_inicio"], $valor_mensalidade, [
                     "num_parcelas" => $num_parcelas,
                     "data_primeira_parcela" => $data_primeira_parcela,
@@ -1211,7 +1389,7 @@ class Bombeiros extends Security_Controller
                 $this->_garantir_mensalidade_atual_aluno($save_id, (int) ($dados_aluno["unidade_id"] ?? $this->_active_unit_id()));
             }
 
-            echo json_encode(["success" => true, "data" => $this->_aluno_row_data($save_id), "id" => $save_id, "message" => $message]);
+            echo json_encode(["success" => true, "data" => $this->_aluno_row_data($save_id, $unidade_id), "id" => $save_id, "message" => $message]);
         } catch (\Throwable $e) {
             if (isset($db)) {
                 $db->transRollback();
@@ -2780,18 +2958,20 @@ class Bombeiros extends Security_Controller
         return str_replace('"', "", $filename);
     }
 
-    private function _aluno_row_data($id)
+    private function _aluno_row_data($id, $unidade_id = 0)
     {
-        $data = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
+        $unidade_id = (int) ($unidade_id ?: $this->_active_unit_id());
+        $data = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $unidade_id])->getRow();
         if ($data) {
             $students = [$data];
-            $this->_append_absence_counts($students);
+            $this->_append_absence_counts($students, $unidade_id);
         }
         return $this->_aluno_row($data);
     }
 
-    private function _append_absence_counts(array &$students)
+    private function _append_absence_counts(array &$students, $unidade_id = 0)
     {
+        $unidade_id = (int) ($unidade_id ?: $this->_active_unit_id());
         $student_ids = [];
         foreach ($students as $student) {
             if (is_object($student) && !empty($student->id)) {
@@ -2799,7 +2979,7 @@ class Bombeiros extends Security_Controller
             }
         }
 
-        $counts = $this->Bombeiros_presenca_model->get_consecutive_absence_counts($this->_active_unit_id(), $student_ids);
+        $counts = $this->Bombeiros_presenca_model->get_consecutive_absence_counts($unidade_id, $student_ids);
         foreach ($students as $student) {
             if (is_object($student)) {
                 $student->faltas_count = $counts[(int) ($student->id ?? 0)] ?? 0;
@@ -3759,6 +3939,20 @@ class Bombeiros extends Security_Controller
         return $dropdown;
     }
 
+    private function _unidades_cross_unit_dropdown()
+    {
+        $dropdown = [];
+        $unidades = $this->Bombeiros_unidades_model->get_details(["status" => "Ativo"])->getResult();
+
+        foreach ($unidades as $unidade) {
+            if ($this->_usuario_tem_acesso_unidade($unidade->id, "can_view_students")) {
+                $dropdown[$unidade->id] = $unidade->nome_unidade . " - " . $unidade->cidade;
+            }
+        }
+
+        return $dropdown;
+    }
+
     private function _unidades_contexto_dropdown()
     {
         $dropdown = [];
@@ -4031,7 +4225,7 @@ class Bombeiros extends Security_Controller
             "responsavel_nascimento", "responsavel_rg", "responsavel_cpf", "responsavel_whats",
             "responsavel_celular", "responsavel_email", "responsavel_endereco", "responsavel_numero",
             "responsavel_complemento", "responsavel_bairro", "responsavel_cep", "responsavel_cidade",
-            "responsavel_recado"
+            "responsavel_recado", "student_group_unit_id", "student_group_id"
         ];
         $aluno = new \stdClass();
         foreach ($fields as $field) {
@@ -5974,6 +6168,26 @@ class Bombeiros extends Security_Controller
             }
         }
         return new AcademyEventService($modernUnitId, (int) ($this->login_user->id ?? 0), $this->login_user, $legacyUnitId);
+    }
+
+    private function _online_enrollment(): OnlineEnrollmentService
+    {
+        return $this->onlineEnrollmentService ??= new OnlineEnrollmentService();
+    }
+
+    private function _online_enrollment_json(callable $callback)
+    {
+        try {
+            return $this->response->setJSON(["success" => true, "data" => $callback()]);
+        } catch (\Throwable $e) {
+            log_message("error", "Matrícula online: " . $e->getMessage());
+            $status = (int) $e->getCode();
+            if ($status < 400 || $status > 499) $status = 422;
+            $message = $status === 404 || $status === 410 || $status === 409 || $status === 422
+                ? $e->getMessage()
+                : "Não foi possível concluir a matrícula. Tente novamente.";
+            return $this->response->setStatusCode($status)->setJSON(["success" => false, "message" => $message ?: "Não foi possível concluir a matrícula."]);
+        }
     }
 
     private function _academy_event_page(int $eventId, string $section)

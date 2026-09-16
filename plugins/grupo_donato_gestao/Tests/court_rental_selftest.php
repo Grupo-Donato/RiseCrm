@@ -85,16 +85,30 @@ if ($comboBarbecueId > 0) {
         "title" => "Combo quadra e churrasqueira",
         "list_amount" => "200.00", "negotiated_amount" => "200.00", "discount_amount" => "25.00", "discount_reason" => "Promocao do combo",
         "effective_from" => "2099-12-20", "starts_at_local" => "2099-12-20T10:00", "ends_at_local" => "2099-12-20T11:30",
+        "barbecue_resource_id" => $comboBarbecueId,
+        "barbecue_starts_at_local" => "2099-12-20T09:00", "barbecue_ends_at_local" => "2099-12-20T14:00",
         "resources" => [
             ["resource_id" => $bookB, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0],
-            ["resource_id" => $comboBarbecueId, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0],
         ],
     ]));
     $comboRow = $rentalService->get($combo["id"]);
     $comboBooking = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($combo["booking_id"]);
+    $comboBarbecueBooking = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($combo["barbecue_booking_id"]);
     $comboTypes = array_map(static fn($resource): string => (string) ($resource->resource_type ?? ""), $comboBooking->resources ?? []);
+    $comboBarbecueTypes = array_map(static fn($resource): string => (string) ($resource->resource_type ?? ""), $comboBarbecueBooking->resources ?? []);
     $comboFinance = (new \grupo_donato_gestao\Services\FinanceService($unit_id))->summary(["source_type" => "court_rental", "source_id" => (int) $combo["id"]]);
-    gd_assert("combo grava quadra e churrasqueira na mesma reserva", count($comboBooking->resources) === 2 && in_array("court", $comboTypes, true) && in_array(\grupo_donato_gestao\Config\Constants::BARBECUE_RESOURCE_TYPE, $comboTypes, true));
+    gd_assert("combo grava a quadra e a churrasqueira em reservas separadas", count($comboBooking->resources) === 1 && $comboTypes === ["court"] && count($comboBarbecueBooking->resources) === 1 && $comboBarbecueTypes === [\grupo_donato_gestao\Config\Constants::BARBECUE_RESOURCE_TYPE]);
+    gd_assert("combo preserva horarios independentes por recurso", $comboBooking->ends_at_utc !== $comboBarbecueBooking->ends_at_utc && count($comboRow->links) === 2 && count(array_filter($comboRow->links, static fn($link): bool => (string) $link->link_kind === "companion")) === 1);
+    $comboEdit = $rentalService->updateSingle($combo["id"], array_replace($singleInput, [
+        "title" => "Combo quadra e churrasqueira editado", "list_amount" => "200.00", "negotiated_amount" => "200.00", "discount_amount" => "25.00", "discount_reason" => "Promocao do combo",
+        "effective_from" => "2099-12-20", "starts_at_local" => "2099-12-20T10:00", "ends_at_local" => "2099-12-20T11:30",
+        "barbecue_resource_id" => $comboBarbecueId, "barbecue_starts_at_local" => "2099-12-20T08:00", "barbecue_ends_at_local" => "2099-12-20T12:00",
+        "resources" => [["resource_id" => $bookB, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]],
+        "lock_version" => (int) $comboRow->lock_version, "booking_lock_version" => (int) $comboBooking->lock_version,
+        "barbecue_booking_lock_version" => (int) $comboBarbecueBooking->lock_version,
+    ]));
+    $comboEditedBarbecue = (new \grupo_donato_gestao\Services\BookingService($unit_id))->get($comboEdit["barbecue_booking_id"]);
+    gd_assert("edicao do combo altera somente o intervalo da churrasqueira", $comboEdit["barbecue_booking_id"] === $combo["barbecue_booking_id"] && $comboEdit["lock_version"] === 2 && $comboEditedBarbecue->starts_at_utc !== $comboBarbecueBooking->starts_at_utc && $comboEditedBarbecue->ends_at_utc !== $comboBarbecueBooking->ends_at_utc);
     gd_assert("combo aplica desconto no snapshot, total e financeiro", $comboRow->price_items[0]->total_amount === "175.00" && $comboRow->contracted_total === "175.00" && $comboFinance["total"] === "175.00");
 } else {
     gd_assert("combo depende de churrasqueira reservavel", false);

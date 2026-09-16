@@ -59,9 +59,6 @@ app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
 });
 
 app_hooks()->add_filter('app_filter_app_csrf_exclude_uris', function ($uris) {
-    $uris[] = "matricula-online.*+";
-    $uris[] = "grupo_donato/operacional/salvar_matricula_publica.*+";
-
     return $uris;
 });
 
@@ -751,6 +748,8 @@ if (!function_exists("bombeiros_install_or_update")) {
             if (!$db->tableExists($table_name)) {
                 $db->query("CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `student_group_unit_id` int(11) DEFAULT NULL,
+                    `student_group_id` int(11) DEFAULT NULL,
                     `matricula` varchar(50) DEFAULT NULL,
                     `unidade_id` int(11) NOT NULL,
                     `responsavel_id` int(11) NOT NULL,
@@ -806,6 +805,8 @@ if (!function_exists("bombeiros_install_or_update")) {
                     KEY `idx_status` (`status`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
             }
+            $ensure_column($table_name, "student_group_unit_id", "int(11) DEFAULT NULL AFTER `id`");
+            $ensure_column($table_name, "student_group_id", "int(11) DEFAULT NULL AFTER `student_group_unit_id`");
             $ensure_column($table_name, "matricula", "varchar(50) DEFAULT NULL AFTER `id`");
             $ensure_column($table_name, "photo_path", "varchar(255) DEFAULT NULL AFTER `cpf_aluno`");
             $ensure_column($table_name, "curso_nome", "varchar(255) DEFAULT NULL AFTER `turma`");
@@ -850,7 +851,15 @@ if (!function_exists("bombeiros_install_or_update")) {
             $ensure_column($table_name, "exame_medico_mime", "varchar(120) DEFAULT NULL AFTER `exame_medico_nome`");
             $ensure_column($table_name, "exame_medico_tamanho", "int(11) DEFAULT NULL AFTER `exame_medico_mime`");
             $ensure_column($table_name, "exame_medico_enviado_em", "datetime DEFAULT NULL AFTER `exame_medico_tamanho`");
+            // A chave do grupo identifica a mesma pessoa entre unidades. As
+            // linhas continuam locais (turma, cobrança e histórico separados).
+            $db->query("UPDATE `" . $table_name . "`
+                SET `student_group_unit_id` = COALESCE(`student_group_unit_id`, `unidade_id`),
+                    `student_group_id` = COALESCE(`student_group_id`, `id`)
+                WHERE `student_group_unit_id` IS NULL OR `student_group_id` IS NULL");
             $ensure_index($table_name, "idx_matricula", "KEY `idx_matricula` (`matricula`)");
+            $ensure_index($table_name, "idx_student_group", "KEY `idx_student_group` (`student_group_unit_id`, `student_group_id`)");
+            $ensure_index($table_name, "uniq_student_group_unit", "UNIQUE KEY `uniq_student_group_unit` (`unidade_id`, `student_group_unit_id`, `student_group_id`, `deleted`)");
             bombeiros_ensure_enum_values($db, $table_name, "status", ["Ativo", "Cancelado", "Inativo", "Pendente", "Inadimplente", "Concluido"], "Ativo");
 
             $table_name = $dbprefix . "grupo_donato_cobrancas";

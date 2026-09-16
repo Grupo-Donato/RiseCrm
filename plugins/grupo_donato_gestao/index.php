@@ -6,7 +6,7 @@ defined('PLUGINPATH') or exit('No direct script access allowed');
 Plugin Name: Grupo Donato — Gestão
 Plugin URL: https://grupodonato.local
 Description: Gestão integrada de cadastro, agenda, locações, escola, personal e financeiro básico (até a Fase 5).
-Version: 0.10.1
+Version: 0.11.0
 Requires at least: 3.9.6
 Author: Grupo Donato
 */
@@ -443,6 +443,20 @@ if (!function_exists('gd_current_login_user')) {
         }
     }
 
+    /** Mantém a janela futura das séries recorrentes materializada para a agenda. */
+    function gd_generate_booking_series()
+    {
+        try {
+            $db = db_connect();
+            $units = $db->table($db->prefixTable('gd_units'))->select('id')->where('deleted', 0)->where('status', 'active')->get()->getResult();
+            foreach ($units as $unit) {
+                (new \grupo_donato_gestao\Services\BookingSeriesGenerationJobService((int) $unit->id))->run(100);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'GD recurring series generation: ' . $e->getMessage());
+        }
+    }
+
     /** Verificação barata por request: roda o schema apenas se houver pendência. */
     function gd_maybe_run_schema()
     {
@@ -475,6 +489,7 @@ require __DIR__ . '/Operacional/bootstrap.php';
 // menus
 app_hooks()->add_filter('app_filter_staff_left_menu', 'gd_left_menu');
 app_hooks()->add_filter('app_filter_admin_settings_menu', 'gd_settings_menu');
+app_hooks()->add_action('app_hook_after_cron_run', 'gd_generate_booking_series');
 app_hooks()->add_action('app_hook_after_cron_run', 'gd_expire_booking_holds');
 
 // permissões nativas (render + save)

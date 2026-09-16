@@ -240,16 +240,28 @@ class Court_rentals extends Gd_Controller
                     throw new \DomainException("gd_court_rental_not_editable");
                 }
                 if ((string) $rental->rental_type === "single") {
-                    $booking_id = 0;
+                    $booking_id = 0; $barbecue_booking_id = 0;
                     foreach ($rental->links as $link) {
-                        if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0) {
+                        if ((string) ($link->link_kind ?? "") === "companion" && (int) ($link->booking_id ?? 0) > 0) {
+                            $barbecue_booking_id = (int) $link->booking_id;
+                        }
+                        if ((string) ($link->link_kind ?? "") === "primary" && (int) ($link->booking_id ?? 0) > 0) {
                             $booking_id = (int) $link->booking_id;
-                            break;
+                        }
+                    }
+                    if ($booking_id <= 0) {
+                        foreach ($rental->links as $link) {
+                            if ((string) ($link->link_kind ?? "") !== "historical"
+                                && (string) ($link->link_kind ?? "") !== "companion"
+                                && (int) ($link->booking_id ?? 0) > 0) {
+                                $booking_id = (int) $link->booking_id;
+                                break;
+                            }
                         }
                     }
                     $booking = $booking_id > 0 ? $this->bookings->get($booking_id) : null;
-                    if (!$booking || !in_array((string) $booking->status, Constants::BOOKING_EDITABLE_STATUSES, true)
-                        || (string) $booking->starts_at_utc <= gmdate("Y-m-d H:i:s")) {
+                    $barbecue_booking = $barbecue_booking_id > 0 ? $this->bookings->get($barbecue_booking_id) : null;
+                    if (!$booking || !in_array((string) $booking->status, Constants::BOOKING_EDITABLE_STATUSES, true)) {
                         throw new \DomainException("gd_court_rental_not_editable");
                     }
                     try {
@@ -259,6 +271,17 @@ class Court_rentals extends Gd_Controller
                         throw new \DomainException("gd_invalid_local_datetime");
                     }
                     $duration = max(1, (int) (($local_end->getTimestamp() - $local_start->getTimestamp()) / 60));
+                    $barbecue_local_start = $local_start;
+                    $barbecue_duration = $duration;
+                    if ($barbecue_booking) {
+                        try {
+                            $barbecue_local_start = $this->time->utcToLocal((string) $barbecue_booking->starts_at_utc);
+                            $barbecue_local_end = $this->time->utcToLocal((string) $barbecue_booking->ends_at_utc);
+                            $barbecue_duration = max(1, (int) (($barbecue_local_end->getTimestamp() - $barbecue_local_start->getTimestamp()) / 60));
+                        } catch (\Throwable $e) {
+                            throw new \DomainException("gd_invalid_local_datetime");
+                        }
+                    }
                     $metadata = json_decode((string) ($rental->metadata ?? ""), true);
                     $metadata = is_array($metadata) ? $metadata : [];
                     $court_resource_id = 0;
@@ -271,7 +294,20 @@ class Court_rentals extends Gd_Controller
                             $barbecue_resource_id = (int) $booking_resource->resource_id;
                         }
                     }
+                    if ($barbecue_booking) {
+                        foreach (($barbecue_booking->resources ?? []) as $booking_resource) {
+                            if ((string) ($booking_resource->resource_type ?? "") === Constants::BARBECUE_RESOURCE_TYPE) {
+                                $barbecue_resource_id = (int) $booking_resource->resource_id;
+                            }
+                        }
+                    }
                     $is_combo = $barbecue_resource_id > 0;
+                    // Combos legados compartilhavam o booking da quadra. Ao
+                    // reabrir o formulário, a churrasqueira passa a usar a
+                    // duração histórica/regra atual de 5 horas.
+                    if ($is_combo && !$barbecue_booking) {
+                        $barbecue_duration = 300;
+                    }
                     $stored_amount = DataNormalizationService::decimal((string) ($rental->negotiated_amount ?? $rental->list_amount ?? ""), 2, true) ?? "0.00";
                     $base_amount = $this->subtractMoney($stored_amount, $this->rentalAdditionTotal($rental));
                     $metadata_court_amount = trim((string) ($metadata["court_amount"] ?? ""));
@@ -281,6 +317,8 @@ class Court_rentals extends Gd_Controller
                         "lock_version" => (int) $rental->lock_version,
                         "booking_id" => $booking_id,
                         "booking_lock_version" => (int) $booking->lock_version,
+                        "barbecue_booking_id" => $barbecue_booking_id,
+                        "barbecue_booking_lock_version" => (int) ($barbecue_booking->lock_version ?? 0),
                         "customer_account_id" => (int) $rental->customer_account_id,
                         "customer_name" => (string) ($rental->customer_name ?? ""),
                         "contact_person_id" => (int) ($rental->contact_person_id ?? 0),
@@ -289,6 +327,8 @@ class Court_rentals extends Gd_Controller
                         "starts_on" => $local_start->format("Y-m-d"),
                         "local_start_time" => $local_start->format("H:i"),
                         "duration_minutes" => $duration,
+                        "barbecue_local_start_time" => $barbecue_local_start->format("H:i"),
+                        "barbecue_duration_minutes" => $barbecue_duration,
                         "resource_id" => $court_resource_id,
                         "barbecue_resource_id" => $barbecue_resource_id,
                         "combo_enabled" => $is_combo,
@@ -422,7 +462,27 @@ class Court_rentals extends Gd_Controller
                     throw new \DomainException("gd_invalid_local_datetime");
                 }
             }
-            $this->json_success("", ["data" => $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId())]);
+            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId(false));
+            if ((string) $this->request->getPost("rental_mode") === "single"
+                && (string) $this->request->getPost("combo_enabled") === "1") {
+                $barbecue_starts = trim((string) $this->request->getPost("barbecue_starts_at_local"));
+                $barbecue_ends = trim((string) $this->request->getPost("barbecue_ends_at_local"));
+                if (!$this->validLocalDateTime($barbecue_starts) || !$this->validLocalDateTime($barbecue_ends)) {
+                    throw new \DomainException("gd_invalid_local_datetime");
+                }
+                $barbecue_resource_id = (int) $this->request->getPost("barbecue_resource_id");
+                if ($barbecue_resource_id <= 0) { throw new \DomainException("gd_invalid_booking_resources"); }
+                $barbecue_result = $this->bookings->checkAvailability([
+                    "starts_at_local" => $barbecue_starts,
+                    "ends_at_local" => $barbecue_ends,
+                    "resources" => [["resource_id" => $barbecue_resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]],
+                ], $this->availabilityExclusionBookingId(true));
+                $result["available"] = $result["available"] && $barbecue_result["available"];
+                $result["resources"] = ($result["resources"] ?? []) + ($barbecue_result["resources"] ?? []);
+                $result["conflicts"] = array_merge($result["conflicts"] ?? [], $barbecue_result["conflicts"] ?? []);
+                $result["barbecue"] = $barbecue_result;
+            }
+            $this->json_success("", ["data" => $result]);
         }
         catch (\Throwable $e) { $this->gd_fail($e); }
     }
@@ -449,7 +509,7 @@ class Court_rentals extends Gd_Controller
                     "buffer_after_minutes" => 0,
                 ], $resources),
             ];
-            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId());
+            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId(false));
             $conflicts = [];
             foreach (($result["conflicts"] ?? []) as $conflict) {
                 $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
@@ -476,8 +536,12 @@ class Court_rentals extends Gd_Controller
     {
         try {
             $this->access->require("gd_court_rentals_manage");
-            $starts = trim((string) $this->request->getPost("starts_at_local"));
-            $ends = trim((string) $this->request->getPost("ends_at_local"));
+            $starts = trim((string) $this->request->getPost("barbecue_starts_at_local"));
+            $ends = trim((string) $this->request->getPost("barbecue_ends_at_local"));
+            if ($starts === "" || $ends === "") {
+                $starts = trim((string) $this->request->getPost("starts_at_local"));
+                $ends = trim((string) $this->request->getPost("ends_at_local"));
+            }
             if (!$this->validLocalDateTime($starts) || !$this->validLocalDateTime($ends)) {
                 throw new \DomainException("gd_invalid_local_datetime");
             }
@@ -493,7 +557,7 @@ class Court_rentals extends Gd_Controller
                     "buffer_after_minutes" => 0,
                 ], $resources),
             ];
-            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId());
+            $result = $this->bookings->checkAvailability($input, $this->availabilityExclusionBookingId(true));
             $conflicts = [];
             foreach (($result["conflicts"] ?? []) as $conflict) {
                 $conflicts[(int) ($conflict["resource_id"] ?? 0)] = true;
@@ -773,7 +837,7 @@ class Court_rentals extends Gd_Controller
     }
 
     /** Exclui a própria reserva ao consultar disponibilidade durante a edição. */
-    private function availabilityExclusionBookingId(): int
+    private function availabilityExclusionBookingId(bool $barbecue = false): int
     {
         $rental_id = (int) $this->request->getPost("rental_id");
         if ($rental_id <= 0) { return 0; }
@@ -784,7 +848,26 @@ class Court_rentals extends Gd_Controller
         }
 
         foreach ($rental->links as $link) {
-            if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0) {
+            $kind = (string) ($link->link_kind ?? "");
+            if ($kind !== "historical" && (($barbecue && $kind === "companion") || (!$barbecue && $kind === "primary")) && (int) ($link->booking_id ?? 0) > 0) {
+                return (int) $link->booking_id;
+            }
+        }
+
+        if ($barbecue) {
+            foreach ($rental->links as $link) {
+                if ((string) ($link->link_kind ?? "") === "primary" && (int) ($link->booking_id ?? 0) > 0) {
+                    // Compatibilidade com combos antigos que ainda guardam os
+                    // dois recursos no mesmo booking.
+                    return (int) $link->booking_id;
+                }
+            }
+            return 0;
+        }
+        foreach ($rental->links as $link) {
+            if ((string) ($link->link_kind ?? "") !== "historical"
+                && (string) ($link->link_kind ?? "") !== "companion"
+                && (int) ($link->booking_id ?? 0) > 0) {
                 return (int) $link->booking_id;
             }
         }
@@ -875,8 +958,11 @@ class Court_rentals extends Gd_Controller
     {
         return [
             "starts_at_local" => $this->request->getPost("starts_at_local"), "ends_at_local" => $this->request->getPost("ends_at_local"),
+            "barbecue_starts_at_local" => $this->request->getPost("barbecue_starts_at_local"), "barbecue_ends_at_local" => $this->request->getPost("barbecue_ends_at_local"),
+            "barbecue_duration_minutes" => $this->request->getPost("barbecue_duration_minutes"),
             "booking_status" => $this->request->getPost("booking_status"), "booking_type" => "customer_rental",
             "title" => $this->request->getPost("title"), "customer_account_id" => $this->request->getPost("customer_account_id"), "contact_person_id" => $this->request->getPost("contact_person_id"),
+            "booking_lock_version" => $this->request->getPost("booking_lock_version"), "barbecue_booking_lock_version" => $this->request->getPost("barbecue_booking_lock_version"),
             "resources" => $this->requestResources(),
         ];
     }
@@ -902,10 +988,6 @@ class Court_rentals extends Gd_Controller
         $resources = [];
         if ($selected > 0) {
             $resources[] = ["resource_id" => $selected, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
-        }
-        $barbecue = (int) $this->request->getPost("barbecue_resource_id");
-        if ((string) $this->request->getPost("combo_enabled") === "1" && $barbecue > 0) {
-            $resources[] = ["resource_id" => $barbecue, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
         }
         return $resources ?: $this->normalizedResources($this->request->getPost("resources"));
     }
@@ -935,6 +1017,7 @@ class Court_rentals extends Gd_Controller
             throw new \DomainException("gd_combo_single_only");
         }
         $combo_enabled = $mode === "single" && $combo_requested;
+        $barbecue_duration = 0;
         if ($combo_enabled) {
             $barbecue_ok = $db->table($db->prefixTable("gd_resources"))
                 ->where("id", $barbecue_resource_id)->where("unit_id", $this->unit_id)
@@ -942,6 +1025,10 @@ class Court_rentals extends Gd_Controller
                 ->where("deleted", 0)->where("is_active", 1)->where("is_bookable", 1)
                 ->countAllResults() === 1;
             if (!$barbecue_ok) { throw new \DomainException("gd_invalid_booking_resources"); }
+            $barbecue_duration = DurationService::parseMinutes($this->request->getPost("barbecue_duration_minutes"));
+            if ($barbecue_duration < 1 || $barbecue_duration > Constants::BOOKING_MAX_DURATION_MINUTES) {
+                throw new \DomainException("gd_combo_barbecue_duration_required");
+            }
         } else {
             $barbecue_resource_id = 0;
         }
@@ -955,10 +1042,9 @@ class Court_rentals extends Gd_Controller
         $input["product_id"] = $existing_rental ? $existing_rental->product_id : null;
         $input["price_list_id"] = $existing_rental ? $existing_rental->price_list_id : null;
         $input["price_id"] = $existing_rental ? $existing_rental->price_id : null;
+        // A churrasqueira do combo é persistida como uma reserva complementar;
+        // o booking principal contém somente a quadra.
         $input["resources"] = [["resource_id" => $resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]];
-        if ($combo_enabled) {
-            $input["resources"][] = ["resource_id" => $barbecue_resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0];
-        }
 
         $keeps_existing_duration = $existing_rental && $existing_duration > 0 && $duration === $existing_duration;
         if ($duration < 1 || $duration > Constants::BOOKING_MAX_DURATION_MINUTES) {
@@ -1099,6 +1185,26 @@ class Court_rentals extends Gd_Controller
         $start = new \DateTimeImmutable(str_replace("T", " ", $starts), new \DateTimeZone($this->time->timezoneName()));
         $end = $start->modify("+" . $duration . " minutes");
         $input["ends_at_local"] = $end->format("Y-m-d\TH:i");
+        if ($combo_enabled) {
+            $barbecue_starts = trim((string) ($input["barbecue_starts_at_local"] ?? $this->request->getPost("barbecue_starts_at_local")));
+            if (!$this->validLocalDateTime($barbecue_starts)) {
+                throw new \DomainException("gd_combo_barbecue_time_required");
+            }
+            $barbecue_start = new \DateTimeImmutable(str_replace("T", " ", $barbecue_starts), new \DateTimeZone($this->time->timezoneName()));
+            if ($barbecue_start->format("Y-m-d") !== $start->format("Y-m-d")) {
+                throw new \DomainException("gd_combo_barbecue_date_invalid");
+            }
+            $barbecue_end = $barbecue_start->modify("+" . $barbecue_duration . " minutes");
+            $input["barbecue_starts_at_local"] = $barbecue_start->format("Y-m-d\TH:i");
+            $input["barbecue_ends_at_local"] = $barbecue_end->format("Y-m-d\TH:i");
+            $metadata_data = json_decode((string) ($input["metadata"] ?? ""), true);
+            $metadata_data = is_array($metadata_data) ? $metadata_data : [];
+            $metadata_data["barbecue_start_time"] = $barbecue_start->format("H:i");
+            $metadata_data["barbecue_duration_minutes"] = $barbecue_duration;
+            $metadata_data["barbecue_starts_at_local"] = $input["barbecue_starts_at_local"];
+            $metadata_data["barbecue_ends_at_local"] = $input["barbecue_ends_at_local"];
+            $input["metadata"] = json_encode($metadata_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
         $input["booking_status"] = "confirmed";
         $input["effective_from"] = $start->format("Y-m-d");
         $input["effective_until"] = $end->format("Y-m-d");

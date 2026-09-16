@@ -10,6 +10,7 @@
  *   php plugins/grupo_donato_gestao/Tests/cli.php selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php costs-selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php rental-finance-diagnostic [YYYY-MM]
+ *   php plugins/grupo_donato_gestao/Tests/cli.php generate-series [limite]
  *   php plugins/grupo_donato_gestao/Tests/cli.php student-photo-selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php academy-events-selftest
  *   php plugins/grupo_donato_gestao/Tests/cli.php seqgrab 25 [tipo]
@@ -107,6 +108,13 @@ if ($task === "student-photo-selftest") {
 if ($task === "academy-events-selftest") {
     require_once __DIR__ . "/academy_events_selftest.php";
     gd_academy_events_selftest();
+    echo "\n==== RESULTADO: {$GLOBALS["gd_pass"]} PASS / {$GLOBALS["gd_fail"]} FAIL ====\n";
+    exit($GLOBALS["gd_fail"] ? 1 : 0);
+}
+
+if ($task === "online-enrollment-selftest") {
+    require_once __DIR__ . "/online_enrollment_selftest.php";
+    gd_online_enrollment_selftest();
     echo "\n==== RESULTADO: {$GLOBALS["gd_pass"]} PASS / {$GLOBALS["gd_fail"]} FAIL ====\n";
     exit($GLOBALS["gd_fail"] ? 1 : 0);
 }
@@ -259,6 +267,19 @@ if ($task === "expire-holds") {
     echo "expired=$total\n";exit(0);
 }
 
+if ($task === "generate-series") {
+    $db = db_connect();
+    $units = $db->table($db->prefixTable("gd_units"))->select("id")->where("deleted", 0)->where("status", "active")->get()->getResult();
+    $limit = (int) ($argv[2] ?? 100);
+    $failed = 0;
+    foreach ($units as $unit) {
+        $result = (new \grupo_donato_gestao\Services\BookingSeriesGenerationJobService((int) $unit->id))->run($limit);
+        $failed += (int) ($result["failed"] ?? 0);
+        echo "unit={$unit->id} checked={$result['checked']} due={$result['due']} processed={$result['processed']} created={$result['created']} skipped={$result['skipped']} failed={$result['failed']}\n";
+    }
+    exit($failed ? 1 : 0);
+}
+
 if ($task === "bookingsetup") {
     $token=preg_replace('/[^a-zA-Z0-9]/','',(string)($argv[2]??''));$count=max(1,min(2,(int)($argv[3]??1)));if($token===''){exit(2);}$db=db_connect();$unit=model("grupo_donato_gestao\\Models\\Gd_units_model")->get_default();$unit_id=(int)$unit->id;$resource_service=new \grupo_donato_gestao\Services\ResourceService($unit_id);$exception_service=new \grupo_donato_gestao\Services\ResourceAvailabilityExceptionService($unit_id);$time=new \grupo_donato_gestao\Services\TemporalService($unit_id);$ids=[];
     for($i=1;$i<=$count;$i++){$saved=$resource_service->save(["code"=>"GDBR".substr($token,-20).$i,"name"=>"GD booking race $i","resource_type"=>"room","is_active"=>1,"is_bookable"=>1]);$rid=(int)$saved["id"];$ids[]=$rid;$exception_service->save(["resource_id"=>$rid,"exception_type"=>"open","starts_at_utc"=>$time->localToUtc("2099-07-20","08:00"),"ends_at_utc"=>$time->localToUtc("2099-07-20","18:00"),"title"=>"Booking race open"]);}
@@ -396,7 +417,7 @@ if ($task === "uninstallcheck") {
     $before = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!' ORDER BY TABLE_NAME", [$gd_table_pattern])->getResultArray();
     gd_uninstall();
     $after = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!' ORDER BY TABLE_NAME", [$gd_table_pattern])->getResultArray();
-    $ok = $before === $after && count($after) === 71;
+    $ok = $before === $after && count($after) === 74;
     echo "before=" . count($before) . " after=" . count($after) . " preserved=" . ($ok ? "yes" : "no") . "\n";
     exit($ok ? 0 : 1);
 }
@@ -415,7 +436,7 @@ if ($task === "selftest") {
     gd_assert("nenhuma falha de schema", !$sv->has_failed());
     gd_assert("versão aplicada == alvo " . Constants::SCHEMA_TARGET, $sv->get_applied_version() === Constants::SCHEMA_TARGET, "aplicada=" . $sv->get_applied_version());
     $physical = $db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [$gd_table_pattern])->getResult();
-    gd_assert("71 tabelas do plugin", count($physical) === 71, count($physical) . " tabelas gd_*");
+    gd_assert("74 tabelas do plugin", count($physical) === 74, count($physical) . " tabelas gd_*");
     gd_assert("marker em disco atualizado para " . Constants::SCHEMA_TARGET, trim((string) @file_get_contents(SchemaRunner::marker_path())) === Constants::SCHEMA_TARGET);
 
     echo "# Seeds\n";

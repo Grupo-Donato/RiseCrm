@@ -26,6 +26,16 @@ A matrícula exige aluno e turma ativos quando aberta. Estados: ativa, pausada, 
 
 Produto e dia preferencial de vencimento são opcionais e informativos. Não há cobrança, pagamento ou título financeiro.
 
+## Cadastro entre unidades
+
+No cadastro operacional da Academy, um aluno pode ser criado do zero ou
+reaproveitado de outra unidade ativa, como Camisa 9 e GD Academy. Ao
+reaproveitar, o sistema cria uma matrícula local vinculada ao mesmo grupo de
+identidade e reutiliza o responsável global. Turma, cobrança, assinatura,
+presença e demais dados da matrícula continuam próprios da unidade de destino.
+O backend valida permissão de consulta na origem e impede uma segunda
+representação ativa do mesmo aluno na unidade destino.
+
 ## Presenças
 
 Em **Presenças**, escolha turma e data, carregue a chamada e marque presente, ausente, justificado ou não marcado. O lote só aceita alunos elegíveis para aquela turma/data. Uma nova gravação corrige o registro existente, sem duplicá-lo.

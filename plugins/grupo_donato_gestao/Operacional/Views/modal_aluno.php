@@ -17,6 +17,8 @@ $student_photo_current_url = $student_photo_has_current
         . "?v=" . rawurlencode(pathinfo((string) $model_info->photo_path, PATHINFO_FILENAME))
     : $student_photo_default_url;
 $can_manage_student_photo = !empty($can_manage_student_photo);
+$is_new_student = empty($model_info->id);
+$cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : [];
 ?>
 
 <style>
@@ -46,6 +48,10 @@ $can_manage_student_photo = !empty($can_manage_student_photo);
         object-fit: cover;
         background: #eef1f5;
     }
+
+    #bombeiros-aluno-form .gd-cross-unit-results .list-group-item {
+        cursor: pointer;
+    }
 </style>
 
 <?php echo form_open_multipart(get_uri("grupo_donato/operacional/save_aluno"), ["id" => "bombeiros-aluno-form", "class" => "general-form", "role" => "form"]); ?>
@@ -54,6 +60,44 @@ $can_manage_student_photo = !empty($can_manage_student_photo);
         <input type="hidden" name="id" value="<?php echo (int) $model_info->id; ?>" />
         <input type="hidden" name="responsavel_id" value="<?php echo (int) $model_info->responsavel_id; ?>" />
         <input type="hidden" name="origem_matricula" value="<?php echo esc($model_info->origem_matricula ?: "manual"); ?>" />
+        <?php if ($is_new_student) { ?>
+            <input type="hidden" name="origem_aluno_id" id="bombeiros-aluno-origem-id" class="validate-hidden" value="" />
+            <input type="hidden" name="origem_unidade_id" id="bombeiros-aluno-origem-unidade-id" value="" />
+
+            <div class="alert alert-info mb20">
+                <div class="form-group mb0">
+                    <label for="bombeiros-aluno-origem-tipo"><strong>Como deseja cadastrar este aluno?</strong></label>
+                    <select id="bombeiros-aluno-origem-tipo" class="form-control">
+                        <option value="novo">Aluno totalmente novo</option>
+                        <option value="outra_unidade">Aluno já cadastrado em outra unidade</option>
+                    </select>
+                </div>
+
+                <div id="bombeiros-aluno-outra-unidade" class="hide mt15">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <label for="bombeiros-aluno-origem-unidade">Unidade onde já está cadastrado</label>
+                            <select id="bombeiros-aluno-origem-unidade" class="form-control">
+                                <option value="">Selecione a unidade</option>
+                                <?php foreach ($cross_unit_units as $cross_unit_id => $cross_unit_label) { ?>
+                                    <option value="<?php echo (int) $cross_unit_id; ?>"><?php echo esc($cross_unit_label); ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-md-7">
+                            <label for="bombeiros-aluno-origem-busca">Buscar aluno</label>
+                            <div class="input-group">
+                                <input type="search" id="bombeiros-aluno-origem-busca" class="form-control" placeholder="Nome, matrícula, CPF ou responsável" autocomplete="off" />
+                                <button type="button" id="bombeiros-aluno-origem-buscar" class="btn btn-default">Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="bombeiros-aluno-origem-resultados" class="gd-cross-unit-results list-group mt10"></div>
+                    <div id="bombeiros-aluno-origem-selecionado" class="small mt10 hide"></div>
+                    <div class="text-off mt5">A turma, cobrança, assinatura e histórico serão preenchidos para a unidade atual.</div>
+                </div>
+            </div>
+        <?php } ?>
 
         <h5 class="mb15">Responsável</h5>
 
@@ -526,6 +570,170 @@ $can_manage_student_photo = !empty($can_manage_student_photo);
                 photoPreview.src = this.checked ? defaultPhotoUrl : currentPhotoUrl;
             });
         }
+
+        <?php if ($is_new_student) { ?>
+        var $studentForm = $("#bombeiros-aluno-form");
+        var $originType = $("#bombeiros-aluno-origem-tipo");
+        var $originPanel = $("#bombeiros-aluno-outra-unidade");
+        var $originUnit = $("#bombeiros-aluno-origem-unidade");
+        var $originSearch = $("#bombeiros-aluno-origem-busca");
+        var $originResults = $("#bombeiros-aluno-origem-resultados");
+        var $originSelected = $("#bombeiros-aluno-origem-selecionado");
+        var crossUnitStudents = {};
+
+        function crossUnitField(name, value) {
+            $studentForm.find("[name='" + name + "']").val(value == null ? "" : value);
+        }
+
+        function clearCrossUnitSelection(clearPersonalData) {
+            crossUnitStudents = {};
+            $("#bombeiros-aluno-origem-id, #bombeiros-aluno-origem-unidade-id").val("");
+            $originResults.empty();
+            $originSelected.addClass("hide").text("");
+            if (clearPersonalData) {
+                [
+                    "nome_aluno", "nascimento_aluno", "rg_aluno", "cpf_aluno",
+                    "responsavel_nome", "responsavel_nascimento", "responsavel_rg", "responsavel_cpf",
+                    "responsavel_whats", "responsavel_celular", "responsavel_recado", "responsavel_email",
+                    "responsavel_endereco", "responsavel_numero", "responsavel_complemento",
+                    "responsavel_bairro", "responsavel_cep", "responsavel_cidade"
+                ].forEach(function (name) { crossUnitField(name, ""); });
+                crossUnitField("responsavel_id", "0");
+            }
+        }
+
+        function updateCrossUnitSourceOptions() {
+            var targetUnit = $("#bombeiros-aluno-unidade").val();
+            var sourceUnit = $originUnit.val();
+            $originUnit.find("option").each(function () {
+                var value = $(this).val();
+                $(this).prop("disabled", !!value && value === targetUnit);
+            });
+            if (sourceUnit && sourceUnit === targetUnit) {
+                $originUnit.val("");
+                clearCrossUnitSelection(false);
+            }
+        }
+
+        function applyCrossUnitStudent(student) {
+            var studentId = parseInt(student.id || 0, 10);
+            if (!studentId) {
+                return;
+            }
+            $("#bombeiros-aluno-origem-id").val(studentId);
+            $("#bombeiros-aluno-origem-unidade-id").val(student.unidade_id || $originUnit.val());
+            crossUnitField("responsavel_id", student.responsavel_id || 0);
+            ["nome_aluno", "nascimento_aluno", "rg_aluno", "cpf_aluno"].forEach(function (name) {
+                crossUnitField(name, student[name]);
+            });
+            [
+                "responsavel_nome", "responsavel_nascimento", "responsavel_rg", "responsavel_cpf",
+                "responsavel_whats", "responsavel_celular", "responsavel_recado", "responsavel_email",
+                "responsavel_endereco", "responsavel_numero", "responsavel_complemento",
+                "responsavel_bairro", "responsavel_cep", "responsavel_cidade"
+            ].forEach(function (name) {
+                crossUnitField(name, student[name]);
+            });
+
+            var matricula = student.matricula || student.id;
+            var unidade = student.nome_unidade || "outra unidade";
+            $originSelected
+                .removeClass("hide")
+                .text("Aluno selecionado: " + (student.nome_aluno || "") + " · matrícula " + matricula + " · " + unidade);
+            $originResults.empty();
+        }
+
+        function renderCrossUnitResults(students) {
+            crossUnitStudents = {};
+            $originResults.empty();
+            if (!students || !students.length) {
+                $originResults.append($('<div class="text-off">Nenhum aluno encontrado.</div>'));
+                return;
+            }
+            students.forEach(function (student) {
+                crossUnitStudents[student.id] = student;
+                var label = (student.nome_aluno || "Aluno sem nome") + " · matrícula " + (student.matricula || student.id);
+                var details = (student.responsavel_nome || "Sem responsável") + " · " + (student.nome_unidade || "");
+                var $item = $("<button>", {
+                    type: "button",
+                    class: "list-group-item list-group-item-action text-left"
+                }).attr("data-cross-unit-student-id", student.id);
+                $("<strong>").text(label).appendTo($item);
+                $("<div>").addClass("small text-off").text(details).appendTo($item);
+                $originResults.append($item);
+            });
+        }
+
+        function searchCrossUnitStudents() {
+            var sourceUnit = $originUnit.val();
+            var targetUnit = $("#bombeiros-aluno-unidade").val();
+            var query = $.trim($originSearch.val());
+            if (!sourceUnit || !targetUnit || sourceUnit === targetUnit) {
+                appAlert.error("Selecione uma unidade de origem diferente da unidade de destino.", {container: ".modal-body", animate: false});
+                return;
+            }
+            if (query.length < 2) {
+                appAlert.error("Informe pelo menos 2 caracteres para buscar o aluno.", {container: ".modal-body", animate: false});
+                return;
+            }
+            $originResults.html('<div class="text-off">Buscando...</div>');
+            appAjaxRequest({
+                url: "<?php echo get_uri("grupo_donato/operacional/alunos_outra_unidade_search"); ?>",
+                type: "POST",
+                dataType: "json",
+                data: {source_unit_id: sourceUnit, target_unit_id: targetUnit, query: query},
+                success: function (result) {
+                    if (!result || !result.success) {
+                        $originResults.empty();
+                        appAlert.error((result && result.message) || "Não foi possível buscar alunos.", {container: ".modal-body", animate: false});
+                        return;
+                    }
+                    renderCrossUnitResults(result.data || []);
+                },
+                error: function () {
+                    $originResults.empty();
+                    appAlert.error("Não foi possível buscar alunos.", {container: ".modal-body", animate: false});
+                }
+            });
+        }
+
+        function setCrossUnitMode() {
+            var isCrossUnit = $originType.val() === "outra_unidade";
+            $originPanel.toggleClass("hide", !isCrossUnit);
+            if (isCrossUnit) {
+                $("#bombeiros-aluno-origem-id").attr("data-rule-required", "true");
+                updateCrossUnitSourceOptions();
+            } else {
+                $("#bombeiros-aluno-origem-id").removeAttr("data-rule-required");
+                clearCrossUnitSelection(true);
+            }
+        }
+
+        $originType.on("change", setCrossUnitMode);
+        $originUnit.on("change", function () {
+            clearCrossUnitSelection(false);
+        });
+        $("#bombeiros-aluno-unidade").on("change", updateCrossUnitSourceOptions);
+        $("#bombeiros-aluno-origem-buscar").on("click", searchCrossUnitStudents);
+        $originSearch.on("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                searchCrossUnitStudents();
+            }
+        });
+        $originResults.on("click", "[data-cross-unit-student-id]", function () {
+            applyCrossUnitStudent(crossUnitStudents[$(this).attr("data-cross-unit-student-id")]);
+        });
+        $studentForm.on("submit.gdCrossUnit", function (event) {
+            if ($originType.val() === "outra_unidade" && !$("#bombeiros-aluno-origem-id").val()) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                appAlert.error("Selecione um aluno da outra unidade antes de salvar.", {container: ".modal-body", animate: false});
+                return false;
+            }
+        });
+        setCrossUnitMode();
+        <?php } ?>
 
         $("#bombeiros-aluno-form").appForm({
             onSuccess: function (result) {

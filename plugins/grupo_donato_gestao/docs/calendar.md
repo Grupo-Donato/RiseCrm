@@ -19,3 +19,9 @@ A camada `booking` projeta uma entrada por reserva/recurso. O evento principal u
 ## Séries na Fase 3B2
 
 Ocorrências continuam na camada `booking`. Leitores de reserva recebem o prefixo visual `↻` e `series_id`; a projeção privada mantém `Ocupado`, omite `series_id` e não expõe PII.
+
+Séries abertas são materializadas em uma janela deslizante pelo job ligado a
+`app_hook_after_cron_run`. A verificação considera uma margem do tamanho do
+intervalo da recorrência, pois `last_generated_until` representa a última
+ocorrência criada — não o último dia consultado. Assim a agenda continua
+completa para os meses futuros sem reprocessar a mesma série a cada ciclo.

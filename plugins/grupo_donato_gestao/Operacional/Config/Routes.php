@@ -10,7 +10,14 @@ if (!isset($routes)) {
     $routes = \Config\Services::routes(true);
 }
 
-$routes->group("", ["namespace" => "grupo_donato_gestao\Operacional\Controllers"], function ($routes) {
+$routes->group("", ["namespace" => "grupo_donato_gestao\Operacional\Controllers", "filter" => "csrf"], function ($routes) {
+    $routes->get("matricula-online/asset/(:segment)", "Bombeiros::matricula_publica_asset/$1");
+    $routes->get("matricula-online/(:segment)/contrato/(:segment)", "Bombeiros::contrato_matricula_publica/$1/$2");
+    $routes->get("matricula-online/(:segment)/estado/(:segment)", "Bombeiros::estado_matricula_publica/$1/$2");
+    $routes->post("matricula-online/(:segment)/aceite/(:segment)", "Bombeiros::aceitar_contrato_matricula/$1/$2");
+    $routes->post("matricula-online/(:segment)/assinatura/(:segment)", "Bombeiros::assinar_matricula_publica/$1/$2");
+    $routes->post("matricula-online/(:segment)/finalizar/(:segment)", "Bombeiros::finalizar_matricula_publica/$1/$2");
+    $routes->post("matricula-online/(:segment)/whatsapp/(:segment)", "Bombeiros::reprocessar_whatsapp_matricula/$1/$2");
     $routes->get("matricula-online/(:segment)", "Bombeiros::matricula_publica/$1");
     $routes->post("matricula-online/(:segment)", "Bombeiros::salvar_matricula_publica/$1");
 });
@@ -95,6 +102,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("custos_resumo", "Bombeiros::custos_resumo");
 
     $routes->post("aluno_modal_form", "Bombeiros::aluno_modal_form");
+    $routes->post("alunos_outra_unidade_search", "Bombeiros::alunos_outra_unidade_search");
     $routes->post("responsavel_modal_form", "Bombeiros::responsavel_modal_form");
     $routes->post("unidade_modal_form", "Bombeiros::unidade_modal_form");
     $routes->post("custo_modal_form", "Bombeiros::custo_modal_form");
@@ -154,5 +162,5 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->get("visualizar_comprovante/(:num)", "Bombeiros::visualizar_comprovante/$1");
 
     $routes->get("matricula_publica/(:segment)", "Bombeiros::matricula_publica/$1");
-    $routes->post("salvar_matricula_publica/(:segment)", "Bombeiros::salvar_matricula_publica/$1");
+    $routes->post("salvar_matricula_publica/(:segment)", "Bombeiros::salvar_matricula_publica/$1", ["filter" => "csrf"]);
 });

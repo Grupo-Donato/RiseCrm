@@ -10,7 +10,8 @@ use grupo_donato_gestao\Config\Constants;
  * Operação comercial de locação de quadras (Fase 3C).
  *
  * Camada de negócio SOBRE reservas/séries: vincula um acordo comercial a uma
- * reserva única (avulso) ou a uma série (mensalista), registra valor contratado
+ * reserva única (avulso) ou, no combo, a uma reserva principal e uma
+ * complementar (ou a uma série no caso de mensalista), registra valor contratado
  * como snapshot imutável, dia preferencial de vencimento, vigência e estados.
  *
  * Para locações avulsas, integra o título a receber e o sinal opcional ao
@@ -184,17 +185,21 @@ class CourtRentalService extends CatalogDataService
         return ["id" => $id, "rental_number" => $number, "lock_version" => 1];
     }
 
-    /** Avulso integrado: reserva única + locação + vínculo + snapshot, em UMA transação. */
+    /** Avulso integrado: locação + reserva(s) + vínculos + snapshot, em UMA transação. */
     public function createWithBooking(array $input): array
     {
         $commercial = $this->normalizeCommercial($input, "single");
         $this->assertCommercialValue($commercial);
         $deposit = $this->normalizeDeposit($input, $commercial);
         $booking_input = $this->bookingInputFrom($input, $commercial);
+        $barbecue_input = $this->barbecueBookingInputFrom($input, $commercial);
         $resource_ids = array_map(static fn($r) => (int) $r["resource_id"], $booking_input["resources"]);
+        if ($barbecue_input) {
+            $resource_ids = array_merge($resource_ids, array_map(static fn($r) => (int) $r["resource_id"], $barbecue_input["resources"]));
+        }
         $lock = new CourtRentalLockService();
         $rlock = new BookingResourceLockService();
-        $in_tx = false; $id = 0; $number = ""; $booking = [];
+        $in_tx = false; $id = 0; $number = ""; $booking = []; $barbecue_booking = [];
         try {
             $lock->acquire($this->unit_id, "new:single:" . substr(hash("sha256", json_encode($commercial, JSON_UNESCAPED_SLASHES)), 0, 32));
             $rlock->acquire($this->unit_id, $resource_ids);
@@ -204,15 +209,28 @@ class CourtRentalService extends CatalogDataService
             // Quando o formulário estiver marcado para confirmar/ativar, permite
             // que a reserva vinculada já seja criada como confirmada.
             $booking = (new BookingService($this->unit_id, $this->actor_id, $this->login_user))->save($booking_input, 0, true, true, true);
+            if ($barbecue_input) {
+                $barbecue_booking = (new BookingService($this->unit_id, $this->actor_id, $this->login_user))->save($barbecue_input, 0, true, true, true);
+            }
             $number = $this->nextNumber();
             $id = $this->insertRental($commercial, $number, "draft");
             $primary_resource = $this->primaryCourtResource($resource_ids);
             $this->insertLink($id, (int) $booking["id"], null, "primary");
+            if ($barbecue_booking) {
+                $this->insertLink($id, (int) $barbecue_booking["id"], null, "companion");
+            }
             $this->writeSnapshotIfPriced($id, $commercial, $primary_resource);
             $evt = new CourtRentalEventService($this->unit_id, $this->actor_id, $this->login_user);
-            $evt->append($id, "created", null, "draft", null, ["rental_number" => $number, "mode" => "single", "booking_id" => (int) $booking["id"]]);
+            $created_payload = ["rental_number" => $number, "mode" => "single", "booking_id" => (int) $booking["id"]];
+            if ($barbecue_booking) { $created_payload["barbecue_booking_id"] = (int) $barbecue_booking["id"]; }
+            $evt->append($id, "created", null, "draft", null, $created_payload);
             $evt->append($id, "schedule_linked", null, "draft", null, ["booking_id" => (int) $booking["id"], "link_kind" => "primary"]);
-            $this->audit_change("court_rental_created", "court_rental", $id, null, ["rental_number" => $number] + $commercial, ["mode" => "single", "booking_id" => (int) $booking["id"]]);
+            if ($barbecue_booking) {
+                $evt->append($id, "schedule_linked", null, "draft", null, ["booking_id" => (int) $barbecue_booking["id"], "link_kind" => "companion"]);
+            }
+            $audit_payload = ["mode" => "single", "booking_id" => (int) $booking["id"]];
+            if ($barbecue_booking) { $audit_payload["barbecue_booking_id"] = (int) $barbecue_booking["id"]; }
+            $this->audit_change("court_rental_created", "court_rental", $id, null, ["rental_number" => $number] + $commercial, $audit_payload);
             $finance = $this->createSingleRentalFinance($id, $commercial, $deposit);
             if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental single commit"); }
             $in_tx = false;
@@ -223,7 +241,13 @@ class CourtRentalService extends CatalogDataService
             $rlock->release();
             $lock->release();
         }
-        return ["id" => $id, "rental_number" => $number, "lock_version" => 1, "booking_id" => (int) ($booking["id"] ?? 0), "booking_number" => (string) ($booking["booking_number"] ?? ""), "finance" => $finance ?? null];
+        return [
+            "id" => $id, "rental_number" => $number, "lock_version" => 1,
+            "booking_id" => (int) ($booking["id"] ?? 0), "booking_number" => (string) ($booking["booking_number"] ?? ""),
+            "barbecue_booking_id" => (int) ($barbecue_booking["id"] ?? 0),
+            "barbecue_booking_number" => (string) ($barbecue_booking["booking_number"] ?? ""),
+            "finance" => $finance ?? null,
+        ];
     }
 
     /** Mensalista integrado: série (serviço existente) + locação + vínculo + snapshot. */
@@ -276,11 +300,12 @@ class CourtRentalService extends CatalogDataService
         $commercial = $this->normalizeCommercial($input, "single");
         $this->assertCommercialValue($commercial);
         $booking_input = $this->bookingInputFrom($input, $commercial);
+        $barbecue_input = $this->barbecueBookingInputFrom($input, $commercial);
         $lock = new CourtRentalLockService();
         $rlock = new BookingResourceLockService();
         $in_tx = false;
-        $booking_id = 0;
-        $booking_result = [];
+        $booking_id = 0; $barbecue_booking_id = 0;
+        $booking_result = []; $barbecue_result = [];
 
         try {
             $lock->acquire($this->unit_id, (string) $rental_id);
@@ -292,10 +317,23 @@ class CourtRentalService extends CatalogDataService
             $expected = (int) ($input["lock_version"] ?? 0);
             if ($expected !== (int) $before->lock_version) { throw new \DomainException("gd_court_rental_edit_conflict"); }
 
-            foreach ($this->links->for_rental($rental_id, $this->unit_id) as $link) {
-                if ((string) ($link->link_kind ?? "") !== "historical" && (int) ($link->booking_id ?? 0) > 0) {
+            $rental_links = $this->links->for_rental($rental_id, $this->unit_id);
+            foreach ($rental_links as $link) {
+                if ((string) ($link->link_kind ?? "") === "companion" && (int) ($link->booking_id ?? 0) > 0) {
+                    $barbecue_booking_id = (int) $link->booking_id;
+                }
+                if ((string) ($link->link_kind ?? "") === "primary" && (int) ($link->booking_id ?? 0) > 0) {
                     $booking_id = (int) $link->booking_id;
-                    break;
+                }
+            }
+            if ($booking_id <= 0) {
+                foreach ($rental_links as $link) {
+                    if ((string) ($link->link_kind ?? "") !== "historical"
+                        && (string) ($link->link_kind ?? "") !== "companion"
+                        && (int) ($link->booking_id ?? 0) > 0) {
+                        $booking_id = (int) $link->booking_id;
+                        break;
+                    }
                 }
             }
             if ($booking_id <= 0) { throw new \DomainException("gd_court_rental_booking_not_found"); }
@@ -303,29 +341,53 @@ class CourtRentalService extends CatalogDataService
             $booking_service = new BookingService($this->unit_id, $this->actor_id, $this->login_user);
             $booking_before = $booking_service->get($booking_id);
             if (!$booking_before) { throw new \DomainException("gd_court_rental_booking_not_found"); }
-            $booking_input["status"] = (string) $booking_before->status;
-            $booking_input["notes"] = $booking_before->notes;
-            $booking_input["metadata"] = $booking_before->metadata;
-            if ((string) $booking_before->status === "hold" && $booking_before->hold_expires_at_utc) {
-                $booking_input["hold_expires_at_local"] = $this->time()->utcToLocalInput((string) $booking_before->hold_expires_at_utc);
-            }
+            $booking_input = $this->preserveBookingState($booking_input, $booking_before);
             $booking_input["lock_version"] = (int) ($input["booking_lock_version"] ?? 0);
 
+            $barbecue_before = $barbecue_booking_id > 0 ? $booking_service->get($barbecue_booking_id) : null;
+            if ($barbecue_booking_id > 0 && !$barbecue_before) { throw new \DomainException("gd_court_rental_booking_not_found"); }
+            if ($barbecue_input && $barbecue_before) {
+                $barbecue_input = $this->preserveBookingState($barbecue_input, $barbecue_before);
+                $barbecue_input["lock_version"] = (int) ($input["barbecue_booking_lock_version"] ?? $barbecue_before->lock_version);
+            }
+
             $old_resource_ids = array_map(static fn($r): int => (int) $r->resource_id, $booking_before->resources ?? []);
+            $old_barbecue_resource_ids = $barbecue_before
+                ? array_map(static fn($r): int => (int) $r->resource_id, $barbecue_before->resources ?? [])
+                : [];
             $new_resource_ids = array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $booking_input["resources"] ?? []);
-            sort($old_resource_ids); sort($new_resource_ids);
+            $new_barbecue_resource_ids = $barbecue_input
+                ? array_map(static fn($r): int => (int) ($r["resource_id"] ?? 0), $barbecue_input["resources"] ?? [])
+                : [];
+            $old_all_resource_ids = array_values(array_unique(array_merge($old_resource_ids, $old_barbecue_resource_ids)));
+            $new_all_resource_ids = array_values(array_unique(array_merge($new_resource_ids, $new_barbecue_resource_ids)));
+            sort($old_all_resource_ids); sort($new_all_resource_ids);
             $price_fields = ["list_amount", "negotiated_amount", "discount_amount", "discount_reason", "product_id", "price_list_id", "price_id", "currency", "has_vest", "has_ball", "vest_amount", "ball_amount"];
-            $price_changed = $old_resource_ids !== $new_resource_ids;
+            $price_changed = $old_all_resource_ids !== $new_all_resource_ids;
             foreach ($price_fields as $field) {
                 if ((string) ($before->{$field} ?? "") !== (string) ($commercial[$field] ?? "")) { $price_changed = true; break; }
             }
             $old_total = $this->totalWithExtra($this->commercialTotal($this->commercialArray($before)), $before->extra_time_amount ?? "0.00") ?? "0.00";
             $new_total = $this->totalWithExtra($this->commercialTotal($commercial), $before->extra_time_amount ?? "0.00") ?? "0.00";
-            $rlock->acquire($this->unit_id, array_values(array_unique(array_merge($old_resource_ids, $new_resource_ids))));
+            $rlock->acquire($this->unit_id, array_values(array_unique(array_merge($old_all_resource_ids, $new_all_resource_ids))));
 
             if ($this->db->transBegin() === false) { throw new \RuntimeException("court rental single update transaction"); }
             $in_tx = true;
-            $booking_result = $booking_service->save($booking_input, $booking_id, true, true, true);
+            $booking_result = $booking_service->save($booking_input, $booking_id, true, true, true, true);
+            if ($barbecue_input) {
+                if ($barbecue_before) {
+                    $barbecue_result = $booking_service->save($barbecue_input, $barbecue_booking_id, true, true, true, true);
+                } else {
+                    $barbecue_result = $booking_service->save($barbecue_input, 0, true, true, true);
+                    $barbecue_booking_id = (int) ($barbecue_result["id"] ?? 0);
+                    if ($barbecue_booking_id <= 0) { throw new \RuntimeException("court rental barbecue booking insert"); }
+                    $this->insertLink($rental_id, $barbecue_booking_id, null, "companion");
+                }
+            } elseif ($barbecue_before) {
+                $this->cancelCompanionBooking($barbecue_before);
+                $this->retireCompanionLink($rental_id, $barbecue_booking_id);
+                $barbecue_booking_id = 0;
+            }
             if (!$this->rentals->optimistic_update($rental_id, $this->unit_id, $expected, $this->stamp($commercial, false))) {
                 throw new \DomainException("gd_court_rental_edit_conflict");
             }
@@ -348,9 +410,9 @@ class CourtRentalService extends CatalogDataService
                 (string) $before->status,
                 (string) $before->status,
                 null,
-                ["scope" => "single_full_edit", "booking_id" => $booking_id, "old_total" => $old_total, "new_total" => $new_total]
+                ["scope" => "single_full_edit", "booking_id" => $booking_id, "barbecue_booking_id" => $barbecue_booking_id ?: null, "old_total" => $old_total, "new_total" => $new_total]
             );
-            $this->audit_change("court_rental_updated", "court_rental", $rental_id, $this->commercialArray($before), $commercial, ["scope" => "single_full_edit", "booking_id" => $booking_id]);
+            $this->audit_change("court_rental_updated", "court_rental", $rental_id, $this->commercialArray($before), $commercial, ["scope" => "single_full_edit", "booking_id" => $booking_id, "barbecue_booking_id" => $barbecue_booking_id ?: null]);
             if ($this->db->transCommit() === false) { throw new \RuntimeException("court rental single update commit"); }
             $in_tx = false;
         } catch (\Throwable $e) {
@@ -367,6 +429,8 @@ class CourtRentalService extends CatalogDataService
             "lock_version" => (int) ($fresh->lock_version ?? 0),
             "booking_id" => $booking_id,
             "booking_lock_version" => (int) ($booking_result["lock_version"] ?? 0),
+            "barbecue_booking_id" => $barbecue_booking_id,
+            "barbecue_booking_lock_version" => (int) ($barbecue_result["lock_version"] ?? 0),
         ];
     }
 
@@ -1021,6 +1085,77 @@ class CourtRentalService extends CatalogDataService
         ];
     }
 
+    /**
+     * Monta a reserva independente da churrasqueira do combo.
+     * O formato legado, com ambos os recursos no mesmo booking, continua aceito
+     * para integrações antigas que ainda não enviam os dois horários.
+     */
+    private function barbecueBookingInputFrom(array $input, array $commercial): ?array
+    {
+        if (array_key_exists("combo_enabled", $input) && (string) $input["combo_enabled"] !== "1") {
+            return null;
+        }
+        $resource_id = (int) ($input["barbecue_resource_id"] ?? 0);
+        $starts = trim((string) ($input["barbecue_starts_at_local"] ?? ""));
+        $ends = trim((string) ($input["barbecue_ends_at_local"] ?? ""));
+        if ($resource_id <= 0) { return null; }
+        if ($starts === "" || $ends === "") { throw new \DomainException("gd_combo_barbecue_schedule_required"); }
+        $status = trim((string) ($input["booking_status"] ?? "pending_confirmation"));
+        if (!in_array($status, ["pending_confirmation", "confirmed"], true)) { $status = "pending_confirmation"; }
+        return [
+            "booking_type" => "customer_rental", "title" => $commercial["title"],
+            "customer_account_id" => $commercial["customer_account_id"], "contact_person_id" => $commercial["contact_person_id"],
+            "starts_at_local" => $starts, "ends_at_local" => $ends, "status" => $status,
+            "resources" => $this->cleanResources([["resource_id" => $resource_id, "buffer_before_minutes" => 0, "buffer_after_minutes" => 0]], Constants::BARBECUE_RESOURCE_TYPE),
+            "notes" => null, "metadata" => null,
+        ];
+    }
+
+    private function preserveBookingState(array $input, object $booking): array
+    {
+        $input["status"] = (string) $booking->status;
+        $input["notes"] = $booking->notes;
+        $input["metadata"] = $booking->metadata;
+        if ((string) $booking->status === "hold" && $booking->hold_expires_at_utc) {
+            $input["hold_expires_at_local"] = $this->time()->utcToLocalInput((string) $booking->hold_expires_at_utc);
+        }
+        return $input;
+    }
+
+    /** Cancela a reserva complementar mantendo seu histórico para auditoria. */
+    private function cancelCompanionBooking(object $booking): void
+    {
+        if ((string) $booking->status === "cancelled") { return; }
+        $now = gmdate("Y-m-d H:i:s");
+        $updated = $this->db->table($this->db->prefixTable("gd_bookings"))
+            ->where("id", (int) $booking->id)->where("unit_id", $this->unit_id)->where("deleted", 0)
+            ->where("lock_version", (int) $booking->lock_version)
+            ->update([
+                "status" => "cancelled", "cancelled_at" => $now, "cancelled_by" => $this->actor_id ?: null,
+                "cancellation_reason" => "Combo de churrasqueira removido", "hold_expires_at_utc" => null,
+                "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+                "lock_version" => (int) $booking->lock_version + 1,
+            ]);
+        if (!$updated) { throw new \DomainException("gd_booking_edit_conflict"); }
+        (new BookingEventService($this->unit_id, $this->actor_id, $this->login_user))->append(
+            (int) $booking->id, "cancelled", (string) $booking->status, "cancelled", "Combo de churrasqueira removido",
+            ["booking_number" => $booking->booking_number]
+        );
+        $this->audit_change("booking_cancelled", "booking", (int) $booking->id, ["booking_number" => $booking->booking_number, "status" => $booking->status], ["booking_number" => $booking->booking_number, "status" => "cancelled"], ["reason" => "Combo de churrasqueira removido"]);
+    }
+
+    private function retireCompanionLink(int $rental_id, int $booking_id): void
+    {
+        if ($booking_id <= 0) { return; }
+        $this->db->table($this->db->prefixTable("gd_court_rental_schedule_links"))
+            ->where("rental_id", $rental_id)->where("unit_id", $this->unit_id)->where("booking_id", $booking_id)
+            ->where("link_kind", "companion")->where("deleted", 0)
+            ->update([
+                "link_kind" => "historical", "active_booking_guard" => null,
+                "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null,
+            ]);
+    }
+
     private function seriesInputFrom(array $input, array $commercial): array
     {
         return [
@@ -1038,7 +1173,7 @@ class CourtRentalService extends CatalogDataService
         ];
     }
 
-    private function cleanResources($raw): array
+    private function cleanResources($raw, ?string $required_type = null): array
     {
         if (!is_array($raw) || !$raw) { throw new \DomainException("gd_invalid_booking_resources"); }
         $out = [];
@@ -1054,6 +1189,12 @@ class CourtRentalService extends CatalogDataService
             ->get()->getResult();
         if (count($rows) !== count($ids)) { throw new \DomainException("gd_invalid_booking_resources"); }
         $types = array_map(static fn($row): string => (string) $row->resource_type, $rows);
+        if ($required_type !== null) {
+            if (count($types) !== 1 || $types[0] !== $required_type) {
+                throw new \DomainException("gd_invalid_booking_resources");
+            }
+            return $out;
+        }
         if (count(array_filter($types, static fn(string $type): bool => $type === "court")) < 1
             || count(array_filter($types, static fn(string $type): bool => $type === Constants::BARBECUE_RESOURCE_TYPE)) > 1
             || count(array_filter($types, static fn(string $type): bool => !in_array($type, ["court", Constants::BARBECUE_RESOURCE_TYPE], true))) > 0

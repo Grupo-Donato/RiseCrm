@@ -35,6 +35,8 @@ $messages = [
     "no_courts" => app_lang("gd_no_courts_available_for_time"),
     "combo_amount_required" => app_lang("gd_combo_amount_required"),
     "barbecue_required" => app_lang("gd_select_at_least_one_barbecue"),
+    "barbecue_time_required" => app_lang("gd_combo_barbecue_time_required"),
+    "barbecue_duration_required" => app_lang("gd_combo_barbecue_duration_required"),
     "combo_discount_invalid" => app_lang("gd_combo_discount_invalid"),
     "combo_discount_reason_required" => app_lang("gd_combo_discount_reason_required"),
     "addition_amount_required" => app_lang("gd_rental_addition_amount_required"),
@@ -57,6 +59,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
 <input type="hidden" name="lock_version" value="<?php echo (int) $edit_data["lock_version"]; ?>">
 <?php if ($edit_type === "single") { ?>
 <input type="hidden" name="booking_lock_version" value="<?php echo (int) ($edit_data["booking_lock_version"] ?? 0); ?>">
+<input type="hidden" name="barbecue_booking_lock_version" value="<?php echo (int) ($edit_data["barbecue_booking_lock_version"] ?? 0); ?>">
 <?php } else { ?>
 <input type="hidden" name="series_lock_version" value="<?php echo (int) ($edit_data["series_lock_version"] ?? 0); ?>">
 <input type="hidden" name="series_id" value="<?php echo (int) ($edit_data["series_id"] ?? 0); ?>">
@@ -74,6 +77,8 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
 <input type="hidden" name="generation_horizon_days" value="90">
 <input type="hidden" name="starts_at_local" id="gd-rental-starts-at">
 <input type="hidden" name="ends_at_local" id="gd-rental-ends-at">
+<input type="hidden" name="barbecue_starts_at_local" id="gd-rental-barbecue-starts-at">
+<input type="hidden" name="barbecue_ends_at_local" id="gd-rental-barbecue-ends-at">
 <input type="hidden" name="starts_on" id="gd-rental-starts-on">
 <input type="hidden" name="local_start_time" id="gd-rental-local-start">
 <input type="hidden" name="local_end_time" id="gd-rental-local-end">
@@ -282,7 +287,7 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                 <input type="checkbox" class="form-check-input" id="gd-rental-with-barbecue" name="combo_enabled" value="1"<?php echo !empty($edit_data["combo_enabled"]) ? " checked" : ""; ?><?php echo $initial_mode !== "single" ? " disabled" : ""; ?>>
                 <label class="form-check-label" for="gd-rental-with-barbecue">
                     <strong><?php echo app_lang("gd_combo_add_barbecue"); ?></strong>
-                    <span class="text-muted d-block"><small><?php echo app_lang("gd_combo_same_schedule_help"); ?></small></span>
+                    <span class="text-muted d-block"><small><?php echo app_lang("gd_combo_independent_schedule_help"); ?></small></span>
                 </label>
             </div>
 
@@ -294,6 +299,27 @@ for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
                         <div class="text-muted mb10"><small><?php echo app_lang("gd_available_barbecues_help"); ?></small></div>
                         <div id="gd-rental-available-barbecues-results" class="gd-available-courts-grid"></div>
                     </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="gd-rental-barbecue-start-time"><?php echo app_lang("gd_combo_barbecue_start_time"); ?> <span class="text-danger">*</span></label>
+                                <select id="gd-rental-barbecue-start-time" class="form-control">
+                                    <option value=""></option>
+                                    <?php foreach ($time_options as $time_option) { ?>
+                                        <option value="<?php echo $e($time_option["value"]); ?>"<?php echo ($edit_data["barbecue_local_start_time"] ?? "") === $time_option["value"] ? " selected" : ""; ?>><?php echo $e($time_option["label"]); ?></option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="gd-rental-barbecue-duration"><?php echo app_lang("gd_combo_barbecue_duration"); ?> <span class="text-danger">*</span></label>
+                                <input type="text" name="barbecue_duration_minutes" id="gd-rental-barbecue-duration" class="form-control" inputmode="text" autocomplete="off" value="<?php echo $e(!empty($edit_data["barbecue_duration_minutes"]) ? $edit_data["barbecue_duration_minutes"] : 300); ?>" placeholder="Ex.: 5h ou 300">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-muted mb15"><small><?php echo app_lang("gd_combo_barbecue_schedule_help"); ?></small></div>
 
                     <div class="form-group">
                         <label for="gd-rental-barbecue"><?php echo app_lang("gd_select_barbecue"); ?> <span class="text-danger">*</span></label>
@@ -416,6 +442,8 @@ $(document).ready(function(){
         barbecueToggle = $("#gd-rental-with-barbecue"),
         barbecueSection = $("#gd-rental-combo-fields"),
         barbecueInput = $("#gd-rental-barbecue"),
+        barbecueStartTime = $("#gd-rental-barbecue-start-time"),
+        barbecueDurationInput = $("#gd-rental-barbecue-duration"),
         barbecueAmountInput = $("#gd-rental-barbecue-amount"),
         comboDiscountInput = $("#gd-rental-combo-discount"),
         comboDiscountReasonInput = $("#gd-rental-combo-discount-reason"),
@@ -640,8 +668,23 @@ $(document).ready(function(){
             endsAt: end.date + "T" + end.time
         };
     }
+    function barbecueScheduleValues() {
+        var date = dateInput.val(), start = barbecueStartTime.val(), duration = parseDuration(barbecueDurationInput.val()), end = null;
+        if (!date || !start || !isHalfHour(start)) { return null; }
+        end = addMinutes(date, start, duration);
+        if (!end) { return null; }
+        return {
+            startDate: date,
+            startTime: start,
+            endDate: end.date,
+            endTime: end.time,
+            startsAt: date + "T" + start,
+            endsAt: end.date + "T" + end.time,
+            duration: duration
+        };
+    }
     function syncDerivedFields() {
-        var currentMode = mode(), schedule = scheduleValues(), amount = currentAmount(), listAmount = currentListAmount(), discount = currentDiscount(), court = selectedCourt(), barbecue = selectedBarbecue(), duration = selectedDuration(), additions = additionValues();
+        var currentMode = mode(), schedule = scheduleValues(), barbecueSchedule = barbecueScheduleValues(), amount = currentAmount(), listAmount = currentListAmount(), discount = currentDiscount(), court = selectedCourt(), barbecue = selectedBarbecue(), duration = selectedDuration(), additions = additionValues();
         $("#gd-rental-type").val(currentMode === "recurring" ? "recurring" : "single");
         var activeStatus = activateInput.is(":checked") ? "confirmed" : "pending_confirmation";
         $("#gd-rental-booking-status").val(activeStatus);
@@ -670,11 +713,22 @@ $(document).ready(function(){
             $("#gd-rental-starts-at, #gd-rental-ends-at, #gd-rental-starts-on, #gd-rental-local-start, #gd-rental-local-end").val("");
         }
 
+        if (barbecueSchedule && comboEnabled()) {
+            $("#gd-rental-barbecue-starts-at").val(barbecueSchedule.startsAt);
+            $("#gd-rental-barbecue-ends-at").val(barbecueSchedule.endsAt);
+        } else {
+            $("#gd-rental-barbecue-starts-at, #gd-rental-barbecue-ends-at").val("");
+        }
+
         var metadata = {rental_mode: currentMode, duration_minutes: duration, amount_source: "manual", vest_amount: additions.vest === null ? "" : centsMoney(additions.vest), ball_amount: additions.ball === null ? "" : centsMoney(additions.ball), addition_total: additions.total === null ? "" : centsMoney(additions.total), total_amount: amount || ""};
         if (comboEnabled()) {
             var combo = comboValues();
             metadata.combo_enabled = true;
             metadata.barbecue_resource_id = barbecue.id || "";
+            metadata.barbecue_start_time = barbecueSchedule ? barbecueSchedule.startTime : "";
+            metadata.barbecue_duration_minutes = barbecueSchedule ? barbecueSchedule.duration : 0;
+            metadata.barbecue_starts_at_local = barbecueSchedule ? barbecueSchedule.startsAt : "";
+            metadata.barbecue_ends_at_local = barbecueSchedule ? barbecueSchedule.endsAt : "";
             metadata.court_amount = normalizeMoney(amountInput.val());
             metadata.barbecue_amount = normalizeMoney(barbecueAmountInput.val());
             metadata.combo_discount_amount = combo && combo.discount > 0 ? centsMoney(combo.discount) : "0.00";
@@ -720,7 +774,9 @@ $(document).ready(function(){
         var enabled = comboEnabled();
         $("#gd-rental-amount-label-text").text(enabled ? <?php echo json_encode(app_lang("gd_combo_court_amount")); ?> : (mode() === "recurring" ? <?php echo json_encode(app_lang("gd_monthly_value")); ?> : <?php echo json_encode(app_lang("gd_rental_value")); ?>));
         barbecueSection.toggle(enabled);
-        barbecueInput.prop("required", enabled && !exemptInput.is(":checked"));
+        barbecueInput.prop("required", enabled && !exemptInput.is(":checked")).prop("disabled", !enabled);
+        barbecueStartTime.prop("required", enabled).prop("disabled", !enabled);
+        barbecueDurationInput.prop("required", enabled).prop("disabled", !enabled);
         barbecueAmountInput.prop("required", enabled && !exemptInput.is(":checked")).prop("disabled", !enabled || exemptInput.is(":checked"));
         comboDiscountInput.prop("disabled", !enabled || exemptInput.is(":checked"));
         comboDiscountReasonInput.prop("disabled", !enabled || exemptInput.is(":checked"));
@@ -835,15 +891,15 @@ $(document).ready(function(){
         if (typeof feather !== "undefined") { feather.replace(); }
     }
     function loadAvailableBarbecues() {
-        var schedule = scheduleValues();
-        if (!comboEnabled() || !dateInput.val() || !startTime.val() || !schedule) { hideAvailableBarbecues(); return; }
+        var schedule = barbecueScheduleValues();
+        if (!comboEnabled() || !dateInput.val() || !barbecueStartTime.val() || !schedule) { hideAvailableBarbecues(); return; }
         availableBarbecues.show();
         availableBarbecuePeriod.text(formatDate(schedule.startDate) + " · " + schedule.startTime + " às " + schedule.endTime);
         availableBarbecuesResults.html('<div class="text-muted"><i data-feather="loader" class="icon-16"></i> ' + escapeHtml(messages.checking) + '</div>');
         if (typeof feather !== "undefined") { feather.replace(); }
         var data = form.serializeArray();
-        setPostValue(data, "starts_at_local", schedule.startsAt);
-        setPostValue(data, "ends_at_local", schedule.endsAt);
+        setPostValue(data, "barbecue_starts_at_local", schedule.startsAt);
+        setPostValue(data, "barbecue_ends_at_local", schedule.endsAt);
         if (isEdit) { setPostValue(data, "rental_id", editData.id || ""); }
         if (availableBarbecuesXhr) { availableBarbecuesXhr.abort(); }
         availableBarbecuesXhr = $.ajax({
@@ -862,7 +918,7 @@ $(document).ready(function(){
     }
     function scheduleAvailableBarbecues() {
         clearTimeout(availableBarbecuesTimer);
-        if (!comboEnabled() || !dateInput.val() || !startTime.val() || !scheduleValues()) { hideAvailableBarbecues(); return; }
+        if (!comboEnabled() || !dateInput.val() || !barbecueStartTime.val() || !barbecueScheduleValues()) { hideAvailableBarbecues(); return; }
         availableBarbecuesTimer = setTimeout(loadAvailableBarbecues, 250);
     }
     function unavailableMessage(response) {
@@ -890,6 +946,8 @@ $(document).ready(function(){
         if (!dateInput.val()) { return messages.date_required; }
         if (!startTime.val()) { return messages.time_required; }
         if (!selectedCourt().id) { return messages.resource_required; }
+        if (comboEnabled() && !barbecueStartTime.val()) { return messages.barbecue_time_required; }
+        if (comboEnabled() && barbecueScheduleValues() === null) { return messages.barbecue_duration_required; }
         if (comboEnabled() && !selectedBarbecue().id) { return messages.barbecue_required; }
         var exempt = exemptInput.is(":checked"), amountCents = moneyCents(currentAmount());
         var additions = additionValues();
@@ -989,6 +1047,7 @@ $(document).ready(function(){
     form.on("change", "#gd-rental-court", scheduleAutoCheck);
     form.on("change", "#gd-rental-barbecue", scheduleAutoCheck);
     form.on("change input", "#gd-rental-date, #gd-rental-start-time", function(){ scheduleAvailableCourts(); scheduleAvailableBarbecues(); scheduleAutoCheck(); });
+    form.on("change input", "#gd-rental-barbecue-start-time, #gd-rental-barbecue-duration", function(){ scheduleAvailableBarbecues(); updateSummary(); scheduleAutoCheck(); });
     form.on("input change", "#gd-rental-amount, #gd-rental-barbecue-amount, #gd-rental-combo-discount, #gd-rental-combo-discount-reason", function(){ syncCombo(); updateSummary(); scheduleAutoCheck(); });
     form.on("change input", "#gd-rental-due-day", scheduleAutoCheck);
     form.on("input change", "#gd-rental-customer, #gd-rental-contact, #gd-rental-phone, #gd-rental-deposit-method, #gd-rental-financial-account", updateSummary);
@@ -1039,6 +1098,8 @@ $(document).ready(function(){
         dateInput.val(editData.starts_on || "");
         startTime.val(editData.local_start_time || "");
         durationInput.val(String(editData.duration_minutes || ""));
+        barbecueStartTime.val(editData.barbecue_local_start_time || "");
+        barbecueDurationInput.val(String(editData.barbecue_duration_minutes || 300));
         amountInput.val(editData.court_amount || editData.amount || "");
         courtInput.val(String(editData.resource_id || ""));
         dueDay.val(editData.preferred_due_day || "");

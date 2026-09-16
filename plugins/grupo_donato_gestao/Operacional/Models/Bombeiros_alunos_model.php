@@ -128,4 +128,87 @@ class Bombeiros_alunos_model extends Crud_model
         $options["status"] = $this->_get_clean_value($options, "status") ?: "Ativo";
         return $this->get_details($options);
     }
+
+    /**
+     * Procura alunos ativos de outra unidade para criar uma representação
+     * local. O filtro de unidade é obrigatório para não expor a base inteira
+     * em uma única busca.
+     */
+    public function search_cross_unit_students($query, int $target_unit_id, int $source_unit_id, int $limit = 20): array
+    {
+        $query = trim((string) $query);
+        if ($target_unit_id <= 0 || $source_unit_id <= 0 || $source_unit_id === $target_unit_id || mb_strlen($query) < 2) {
+            return [];
+        }
+
+        $alunos_table = $this->db->prefixTable("grupo_donato_alunos");
+        $responsaveis_table = $this->db->prefixTable("grupo_donato_responsaveis");
+        $unidades_table = $this->db->prefixTable("grupo_donato_unidades");
+        $query_like = $this->db->escapeLikeString($query);
+        $query_digits = preg_replace('/\D+/', '', $query);
+        $cpf_condition = "";
+        if (mb_strlen($query_digits) >= 3) {
+            $cpf_condition = " OR $alunos_table.cpf_aluno LIKE '%" . $this->db->escapeLikeString($query_digits) . "%'
+                    OR $responsaveis_table.cpf LIKE '%" . $this->db->escapeLikeString($query_digits) . "%'";
+        }
+        $limit = min(50, max(1, $limit));
+
+        $sql = "SELECT $alunos_table.id,
+                $alunos_table.unidade_id,
+                $alunos_table.responsavel_id,
+                $alunos_table.matricula,
+                $alunos_table.nome_aluno,
+                $alunos_table.nascimento_aluno,
+                $alunos_table.rg_aluno,
+                $alunos_table.cpf_aluno,
+                $responsaveis_table.nome AS responsavel_nome,
+                $responsaveis_table.nascimento AS responsavel_nascimento,
+                $responsaveis_table.rg AS responsavel_rg,
+                $responsaveis_table.cpf AS responsavel_cpf,
+                $responsaveis_table.whats AS responsavel_whats,
+                $responsaveis_table.celular AS responsavel_celular,
+                $responsaveis_table.email AS responsavel_email,
+                $responsaveis_table.endereco AS responsavel_endereco,
+                $responsaveis_table.numero AS responsavel_numero,
+                $responsaveis_table.complemento AS responsavel_complemento,
+                $responsaveis_table.bairro AS responsavel_bairro,
+                $responsaveis_table.cep AS responsavel_cep,
+                $responsaveis_table.cidade AS responsavel_cidade,
+                $responsaveis_table.recado AS responsavel_recado,
+                $unidades_table.nome_unidade,
+                $unidades_table.cidade AS unidade_cidade
+            FROM $alunos_table
+            INNER JOIN $unidades_table ON $unidades_table.id=$alunos_table.unidade_id
+                AND $unidades_table.deleted=0 AND $unidades_table.status='Ativo'
+            LEFT JOIN $responsaveis_table ON $responsaveis_table.id=$alunos_table.responsavel_id
+            WHERE $alunos_table.deleted=0
+                AND $alunos_table.unidade_id=" . (int) $source_unit_id . "
+                AND $alunos_table.unidade_id<>" . (int) $target_unit_id . "
+                AND $alunos_table.status NOT IN ('Cancelado', 'Concluido')
+                AND (
+                    $alunos_table.matricula LIKE '%$query_like%' ESCAPE '!'
+                    OR $alunos_table.nome_aluno LIKE '%$query_like%' ESCAPE '!'
+                    OR $responsaveis_table.nome LIKE '%$query_like%' ESCAPE '!'
+                    OR $responsaveis_table.whats LIKE '%$query_like%' ESCAPE '!'
+                    $cpf_condition
+                )
+            ORDER BY $alunos_table.nome_aluno ASC
+            LIMIT " . $limit;
+
+        return $this->db->query($sql)->getResultArray();
+    }
+
+    /** Busca uma matrícula de outra unidade depois que o usuário a escolheu. */
+    public function get_cross_unit_student(int $student_id, int $source_unit_id)
+    {
+        if ($student_id <= 0 || $source_unit_id <= 0) {
+            return null;
+        }
+
+        return $this->get_details([
+            "id" => $student_id,
+            "unidade_id" => $source_unit_id,
+            "status_not_in" => ["Cancelado", "Concluido"]
+        ])->getRow();
+    }
 }

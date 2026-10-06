@@ -745,3 +745,570 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* GD Academy: aluno overview is injected into #ajaxModal via AJAX. Keep its
+   layout in the global stylesheet so it is applied even when the browser does
+   not execute styles/scripts that arrive inside the injected fragment. */
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: calc(100vh - 120px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding: 0 !important;
+    background: #f6f8fb !important;
+    color: #1f2937 !important;
+    line-height: 1.45;
+}
+
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root,
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root * {
+    box-sizing: border-box;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-shell {
+    display: block !important;
+    width: 100% !important;
+    max-width: 1280px !important;
+    margin: 0 auto !important;
+    padding: 22px !important;
+    color: #1f2937 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero {
+    position: relative;
+    display: flex !important;
+    width: 100% !important;
+    align-items: center !important;
+    gap: 16px !important;
+    padding: 20px !important;
+    border: 1px solid #e5eaf0 !important;
+    border-radius: 16px !important;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%) !important;
+    color: #1f2937 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-avatar {
+    display: block !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    height: 72px !important;
+    min-height: 72px !important;
+    max-height: 72px !important;
+    flex: 0 0 72px !important;
+    border: 3px solid #fff !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    aspect-ratio: 1 / 1;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero-main {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    color: #1f2937 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero h2 {
+    margin: 0 0 5px !important;
+    color: #172554 !important;
+    font-size: 24px !important;
+    line-height: 1.2 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-subtitle,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail span,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading p,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-meta,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-meta {
+    color: #64748b !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-chips {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 7px !important;
+    margin-top: 10px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-chip {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 28px !important;
+    padding: 4px 9px !important;
+    border-radius: 999px !important;
+    background: #eef3f8 !important;
+    color: #475569 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-chip--status {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    margin: 16px 0 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section {
+    display: block !important;
+    border: 1px solid #e5eaf0 !important;
+    border-radius: 14px !important;
+    background: #fff !important;
+    color: #1f2937 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric {
+    padding: 15px !important;
+    border-radius: 12px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric span {
+    display: block !important;
+    color: #64748b !important;
+    font-size: 12px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric strong {
+    display: block !important;
+    margin-top: 4px !important;
+    color: #172554 !important;
+    font-size: 19px !important;
+    line-height: 1.2 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--balance {
+    border-color: #bfdbfe !important;
+    background: #eff6ff !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--balance strong { color: #1d4ed8 !important; }
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--danger strong { color: #b91c1c !important; }
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, .85fr) !important;
+    gap: 16px !important;
+    align-items: start !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section {
+    margin-bottom: 16px !important;
+    padding: 18px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section:last-child { margin-bottom: 0 !important; }
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading {
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    margin-bottom: 14px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading h3 {
+    margin: 0 !important;
+    color: #172554 !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail-grid,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-materials {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 13px 20px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-materials {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-title strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-head strong {
+    color: #334155 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material strong {
+    display: block !important;
+    overflow-wrap: anywhere;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail span {
+    display: block !important;
+    margin-bottom: 3px !important;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-row,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event {
+    border: 1px solid #e8edf3 !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: #1f2937 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material {
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+    min-width: 0;
+    padding: 11px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-list,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-list {
+    display: grid !important;
+    gap: 9px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 12px !important;
+    padding: 12px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-main { min-width: 0; }
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount { min-width: 118px; text-align: right; }
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount strong { color: #172554 !important; }
+#ajaxModal #gd-aluno-overview-modal .gd-overview-link { color: #1d4ed8 !important; }
+
+#ajaxModal.gd-aluno-overview-open .modal-dialog {
+    width: calc(100% - 24px) !important;
+    max-width: 1180px !important;
+}
+
+@media (max-width: 900px) {
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-layout { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 640px) {
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-shell { padding: 12px !important; }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-hero { align-items: flex-start !important; padding: 15px !important; }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-avatar {
+        width: 56px !important;
+        min-width: 56px !important;
+        max-width: 56px !important;
+        height: 56px !important;
+        min-height: 56px !important;
+        max-height: 56px !important;
+        flex-basis: 56px !important;
+    }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-hero h2 { font-size: 20px !important; }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-detail-grid,
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-materials,
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-finance-row { grid-template-columns: 1fr !important; }
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount { min-width: 0; text-align: left; }
+}
+
+/* GD Academy: overview aligned with the active Rise green theme. */
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 120px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    background: var(--green-soft-surface, #314A2A) !important;
+    color: var(--green-ice, #F7FAF6) !important;
+    font-family: inherit;
+    line-height: 1.45;
+}
+
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root,
+#ajaxModal #gd-aluno-overview-modal.gd-overview-root * {
+    box-sizing: border-box;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-shell {
+    max-width: 1280px !important;
+    padding: 20px !important;
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section {
+    border: 1px solid var(--green-soft-border, #3A5632) !important;
+    border-radius: 7px !important;
+    background: var(--green-institutional, #2D4E23) !important;
+    color: var(--green-ice, #F7FAF6) !important;
+    box-shadow: none !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero {
+    align-items: center !important;
+    gap: 16px !important;
+    padding: 18px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-avatar {
+    border: 2px solid var(--green-leaf-light, #8BAE5A) !important;
+    box-shadow: none !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero-main {
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero h2,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading h3 {
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-hero h2 {
+    font-size: 22px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-subtitle,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail span,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading p,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-meta,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-meta,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount small {
+    color: var(--green-gray-light, #B8C9B3) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-chip {
+    min-height: 26px !important;
+    padding: 4px 9px !important;
+    border: 1px solid var(--green-soft-border, #3A5632) !important;
+    border-radius: 999px !important;
+    background: var(--green-soft-surface, #314A2A) !important;
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-chip--status,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--paid,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material--done small {
+    background: #2f5e2d !important;
+    color: #c9e8bd !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metrics {
+    gap: 10px !important;
+    margin: 14px 0 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric {
+    padding: 14px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric span {
+    color: var(--green-gray-light, #B8C9B3) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-detail strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-title strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-head strong,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount strong {
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--balance {
+    border-color: var(--green-leaf, #5D8136) !important;
+    background: var(--green-institutional-focus, #34592A) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--balance strong {
+    color: var(--green-leaf-light, #8BAE5A) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--danger {
+    border-color: #754238 !important;
+    background: #3b2825 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-metric--danger strong {
+    color: #f2b8a8 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-layout {
+    gap: 14px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section {
+    margin-bottom: 14px !important;
+    padding: 16px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading {
+    margin-bottom: 12px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-section-heading p {
+    margin: 3px 0 0 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-divider {
+    height: 1px !important;
+    margin: 16px 0 !important;
+    background: var(--green-soft-border, #3A5632) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-row,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event {
+    border: 1px solid var(--green-soft-border, #3A5632) !important;
+    border-radius: 5px !important;
+    background: var(--green-soft-surface, #314A2A) !important;
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material {
+    padding: 10px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material i {
+    color: var(--green-leaf-light, #8BAE5A) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material small,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material--empty small,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material--info small {
+    color: var(--green-gray-light, #B8C9B3) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-material--pending small,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--open,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--partial {
+    color: #f3d887 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-alert {
+    border: 1px solid #765f2a !important;
+    border-radius: 5px !important;
+    background: #40371f !important;
+    color: #f3d887 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-finance-title,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-event-head {
+    gap: 7px !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-type {
+    border: 1px solid var(--green-soft-border, #3A5632) !important;
+    background: rgba(139, 174, 90, .15) !important;
+    color: var(--green-leaf-light, #8BAE5A) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--open,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--partial {
+    background: #65511e !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--overdue {
+    background: #63322a !important;
+    color: #f2b8a8 !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--cancelled,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--exempt {
+    background: var(--green-soft-border, #3A5632) !important;
+    color: var(--green-gray-light, #B8C9B3) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-status--awaiting_charge {
+    background: #74441f !important;
+    color: #ffd49a !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-empty {
+    border-color: #527744 !important;
+    border-radius: 5px !important;
+    color: var(--green-gray-light, #B8C9B3) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-link,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-collapsible summary {
+    color: var(--green-leaf-light, #8BAE5A) !important;
+}
+
+#ajaxModal #gd-aluno-overview-modal .gd-overview-link:hover,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-link:focus,
+#ajaxModal #gd-aluno-overview-modal .gd-overview-collapsible summary:hover {
+    color: var(--green-ice, #F7FAF6) !important;
+}
+
+#ajaxModal.gd-aluno-overview-open .modal-dialog {
+    width: calc(100% - 24px) !important;
+    max-width: 1180px !important;
+}
+
+#ajaxModal.gd-aluno-overview-open .modal-content,
+#ajaxModal.gd-aluno-overview-open .modal-body {
+    background: var(--green-soft-surface, #314A2A) !important;
+}
+
+@media (max-width: 900px) {
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-layout {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 640px) {
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-shell {
+        padding: 12px !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-hero {
+        align-items: flex-start !important;
+        padding: 15px !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-avatar {
+        width: 56px !important;
+        min-width: 56px !important;
+        max-width: 56px !important;
+        height: 56px !important;
+        min-height: 56px !important;
+        max-height: 56px !important;
+        flex-basis: 56px !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-hero h2 {
+        font-size: 20px !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        margin: 10px 0 !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-metric {
+        padding: 11px !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-detail-grid,
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-materials,
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-finance-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    #ajaxModal #gd-aluno-overview-modal .gd-overview-finance-amount {
+        min-width: 0;
+        text-align: left;
+    }
+}

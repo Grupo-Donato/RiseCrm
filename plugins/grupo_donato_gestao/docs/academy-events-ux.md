@@ -10,6 +10,7 @@
 
 - `grupo_donato/operacional?gd_tab=eventos`: lista e busca de eventos.
 - `grupo_donato/operacional/evento/{id}`: resumo do evento.
+- `grupo_donato/operacional/evento/{id}/participantes`: lista-base de atletas do evento.
 - `grupo_donato/operacional/evento/{id}/categorias`: categorias.
 - `grupo_donato/operacional/evento/{id}/financeiro`: financeiro.
 - `grupo_donato/operacional/evento/{id}/checklist`: checklist.

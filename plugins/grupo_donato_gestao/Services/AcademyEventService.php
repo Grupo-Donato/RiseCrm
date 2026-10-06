@@ -170,11 +170,40 @@ final class AcademyEventService extends CustomerDataService
         $staff = $this->db->table($this->table("gd_academy_event_staff"))
             ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)
             ->orderBy("id", "ASC")->get()->getResult();
+        $metrics = array_merge($this->emptyMetrics(), $this->eventMetrics([$eventId])[$eventId] ?? [], $this->eventSummary([$eventId])[$eventId] ?? []);
+        $metrics["roster_count"] = (int) $this->db->table($this->table("gd_academy_event_roster"))
+            ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->countAllResults();
         return [
             "event" => $event,
-            "metrics" => array_merge($this->emptyMetrics(), $this->eventMetrics([$eventId])[$eventId] ?? [], $this->eventSummary([$eventId])[$eventId] ?? []),
+            "metrics" => $metrics,
             "staff" => $staff,
         ];
+    }
+
+    /** The event-wide list used as the source for every category. */
+    public function eventRoster(int $eventId): array
+    {
+        $event = $this->assertEvent($eventId);
+        $roster = $this->table("gd_academy_event_roster");
+        $students = $this->table("grupo_donato_alunos");
+        $external = $this->table("gd_academy_external_athletes");
+        $responsibles = $this->table("grupo_donato_responsaveis");
+        $participants = $this->table("gd_academy_event_participants");
+        $categories = $this->table("gd_academy_event_categories");
+        $sql = "SELECT r.*,COALESCE(s.nome_aluno,x.name) athlete_name,
+            COALESCE(s.nascimento_aluno,x.birth_date) birth_date,s.turma,s.photo_path,x.origin_club,
+            COALESCE(resp.nome,x.responsible_name) responsible_name,
+            (SELECT COUNT(*) FROM `$participants` p WHERE p.unit_id=r.unit_id AND p.roster_id=r.id AND p.deleted=0) category_count,
+            (SELECT GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') FROM `$participants` p JOIN `$categories` c ON c.id=p.category_id AND c.unit_id=p.unit_id AND c.deleted=0 WHERE p.unit_id=r.unit_id AND p.roster_id=r.id AND p.deleted=0) category_names
+            FROM `$roster` r
+            LEFT JOIN `$students` s ON s.id=r.student_id AND s.unidade_id=? AND s.deleted=0
+            LEFT JOIN `$external` x ON x.id=r.external_athlete_id AND x.unit_id=r.unit_id AND x.deleted=0
+            LEFT JOIN `$responsibles` resp ON resp.id=r.responsible_id AND resp.deleted=0
+            WHERE r.unit_id=? AND r.event_id=? AND r.deleted=0
+            ORDER BY athlete_name ASC";
+        $rows = $this->db->query($sql, [$this->legacy_unit_id, $this->unit_id, $eventId])->getResult();
+        foreach ($rows as $row) $row->age = $this->age($row->birth_date);
+        return ["event" => $event, "roster" => $rows, "count" => count($rows)];
     }
 
     public function eventCategories(int $eventId): array
@@ -528,8 +557,8 @@ final class AcademyEventService extends CustomerDataService
     /**
      * Remove logicamente um evento e todos os registros operacionais que
      * pertencem a ele. Cobranças abertas são canceladas antes da remoção;
-     * recebimentos já realizados bloqueiam a operação para preservar o
-     * histórico financeiro.
+     * recebimentos já realizados permanecem no livro financeiro para
+     * preservar o histórico.
      */
     public function deleteEvent(int $eventId): array
     {
@@ -564,6 +593,8 @@ final class AcademyEventService extends CustomerDataService
         $evaluationIds = array_values(array_filter(array_map(static fn($row): int => (int) $row->id, $evaluations)));
         $categoryCount = (int) $this->db->table($this->table("gd_academy_event_categories"))
             ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->countAllResults();
+        $receivablesCancelled = 0;
+        $receivablesPreserved = 0;
 
         $this->db->transBegin();
         try {
@@ -575,15 +606,20 @@ final class AcademyEventService extends CustomerDataService
                     if ((string) ($receivable->status ?? "") === "paid"
                         || DataNormalizationService::decimalCompare((string) ($receivable->paid_amount ?? "0.00"), "0.00") > 0
                     ) {
-                        throw new \DomainException("gd_event_delete_paid");
+                        $receivablesPreserved++;
+                        continue;
                     }
                     if ((string) ($receivable->status ?? "") !== "cancelled") {
                         $finance->cancelReceivable($receivableId, "Evento excluido: " . (string) $event->name);
+                        $receivablesCancelled++;
                     }
                 }
             }
 
             $this->markDeleted($this->table("gd_academy_event_staff"), $eventId, "event_id", ["deleted" => 1]);
+            $this->markDeleted($this->table("gd_academy_event_roster"), $eventId, "event_id", [
+                "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            ]);
             $this->markDeleted($this->table("gd_academy_event_checklist"), $eventId, "event_id", [
                 "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
             ]);
@@ -647,7 +683,8 @@ final class AcademyEventService extends CustomerDataService
             "categories" => $categoryCount,
             "participants" => count($participantIds),
             "matches" => count($matchIds),
-            "receivables_cancelled" => count(array_unique($receivableIds)),
+            "receivables_cancelled" => $receivablesCancelled,
+            "receivables_preserved" => $receivablesPreserved,
         ]);
         return ["saved" => true, "id" => $eventId, "deleted" => true];
     }
@@ -699,8 +736,20 @@ final class AcademyEventService extends CustomerDataService
         return ["saved" => true, "id" => $saved];
     }
 
-    public function searchStudents(string $query, int $categoryId = 0): array
+    public function searchStudents(string $query, int $categoryId = 0, int $eventId = 0): array
     {
+        if (!$eventId && $categoryId) {
+            $category = $this->scopedRow($this->table("gd_academy_event_categories"), $categoryId);
+            $eventId = (int) ($category->event_id ?? 0);
+        }
+
+        if ($eventId > 0) {
+            $this->assertEvent($eventId);
+            return $categoryId > 0
+                ? $this->searchEventRoster($query, $eventId, $categoryId)
+                : $this->searchEventCandidates($query, $eventId);
+        }
+
         $students = $this->table("grupo_donato_alunos");
         $query = DataNormalizationService::text($query);
         $builder = $this->db->table($students)->select("id,nome_aluno,matricula,nascimento_aluno,turma,photo_path,responsavel_id,status")->where("unidade_id", $this->legacy_unit_id)->where("deleted", 0)->where("status", "Ativo");
@@ -718,6 +767,116 @@ final class AcademyEventService extends CustomerDataService
             usort($rows, static fn($left, $right): int => ((int) $right->age_compatible <=> (int) $left->age_compatible) ?: strcasecmp((string) $left->nome_aluno, (string) $right->nome_aluno));
         }
         return $rows;
+    }
+
+    /** Search active students that have not yet been placed in the event list. */
+    public function searchEventCandidates(string $query, int $eventId): array
+    {
+        $this->assertEvent($eventId);
+        $students = $this->table("grupo_donato_alunos");
+        $builder = $this->db->table($students)->select("id,nome_aluno,matricula,nascimento_aluno,turma,photo_path,status")
+            ->where("unidade_id", $this->legacy_unit_id)->where("deleted", 0)->where("status", "Ativo");
+        $query = DataNormalizationService::text($query);
+        if ($query !== "") $builder->groupStart()->like("nome_aluno", $query)->orLike("matricula", $query)->groupEnd();
+        $rows = $builder->orderBy("nome_aluno", "ASC")->get()->getResult();
+        $existing = [];
+        foreach ($this->db->table($this->table("gd_academy_event_roster"))->select("student_id")
+            ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->where("student_id IS NOT NULL", null, false)->get()->getResult() as $row) {
+            $existing[(int) $row->student_id] = true;
+        }
+        foreach ($rows as $row) {
+            $row->already_added = isset($existing[(int) $row->id]);
+            $row->age = $this->age($row->nascimento_aluno);
+            $row->age_compatible = true;
+        }
+        return $rows;
+    }
+
+    /** Search the event roster; category compatibility only ranks the results. */
+    public function searchEventRoster(string $query, int $eventId, int $categoryId = 0): array
+    {
+        $this->assertEvent($eventId);
+        $roster = $this->table("gd_academy_event_roster");
+        $students = $this->table("grupo_donato_alunos");
+        $external = $this->table("gd_academy_external_athletes");
+        $builder = $this->db->table($roster . " r")
+            ->select("r.id roster_id,r.athlete_type,r.student_id,r.external_athlete_id,r.responsible_id,"
+                . "s.nome_aluno,s.matricula,s.nascimento_aluno,s.turma,s.photo_path,x.name,x.birth_date,x.origin_club")
+            ->join($students . " s", "s.id=r.student_id AND s.unidade_id=" . (int) $this->legacy_unit_id . " AND s.deleted=0", "left", false)
+            ->join($external . " x", "x.id=r.external_athlete_id AND x.unit_id=r.unit_id AND x.deleted=0", "left", false)
+            ->where("r.unit_id", $this->unit_id)->where("r.event_id", $eventId)->where("r.deleted", 0);
+        $query = DataNormalizationService::text($query);
+        if ($query !== "") {
+            $builder->groupStart()->like("s.nome_aluno", $query)->orLike("s.matricula", $query)->orLike("x.name", $query)->groupEnd();
+        }
+        $rows = $builder->orderBy("COALESCE(s.nome_aluno,x.name)", "ASC", false)->get()->getResult();
+
+        $existing = [];
+        if ($categoryId > 0) {
+            foreach ($this->db->table($this->table("gd_academy_event_participants"))
+                ->select("roster_id,student_id,external_athlete_id")
+                ->where("unit_id", $this->unit_id)->where("category_id", $categoryId)->where("deleted", 0)->get()->getResult() as $row) {
+                if ((int) ($row->roster_id ?? 0) > 0) $existing["r:" . (int) $row->roster_id] = true;
+                if ((int) ($row->student_id ?? 0) > 0) $existing["s:" . (int) $row->student_id] = true;
+                if ((int) ($row->external_athlete_id ?? 0) > 0) $existing["x:" . (int) $row->external_athlete_id] = true;
+            }
+        }
+        $category = $categoryId ? $this->assertCategory($eventId, $categoryId) : null;
+        foreach ($rows as $row) {
+            $row->id = (int) ($row->student_id ?: $row->external_athlete_id);
+            $row->athlete_name = (string) ($row->nome_aluno ?: $row->name ?: "Atleta");
+            $row->birth_date = $row->nascimento_aluno ?: $row->birth_date;
+            $row->age = $this->age($row->birth_date);
+            $row->already_added = isset($existing["r:" . (int) $row->roster_id])
+                || isset($existing["s:" . (int) $row->student_id])
+                || isset($existing["x:" . (int) $row->external_athlete_id]);
+            $row->age_compatible = !$category || (($category->min_age === null || ($row->age !== null && $row->age >= (int) $category->min_age)) && ($category->max_age === null || ($row->age !== null && $row->age <= (int) $category->max_age)));
+        }
+        if ($category) {
+            usort($rows, static fn($left, $right): int => ((int) $right->age_compatible <=> (int) $left->age_compatible) ?: strcasecmp((string) $left->athlete_name, (string) $right->athlete_name));
+        }
+        return $rows;
+    }
+
+    public function addEventRoster(int $eventId, array $input): array
+    {
+        $event = $this->assertEvent($eventId);
+        $type = (string) ($input["athlete_type"] ?? "internal");
+        if (!in_array($type, ["internal", "external"], true)) throw new \DomainException("gd_invalid_value");
+        [$studentId, $externalId, $responsibleId, $athleteName] = $this->resolveRosterAthlete($type, $input);
+        $existing = $this->findRoster($eventId, $studentId, $externalId);
+        if ($existing) throw new \DomainException("gd_duplicate_event_roster");
+        $now = gmdate("Y-m-d H:i:s");
+        $data = $this->stamp([
+            "unit_id" => $this->unit_id, "event_id" => $eventId, "athlete_type" => $type,
+            "student_id" => $studentId, "external_athlete_id" => $externalId,
+            "responsible_id" => $responsibleId,
+            "notes" => DataNormalizationService::text($input["notes"] ?? "") ?: null,
+            "status" => "active", "lock_version" => 1, "created_at" => $now, "updated_at" => $now,
+        ], true);
+        try { $this->db->table($this->table("gd_academy_event_roster"))->insert($data); }
+        catch (\Throwable $e) { if (str_contains($e->getMessage(), "uniq_academy_roster")) throw new \DomainException("gd_duplicate_event_roster"); throw $e; }
+        $id = (int) $this->db->insertID();
+        if (!$id) throw new \RuntimeException("save_failed");
+        $this->audit_change("create", "academy_event_roster", $id, null, $data, ["event_id" => $eventId, "athlete_name" => $athleteName]);
+        return ["saved" => true, "id" => $id, "name" => $athleteName];
+    }
+
+    public function deleteEventRoster(int $rosterId): array
+    {
+        $table = $this->table("gd_academy_event_roster");
+        $row = $this->scopedRow($table, $rosterId);
+        if (!$row) throw new \DomainException("gd_record_not_found");
+        $used = $this->db->table($this->table("gd_academy_event_participants"))
+            ->where("unit_id", $this->unit_id)->where("roster_id", $rosterId)->where("deleted", 0)->countAllResults();
+        if ($used > 0) throw new \DomainException("gd_event_roster_in_use");
+        $now = gmdate("Y-m-d H:i:s");
+        $this->db->table($table)->where("id", $rosterId)->where("unit_id", $this->unit_id)->where("deleted", 0)->update([
+            "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
+            "lock_version" => (int) $row->lock_version + 1,
+        ]);
+        $this->audit_change("delete", "academy_event_roster", $rosterId, (array) $row, null, ["event_id" => (int) $row->event_id]);
+        return ["saved" => true, "id" => $rosterId, "deleted" => true];
     }
 
     public function saveMatchScore(int $matchId, array $input): array
@@ -770,6 +929,15 @@ final class AcademyEventService extends CustomerDataService
         $event = $this->assertEvent((int) $category->event_id);
         $type = (string) ($input["athlete_type"] ?? "internal");
         if (!in_array($type, ["internal", "external"], true)) throw new \DomainException("gd_invalid_value");
+        $rosterId = (int) ($input["roster_id"] ?? 0);
+        $roster = $rosterId > 0 ? $this->scopedRow($this->table("gd_academy_event_roster"), $rosterId) : null;
+        if ($rosterId > 0 && (!$roster || (int) $roster->event_id !== (int) $event->id)) throw new \DomainException("gd_event_roster_not_found");
+        if ($roster) {
+            $type = (string) $roster->athlete_type;
+            $input["student_id"] = $roster->student_id;
+            $input["external_athlete_id"] = $roster->external_athlete_id;
+            $input["responsible_id"] = $roster->responsible_id;
+        }
         $positionInput = trim((string) ($input["position"] ?? ""));
         $positionKey = self::positionKey($positionInput);
         if ($positionInput !== "" && !$positionKey) throw new \DomainException("gd_invalid_position");
@@ -798,6 +966,10 @@ final class AcademyEventService extends CustomerDataService
         }
         if (!empty($input["responsible_id"])) $responsibleId = (int) $input["responsible_id"];
         if ($responsibleId && !$this->legacyResponsible($responsibleId)) throw new \DomainException("gd_responsible_not_found");
+        if (!$roster) {
+            $roster = $this->ensureRoster((int) $event->id, $type, $studentId, $externalId, $responsibleId, $input["notes"] ?? null);
+            $rosterId = (int) $roster->id;
+        }
         $age = $this->age($birthDate);
         $ageCompatible = ($category->min_age === null || ($age !== null && $age >= (int) $category->min_age)) && ($category->max_age === null || ($age !== null && $age <= (int) $category->max_age));
         $amount = DataNormalizationService::decimal($input["amount"] ?? ($category->participation_amount !== null ? $category->participation_amount : $event->default_participation_amount), 2);
@@ -806,7 +978,7 @@ final class AcademyEventService extends CustomerDataService
         $duplicate = $this->db->table($table)->where("unit_id", $this->unit_id)->where("category_id", $categoryId)->where("deleted", 0)->groupStart()->where($studentId ? "student_id" : "external_athlete_id", $studentId ?: $externalId)->groupEnd()->get(1)->getRow();
         if ($duplicate) throw new \DomainException("gd_duplicate_participant");
         $now = gmdate("Y-m-d H:i:s");
-        $data = $this->stamp(["unit_id" => $this->unit_id, "event_id" => (int) $category->event_id, "category_id" => $categoryId, "athlete_type" => $type, "student_id" => $studentId, "external_athlete_id" => $externalId, "responsible_id" => $responsibleId, "position" => $position, "confirmation_status" => "waiting", "lineup_status" => "called", "financial_status" => DataNormalizationService::decimalCompare($amount, "0.00") > 0 ? "pending" : "not_applicable", "charge_strategy" => null, "amount" => $amount, "due_date" => null, "financial_reference_month" => "", "receivable_id" => null, "notes" => DataNormalizationService::text($input["notes"] ?? "") ?: null, "lock_version" => 1, "created_at" => $now, "updated_at" => $now], true);
+        $data = $this->stamp(["unit_id" => $this->unit_id, "event_id" => (int) $category->event_id, "category_id" => $categoryId, "roster_id" => $rosterId, "athlete_type" => $type, "student_id" => $studentId, "external_athlete_id" => $externalId, "responsible_id" => $responsibleId, "position" => $position, "confirmation_status" => "waiting", "lineup_status" => "called", "financial_status" => DataNormalizationService::decimalCompare($amount, "0.00") > 0 ? "pending" : "not_applicable", "charge_strategy" => null, "amount" => $amount, "due_date" => null, "financial_reference_month" => "", "receivable_id" => null, "notes" => DataNormalizationService::text($input["notes"] ?? "") ?: null, "lock_version" => 1, "created_at" => $now, "updated_at" => $now], true);
         try { $this->db->table($table)->insert($data); } catch (\Throwable $e) { if (str_contains($e->getMessage(), "uniq_academy_participant")) throw new \DomainException("gd_duplicate_participant"); throw $e; }
         $id = (int) $this->db->insertID();
         $this->audit_change("create", "academy_event_participant", $id, null, $data, ["event_id" => (int) $category->event_id, "athlete_name" => $athleteName]);
@@ -1190,6 +1362,83 @@ final class AcademyEventService extends CustomerDataService
         $p = $this->table("gd_academy_event_participants"); $s = $this->table("grupo_donato_alunos"); $x = $this->table("gd_academy_external_athletes"); $r = $this->table("grupo_donato_responsaveis"); $receivable = $this->table("gd_receivables"); $scores = $this->table("gd_academy_evaluation_scores"); $criteria = $this->table("gd_academy_evaluation_criteria"); $stats = $this->table("gd_academy_match_player_stats"); $rows = $this->db->query("SELECT p.*,COALESCE(s.nome_aluno,x.name) athlete_name,COALESCE(s.nascimento_aluno,x.birth_date) birth_date,s.turma,s.photo_path,x.origin_club,COALESCE(r.nome,x.responsible_name) responsible_name,rc.status receivable_status,rc.paid_amount,rc.balance_amount FROM `$p` p LEFT JOIN `$s` s ON s.id=p.student_id AND s.unidade_id=? AND s.deleted=0 LEFT JOIN `$x` x ON x.id=p.external_athlete_id AND x.unit_id=p.unit_id AND x.deleted=0 LEFT JOIN `$r` r ON r.id=p.responsible_id AND r.deleted=0 LEFT JOIN `$receivable` rc ON rc.id=p.receivable_id AND rc.unit_id=p.unit_id AND rc.deleted=0 WHERE p.unit_id=? AND p.event_id=? AND p.deleted=0 ORDER BY athlete_name ASC", [$this->legacy_unit_id, $this->unit_id, $eventId])->getResult(); foreach ($rows as $row) { $row->age = $this->age($row->birth_date); $row->evaluation = $this->db->table($this->table("gd_academy_athlete_evaluations"))->where("unit_id", $this->unit_id)->where("participant_id", (int) $row->id)->where("deleted", 0)->get(1)->getRow(); $row->scores = $row->evaluation ? $this->db->query("SELECT es.criterion_id,es.score,ec.code,ec.name FROM `$scores` es JOIN `$criteria` ec ON ec.id=es.criterion_id AND ec.deleted=0 WHERE es.unit_id=? AND es.evaluation_id=? AND es.deleted=0 ORDER BY ec.sort_order", [$this->unit_id, (int) $row->evaluation->id])->getResult() : []; $row->match_stats = []; foreach ($this->db->table($stats)->where("unit_id", $this->unit_id)->where("participant_id", (int) $row->id)->where("deleted", 0)->get()->getResult() as $stat) $row->match_stats[(int) $stat->match_id] = $stat; if ($row->receivable_status) $row->financial_status = (string) $row->receivable_status; } return $rows;
     }
 
+    /** @return array{0:?int,1:?int,2:?int,3:string} */
+    private function resolveRosterAthlete(string $type, array $input): array
+    {
+        $studentId = null;
+        $externalId = null;
+        $responsibleId = null;
+        $athleteName = "";
+        if ($type === "internal") {
+            $studentId = (int) ($input["student_id"] ?? 0);
+            $student = $this->db->table($this->table("grupo_donato_alunos"))
+                ->where("id", $studentId)->where("unidade_id", $this->legacy_unit_id)
+                ->where("deleted", 0)->where("status", "Ativo")->get(1)->getRow();
+            if (!$student) throw new \DomainException("gd_student_not_found");
+            $responsibleId = (int) ($student->responsavel_id ?? 0) ?: null;
+            $athleteName = (string) $student->nome_aluno;
+        } else {
+            $externalId = (int) ($input["external_athlete_id"] ?? 0);
+            $requestedResponsible = $this->optionalInt($input["responsible_id"] ?? null, 1, PHP_INT_MAX);
+            if ($requestedResponsible && !$this->legacyResponsible($requestedResponsible)) throw new \DomainException("gd_responsible_not_found");
+            $external = $externalId ? $this->scopedRow($this->table("gd_academy_external_athletes"), $externalId) : null;
+            if ($externalId && !$external) throw new \DomainException("gd_external_athlete_not_found");
+            if (!$external) {
+                $name = DataNormalizationService::text($input["external_name"] ?? "");
+                if ($name === "") throw new \DomainException("gd_external_name_required");
+                $now = gmdate("Y-m-d H:i:s");
+                $data = $this->stamp([
+                    "unit_id" => $this->unit_id, "name" => $name,
+                    "birth_date" => $this->date($input["birth_date"] ?? "", false),
+                    "responsible_id" => $requestedResponsible,
+                    "responsible_name" => DataNormalizationService::text($input["responsible_name"] ?? "") ?: null,
+                    "phone" => DataNormalizationService::text($input["phone"] ?? "") ?: null,
+                    "origin_club" => DataNormalizationService::text($input["origin_club"] ?? "") ?: null,
+                    "notes" => DataNormalizationService::text($input["external_notes"] ?? "") ?: null,
+                    "status" => "active", "deleted" => 0, "created_at" => $now, "updated_at" => $now,
+                ], true);
+                $this->db->table($this->table("gd_academy_external_athletes"))->insert($data);
+                $externalId = (int) $this->db->insertID();
+                $external = $this->scopedRow($this->table("gd_academy_external_athletes"), $externalId);
+            }
+            $responsibleId = $requestedResponsible ?: ((int) ($external->responsible_id ?? 0) ?: null);
+            $athleteName = (string) ($external->name ?? "Atleta externo");
+        }
+        return [$studentId, $externalId, $responsibleId, $athleteName];
+    }
+
+    private function findRoster(int $eventId, ?int $studentId, ?int $externalId): ?object
+    {
+        $builder = $this->db->table($this->table("gd_academy_event_roster"))
+            ->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0);
+        if ($studentId) $builder->where("student_id", $studentId);
+        elseif ($externalId) $builder->where("external_athlete_id", $externalId);
+        else return null;
+        return $builder->get(1)->getRow();
+    }
+
+    private function ensureRoster(int $eventId, string $type, ?int $studentId, ?int $externalId, ?int $responsibleId, $notes = null): object
+    {
+        $existing = $this->findRoster($eventId, $studentId, $externalId);
+        if ($existing) return $existing;
+        $now = gmdate("Y-m-d H:i:s");
+        $data = $this->stamp([
+            "unit_id" => $this->unit_id, "event_id" => $eventId, "athlete_type" => $type,
+            "student_id" => $studentId, "external_athlete_id" => $externalId,
+            "responsible_id" => $responsibleId,
+            "notes" => DataNormalizationService::text($notes ?? "") ?: null,
+            "status" => "active", "lock_version" => 1, "created_at" => $now, "updated_at" => $now,
+        ], true);
+        try { $this->db->table($this->table("gd_academy_event_roster"))->insert($data); }
+        catch (\Throwable $e) { if (str_contains($e->getMessage(), "uniq_academy_roster")) { $existing = $this->findRoster($eventId, $studentId, $externalId); if ($existing) return $existing; } throw $e; }
+        $id = (int) $this->db->insertID();
+        if (!$id) throw new \RuntimeException("save_failed");
+        $row = $this->scopedRow($this->table("gd_academy_event_roster"), $id);
+        if (!$row) throw new \RuntimeException("save_failed");
+        $this->audit_change("create", "academy_event_roster", $id, null, $data, ["event_id" => $eventId]);
+        return $row;
+    }
+
     private function eventMetrics(array $ids): array
     {
         if (!$ids) return []; $placeholders = implode(",", array_fill(0, count($ids), "?")); $params = array_merge([$this->unit_id], $ids); $p = $this->table("gd_academy_event_participants"); $ev = $this->table("gd_academy_athlete_evaluations"); $r = $this->table("gd_receivables"); $rows = $this->db->query("SELECT p.event_id,COUNT(*) called_count,SUM(p.confirmation_status='confirmed') confirmed_count,SUM(p.confirmation_status IN ('waiting','pending','no_response')) pending_confirmations,SUM(e.id IS NULL AND p.lineup_status NOT IN ('cut','absent')) pending_evaluations,COALESCE(SUM(CASE WHEN p.financial_status NOT IN ('exempt','courtesy','cancelled','not_applicable') THEN p.amount ELSE 0 END),0) expected_amount,COALESCE(SUM(r.paid_amount),0) received_amount,COALESCE(SUM(r.balance_amount),0) open_amount,COALESCE(SUM(CASE WHEN r.status='overdue' THEN r.balance_amount ELSE 0 END),0) overdue_amount,SUM(r.status IN ('open','partial','overdue')) pending_payments FROM `$p` p LEFT JOIN `$ev` e ON e.participant_id=p.id AND e.unit_id=p.unit_id AND e.deleted=0 LEFT JOIN `$r` r ON r.id=p.receivable_id AND r.unit_id=p.unit_id AND r.deleted=0 WHERE p.unit_id=? AND p.event_id IN ($placeholders) AND p.deleted=0 GROUP BY p.event_id", $params)->getResult(); $out = []; foreach ($rows as $row) $out[(int) $row->event_id] = ["called" => (int) $row->called_count, "confirmed" => (int) $row->confirmed_count, "pending_confirmations" => (int) $row->pending_confirmations, "pending_evaluations" => (int) $row->pending_evaluations, "expected_amount" => (string) $row->expected_amount, "received_amount" => (string) $row->received_amount, "open_amount" => (string) $row->open_amount, "overdue_amount" => (string) $row->overdue_amount, "pending_payments" => (int) $row->pending_payments]; return $out;
@@ -1212,7 +1461,7 @@ final class AcademyEventService extends CustomerDataService
     {
         $table = $this->table("gd_audit_logs");
         if (!$this->db->tableExists($table)) return [];
-        $types = ["academy_event", "academy_event_category", "academy_event_match", "academy_event_participant", "academy_event_staff", "academy_athlete_evaluation", "academy_match_player_stats"];
+        $types = ["academy_event", "academy_event_category", "academy_event_match", "academy_event_participant", "academy_event_roster", "academy_event_staff", "academy_athlete_evaluation", "academy_match_player_stats"];
         $typePlaceholders = implode(",", array_fill(0, count($types), "?"));
         $sql = "SELECT id,action,entity_type,entity_id,actor_id,created_at FROM `$table` WHERE unit_id=? AND ((entity_type='academy_event' AND entity_id=?) OR (entity_type IN ($typePlaceholders) AND metadata LIKE ?)) ORDER BY id DESC LIMIT 100";
         return $this->db->query($sql, array_merge([$this->unit_id, $eventId], $types, ['%"event_id":' . $eventId . '%']))->getResult();

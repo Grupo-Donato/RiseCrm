@@ -91,20 +91,7 @@
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">Mensalidade do Grupo Donato, referente à:</span>
-                <span class="info-value"></span>
-            </div>
-            <div class="checkbox-group">
-                <?php
-                $mensalidade_num = isset($mensalidade_numero) ? (int) $mensalidade_numero : 1;
-                for ($i = 1; $i <= 6; $i++):
-                    $checked = $i === $mensalidade_num ? "checked" : "";
-                    $style = $i === $mensalidade_num ? "color: #B23A3F; font-weight: bold;" : "";
-                    ?>
-                    <div class="checkbox-item">
-                        <input type="checkbox" <?php echo $checked; ?> disabled>
-                        <label style="<?php echo esc($style, "attr"); ?>"><?php echo (int) $i; ?>º Mensalidade</label>
-                    </div>
-                <?php endfor; ?>
+                <span class="info-value" style="color: #B23A3F; font-weight: bold;"><?php echo esc($competencia ?? ""); ?></span>
             </div>
         </div>
 

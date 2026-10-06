@@ -197,7 +197,7 @@ if ($task === "operacional-check") {
     $routesSrc = (string) @file_get_contents(__DIR__ . "/../Operacional/Config/Routes.php");
     $hasRoute = strpos($routesSrc, 'group("grupo_donato/operacional"') !== false && strpos($routesSrc, 'grupo_donato_gestao\\Operacional\\Controllers') !== false;
     $ok = $ok && $hasRoute; echo ($hasRoute ? "[PASS]" : "[FAIL]") . " rotas operacional (arquivo + namespace)\n";
-    $views = ["index", "lista_pagamentos", "modal_aluno", "financeiro_resumo", "public_matricula", "eventos", "modal_evento", "lista_alunos_por_turma"];
+    $views = ["index", "lista_pagamentos", "modal_aluno", "modal_nova_cobranca", "aluno_overview_modal", "financeiro_resumo", "public_matricula", "eventos", "modal_evento", "lista_alunos_por_turma"];
     foreach ($views as $v) { $p = __DIR__ . "/../Operacional/Views/$v.php"; $vok = is_file($p); $ok = $ok && $vok; echo ($vok ? "[PASS]" : "[FAIL]") . " view: $v\n"; }
     $db = db_connect();
     $tcount = count($db->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE ? ESCAPE '!'", [gd_like_literal_prefix($db->getPrefix() . "grupo_donato_")])->getResultArray());
@@ -740,8 +740,9 @@ if ($task === "selftest") {
         })) === count($professores)
     );
     gd_assert(
-        "rota de alunos por turma pertence à aba Alunos",
+        "rotas de consulta de alunos pertencem à aba Alunos",
         RoleAccessService::operational_route_section("alunos_por_turma") === "alunos"
+            && RoleAccessService::operational_route_section("alunos_outra_unidade_search") === "alunos"
     );
     $presence_model_class = "grupo_donato_gestao\\Operacional\\Models\\Bombeiros_presenca_model";
     $absence_counts = model($presence_model_class)->get_consecutive_absence_counts($unit_id);

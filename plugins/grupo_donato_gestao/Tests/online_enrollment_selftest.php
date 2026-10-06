@@ -68,6 +68,8 @@ function gd_online_enrollment_selftest(): void
         gd_assert("PDF final existe, tem assinatura e hash", $contract && is_file((new OnlineContractService())->absolutePath((string) $contract["pdf_path"])) && strlen((string) $contract["pdf_sha256"]) === 64 && str_contains((string) $contract["content_html"], "ASSINATURA DO CONTRATANTE"));
         $studentCount = $db->table($prefix . "grupo_donato_alunos")->where("id", $studentId)->countAllResults();
         $chargeCount = $db->table($prefix . "grupo_donato_cobrancas")->where("aluno_id", $studentId)->countAllResults();
+        $monthlyChargeCount = $db->table($prefix . "grupo_donato_cobrancas")->where("aluno_id", $studentId)->where("tipo", "Mensalidade")->countAllResults();
+        gd_assert("matrícula gera uma mensalidade inicial, sem parcelas futuras", $chargeCount === 3 && $monthlyChargeCount === 1);
         $retryFinal = $service->finalize($draft["token"], (int) $unit["id"]);
         gd_assert("repetição da finalização não duplica aluno ou cobranças", (int) $retryFinal["student_id"] === $studentId && $db->table($prefix . "grupo_donato_alunos")->where("id", $studentId)->countAllResults() === $studentCount && $db->table($prefix . "grupo_donato_cobrancas")->where("aluno_id", $studentId)->countAllResults() === $chargeCount);
         gd_assert("IDOR de contrato é bloqueado pelo token e unidade", gd_throws(fn() => $service->state(str_repeat("a", 64), ((int) $unit["id"]) + 999999)));

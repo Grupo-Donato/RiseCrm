@@ -46,12 +46,14 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->get("financeiro_resumo", "Bombeiros::financeiro_resumo");
     $routes->get("custos", "Bombeiros::custos");
     $routes->get("unidades", "Bombeiros::unidades");
+    $routes->get("turmas", "Bombeiros::turmas");
 
     // GD Academy: a entrada continua no shell; o detalhe usa telas profundas.
     $routes->get("evento-novo", "Bombeiros::academy_event_new");
     $routes->get("evento/(:num)/categoria/(:num)/partida/(:num)/(:segment)", "Bombeiros::academy_match_section/$1/$2/$3/$4");
     $routes->get("evento/(:num)/categoria/(:num)/partida/(:num)", "Bombeiros::academy_match/$1/$2/$3");
     $routes->get("evento/(:num)/categoria/(:num)/avaliacao/(:num)", "Bombeiros::academy_evaluation/$1/$2/$3");
+    $routes->get("evento/(:num)/categoria/(:num)/exportar-participantes", "Bombeiros::export_category_participants/$1/$2");
     $routes->get("evento/(:num)/categoria/(:num)/(:segment)", "Bombeiros::academy_category_section/$1/$2/$3");
     $routes->get("evento/(:num)/categoria/(:num)", "Bombeiros::academy_category/$1/$2");
     $routes->get("evento/(:num)/(:segment)", "Bombeiros::academy_event_section/$1/$2");
@@ -67,6 +69,8 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("save_event_match_score", "Bombeiros::save_event_match_score");
     $routes->post("save_event_staff", "Bombeiros::save_event_staff");
     $routes->post("academy_student_search", "Bombeiros::academy_student_search");
+    $routes->post("add_event_roster", "Bombeiros::add_event_roster");
+    $routes->post("delete_event_roster", "Bombeiros::delete_event_roster");
     $routes->post("add_event_participant", "Bombeiros::add_event_participant");
     $routes->post("update_event_participant", "Bombeiros::update_event_participant");
     $routes->post("save_event_lineup", "Bombeiros::save_event_lineup");
@@ -103,11 +107,13 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("custos_resumo", "Bombeiros::custos_resumo");
 
     $routes->post("aluno_modal_form", "Bombeiros::aluno_modal_form");
+    $routes->post("aluno_overview_modal", "Bombeiros::aluno_overview_modal");
     $routes->post("alunos_outra_unidade_search", "Bombeiros::alunos_outra_unidade_search");
     $routes->post("responsavel_modal_form", "Bombeiros::responsavel_modal_form");
     $routes->post("unidade_modal_form", "Bombeiros::unidade_modal_form");
     $routes->post("custo_modal_form", "Bombeiros::custo_modal_form");
     $routes->post("baixa_pagamento_modal_form", "Bombeiros::baixa_pagamento_modal_form");
+    $routes->post("nova_cobranca_modal_form", "Bombeiros::nova_cobranca_modal_form");
     $routes->post("comprovante_modal_form", "Bombeiros::comprovante_modal_form");
     $routes->post("importar_modal_form", "Bombeiros::importar_modal_form");
 
@@ -119,6 +125,7 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
     $routes->post("salvar_unidade", "Bombeiros::save_unidade");
     $routes->post("save_custo", "Bombeiros::save_custo");
     $routes->post("salvar_custo", "Bombeiros::save_custo");
+    $routes->post("salvar_cobranca_avulsa", "Bombeiros::salvar_cobranca_avulsa");
 
     $routes->post("delete_aluno", "Bombeiros::delete_aluno");
     $routes->post("deletar", "Bombeiros::delete_aluno");
@@ -131,6 +138,9 @@ $routes->group("grupo_donato/operacional", ["namespace" => "grupo_donato_gestao\
 
     $routes->post("lista_chamada", "Bombeiros::lista_chamada");
     $routes->post("salvar_presenca", "Bombeiros::salvar_presenca");
+    $routes->post("save_turma", "Bombeiros::save_turma");
+    $routes->post("atualizar_turma_aluno", "Bombeiros::atualizar_turma_aluno");
+    $routes->post("mesclar_turmas", "Bombeiros::mesclar_turmas");
     $routes->post("baixar_pagamento", "Bombeiros::baixar_pagamento");
     $routes->post("marcar_pagamento_pendente", "Bombeiros::marcar_pagamento_pendente");
     $routes->post("gerar_mensalidades_periodo", "Bombeiros::gerar_mensalidades_periodo");

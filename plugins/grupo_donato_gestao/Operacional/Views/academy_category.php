@@ -6,6 +6,7 @@ $metrics = is_array($metrics ?? null) ? $metrics : [];
 $participantCount = is_array($participants ?? null) ? count($participants) : 0;
 $eventUrl = get_uri("grupo_donato/operacional/evento/" . (int) $event->id);
 $categoryUrl = $eventUrl . "/categoria/" . (int) $category->id;
+$participantsExportUrl = $categoryUrl . "/exportar-participantes";
 $lineupLabels = ["called" => "Convocado", "starter" => "Titular", "substitute" => "Reserva", "absent" => "Ausente", "cut" => "Cortado"];
 $confirmationLabels = ["waiting" => "Aguardando", "confirmed" => "Confirmado", "refused" => "Recusado", "no_response" => "Sem resposta", "pending" => "Aguardando"];
     $participantPhoto = static function ($row): string {
@@ -26,15 +27,22 @@ $breadcrumbs = [["label" => "GD Academy", "url" => get_uri("grupo_donato/operaci
     <?php elseif ($section === "convocacao"): ?>
         <div class="gd-academy-section-title"><div><h2>Convocação</h2><p class="gd-academy-muted mb0">Confirmação e situação esportiva são acompanhadas separadamente.</p></div></div>
         <?php if ($can_lineup ?? false): ?>
-            <div class="row gd-academy-lineup-row"><div class="col-md-7"><div class="gd-academy-form-card"><h3>Selecionar aluno para convocação</h3><p class="gd-academy-muted">Digite o nome ou a matrícula para filtrar. Os alunos ativos aparecem automaticamente.</p><form id="gd-academy-student-search" action="<?php echo esc(get_uri("grupo_donato/operacional/academy_student_search")); ?>" method="post"><?php echo csrf_field(); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input class="form-control" name="query" placeholder="Digite nome ou matrícula" autocomplete="off" aria-label="Filtrar alunos do GD Academy"></form><div id="gd-academy-search-results" class="gd-academy-student-results mt10" aria-live="polite"><div class="gd-academy-muted">Carregando alunos...</div></div></div></div><div class="col-md-5"><div class="gd-academy-form-card"><h3>Atleta convidado</h3><?php echo form_open(get_uri("grupo_donato/operacional/add_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input type="hidden" name="athlete_type" value="external"><div class="form-group"><label>Nome</label><input class="form-control" name="external_name" required></div><div class="row"><div class="col-6 form-group"><label>Nascimento</label><input class="form-control" type="date" name="birth_date"></div><div class="col-6 form-group"><label>Clube de origem</label><input class="form-control" name="origin_club"></div></div><div class="form-group"><label>Responsável</label><input class="form-control" name="responsible_name"></div><div class="form-group"><label>Telefone</label><input class="form-control" name="phone"></div><button class="btn btn-default" type="submit">Adicionar convidado</button><?php echo form_close(); ?></div></div></div>
+            <div class="row gd-academy-lineup-row"><div class="col-md-7"><div class="gd-academy-form-card"><h3>Selecionar atleta da lista do evento</h3><p class="gd-academy-muted">Só aparecem os atletas já escolhidos no evento. A faixa etária apenas prioriza os compatíveis e continua sinalizando exceções.</p><form id="gd-academy-student-search" action="<?php echo esc(get_uri("grupo_donato/operacional/academy_student_search")); ?>" method="post"><?php echo csrf_field(); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input type="hidden" name="event_id" value="<?php echo (int) $event->id; ?>"><input class="form-control" name="query" placeholder="Digite nome ou matrícula" autocomplete="off" aria-label="Filtrar atletas da lista do evento"></form><div id="gd-academy-search-results" class="gd-academy-student-results mt10" aria-live="polite"><div class="gd-academy-muted">Carregando atletas...</div></div></div></div><div class="col-md-5"><div class="gd-academy-form-card"><h3>Atleta convidado</h3><?php echo form_open(get_uri("grupo_donato/operacional/add_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="category_id" value="<?php echo (int) $category->id; ?>"><input type="hidden" name="athlete_type" value="external"><div class="form-group"><label>Nome</label><input class="form-control" name="external_name" required></div><div class="row"><div class="col-6 form-group"><label>Nascimento</label><input class="form-control" type="date" name="birth_date"></div><div class="col-6 form-group"><label>Clube de origem</label><input class="form-control" name="origin_club"></div></div><div class="form-group"><label>Responsável</label><input class="form-control" name="responsible_name"></div><div class="form-group"><label>Telefone</label><input class="form-control" name="phone"></div><button class="btn btn-default" type="submit">Adicionar convidado à lista e categoria</button><?php echo form_close(); ?></div></div></div>
         <?php endif; ?>
-        <section class="gd-academy-participants-card" aria-labelledby="gd-academy-participants-title">
+        <section class="gd-academy-participants-card gd-academy-participants-print-area" aria-labelledby="gd-academy-participants-title">
+            <div class="gd-academy-print-heading"><?php echo esc($event->name ?? "Evento"); ?> · <?php echo esc($category->name ?? "Categoria"); ?></div>
             <div class="gd-academy-participants-header">
                 <div>
                     <h3 id="gd-academy-participants-title">Alunos convocados</h3>
                     <p class="gd-academy-muted mb0">A lista exibe três atletas por vez. Use a rolagem para ver os demais.</p>
                 </div>
-                <span class="gd-academy-participants-count"><?php echo $participantCount; ?> <?php echo $participantCount === 1 ? "atleta" : "atletas"; ?></span>
+                <div class="gd-academy-participants-tools">
+                    <span class="gd-academy-participants-count"><?php echo $participantCount; ?> <?php echo $participantCount === 1 ? "atleta" : "atletas"; ?></span>
+                    <div class="gd-academy-participants-actions">
+                        <a class="btn btn-default btn-sm" href="<?php echo esc($participantsExportUrl); ?>" title="Exportar lista para o Excel"><i data-feather="download" class="icon-14"></i><span class="gd-academy-action-label">Exportar Excel</span></a>
+                        <button class="btn btn-default btn-sm" type="button" onclick="window.print();" title="Imprimir lista"><i data-feather="printer" class="icon-14"></i><span class="gd-academy-action-label">Imprimir</span></button>
+                    </div>
+                </div>
             </div>
             <?php if (empty($participants)): ?><div class="gd-academy-empty"><i data-feather="users" class="icon-28"></i><h3>Nenhum atleta convocado</h3><p>Ainda não existem atletas convocados nesta categoria.</p></div><?php else: ?><div class="gd-academy-participants-scroll"><div class="gd-academy-list"><?php foreach ($participants as $participant): ?><article class="gd-academy-list-item gd-academy-participant-item"><div class="d-flex align-items-center gap-2"><img class="gd-academy-avatar" src="<?php echo esc($participantPhoto($participant)); ?>" alt=""><div class="gd-academy-list-item-main"><strong><?php echo esc($participant->athlete_name); ?></strong><small><?php echo $participant->age !== null ? (int) $participant->age . " anos" : "Idade não informada"; ?> · <?php echo esc($participant->athlete_type === "internal" ? ($participant->turma ?? "Aluno GD Academy") : ($participant->origin_club ?? "Atleta convidado")); ?><?php if (!empty($participant->position)): ?> · <?php echo esc($participant->position); ?><?php endif; ?></small></div></div><div class="d-flex flex-wrap gap-1"><span class="gd-academy-status <?php echo ($participant->confirmation_status ?? "") === "confirmed" ? "gd-academy-status-success" : "gd-academy-status-warning"; ?>"><?php echo esc($confirmationLabels[$participant->confirmation_status] ?? $participant->confirmation_status); ?></span><span class="gd-academy-status gd-academy-status-muted"><?php echo esc($lineupLabels[$participant->lineup_status] ?? $participant->lineup_status); ?></span></div><?php if ($can_lineup ?? false): ?><div class="w-100"><div class="row mt10"><div class="col-md-4 mb8"><?php echo form_open(get_uri("grupo_donato/operacional/update_event_participant"), ["class" => "gd-academy-ajax-form"]); ?><input type="hidden" name="participant_id" value="<?php echo (int) $participant->id; ?>"><label class="gd-academy-muted">Situação esportiva</label><select class="form-control" name="lineup_status"><?php foreach ($lineupLabels as $key => $label): ?><option value="<?php echo esc($key); ?>" <?php echo $participant->lineup_status === $key ? "selected" : ""; ?>><?php echo esc($label); ?></option><?php endforeach; ?></select></div><div class="col-md-4 mb8"><label class="gd-academy-muted">Confirmação</label><select class="form-control" name="confirmation_status"><?php foreach ($confirmationLabels as $key => $label): ?><option value="<?php echo esc($key); ?>" <?php echo $participant->confirmation_status === $key ? "selected" : ""; ?>><?php echo esc($label); ?></option><?php endforeach; ?></select></div><div class="col-md-2 mb8"><label class="gd-academy-muted">Posição</label><input class="form-control" name="position" value="<?php echo esc($participant->position ?? ""); ?>"></div><div class="col-md-2 mb8 d-flex align-items-end"><button class="btn btn-default w-100" type="submit">Salvar</button><?php echo form_close(); ?></div></div></div><div class="text-right mt10"><?php echo form_open(get_uri("grupo_donato/operacional/delete_event_participant"), ["class" => "gd-academy-delete-participant-form"]); ?><input type="hidden" name="participant_id" value="<?php echo (int) $participant->id; ?>"><button class="btn btn-danger btn-sm" type="submit"><i data-feather="trash-2" class="icon-14"></i> Excluir convocação</button><?php echo form_close(); ?></div><?php endif; ?></article><?php endforeach; ?></div></div><?php endif; ?>
         </section>
@@ -92,7 +100,7 @@ $(function(){
                     appAjaxRequest({
                         url: "<?php echo get_uri("grupo_donato/operacional/add_event_participant"); ?>",
                         type: "POST",
-                        data: {category_id: <?php echo (int) $category->id; ?>, athlete_type: "internal", student_id: row.id},
+                        data: {category_id: <?php echo (int) $category->id; ?>, roster_id: row.roster_id, athlete_type: row.athlete_type || "internal", student_id: row.student_id || row.id, external_athlete_id: row.external_athlete_id, "<?php echo csrf_token(); ?>": "<?php echo csrf_hash(); ?>"},
                         dataType: "json",
                         success: function(add) {
                             if (add && add.success) {
@@ -102,8 +110,8 @@ $(function(){
                                 button.prop("disabled", false).text("Adicionar");
                             }
                         },
-                        error: function() {
-                            appAlert.error("Não foi possível convocar o aluno.");
+                        error: function(xhr) {
+                            appAlert.error(window.gdAcademyAjaxErrorMessage(xhr,"Não foi possível convocar o aluno."));
                             button.prop("disabled", false).text("Adicionar");
                         }
                     });
@@ -126,8 +134,8 @@ $(function(){
                 if (current !== requestId) return;
                 renderStudents((response && response.data && response.data.data) || []);
             },
-            error: function() {
-                if (current === requestId) results.html('<div class="text-danger">Não foi possível carregar os alunos.</div>');
+            error: function(xhr) {
+                if (current === requestId) results.html('<div class="text-danger"></div>').find(".text-danger").text(window.gdAcademyAjaxErrorMessage(xhr,"Não foi possível carregar os alunos."));
             }
         });
     }
@@ -162,7 +170,7 @@ $(function(){
         e.preventDefault();
         var form=this,scope=$(form).closest(".w-100"),button=scope.find("button[type='submit']"),original=button.html();
         button.prop("disabled",true).text("Salvando...");
-        appAjaxRequest({url:form.action,type:"POST",data:scope.find("input,select").serialize(),dataType:"json",success:function(result){if(result&&result.success){window.location.reload();return;}appAlert.error((result&&result.message)||"Não foi possível atualizar o atleta.");button.prop("disabled",false).html(original);},error:function(){appAlert.error("Não foi possível atualizar o atleta.");button.prop("disabled",false).html(original);}});
+        appAjaxRequest({url:form.action,type:"POST",data:scope.find("input,select").serialize(),dataType:"json",success:function(result){if(result&&result.success){window.location.reload();return;}appAlert.error((result&&result.message)||"Não foi possível atualizar o atleta.");button.prop("disabled",false).html(original);},error:function(xhr){appAlert.error(window.gdAcademyAjaxErrorMessage(xhr,"Não foi possível atualizar o atleta."));button.prop("disabled",false).html(original);}});
     });
 });
 </script>

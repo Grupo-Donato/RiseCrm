@@ -1,5 +1,12 @@
 <script>
 $(function(){
+    window.gdAcademyAjaxErrorMessage = function(xhr, fallback) {
+        var response = xhr && xhr.responseJSON;
+        if (!response && xhr && xhr.responseText) {
+            try { response = JSON.parse(xhr.responseText); } catch (ignore) {}
+        }
+        return (response && response.message) || fallback;
+    };
     $(document).off("submit.gdAcademy", ".gd-academy-ajax-form").on("submit.gdAcademy", ".gd-academy-ajax-form", function(e){
         e.preventDefault();
         var form=this, button=$(form).find("button[type='submit']"), original=button.html();
@@ -9,7 +16,7 @@ $(function(){
             if(result&&result.success){ window.location.reload(); return; }
             appAlert.error((result&&result.message)||"Não foi possível concluir a operação.");
             button.prop("disabled",false).html(original);
-        },error:function(){appAlert.error("Não foi possível concluir a operação.");button.prop("disabled",false).html(original);}});
+        },error:function(xhr){appAlert.error(window.gdAcademyAjaxErrorMessage(xhr,"Não foi possível concluir a operação."));button.prop("disabled",false).html(original);}});
     });
 });
 </script>

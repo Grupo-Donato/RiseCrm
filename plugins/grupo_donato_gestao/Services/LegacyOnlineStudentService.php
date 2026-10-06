@@ -82,18 +82,22 @@ final class LegacyOnlineStudentService
                 "turma" => (string) ($payload["horario"] ?? ""),
                 "horario" => (string) ($payload["horario"] ?? ""),
                 "curso_nome" => (string) $payload["curso_nome"],
-                "num_parcelas" => (int) $payload["num_parcelas"],
+                // Campo legado mantido na tabela, mas a regra atual é uma
+                // mensalidade recorrente sem quantidade pré-definida.
+                "num_parcelas" => 1,
                 "valor_mensalidade" => (float) $payload["valor_mensalidade"],
                 "valor_inscricao" => (float) $payload["valor_inscricao"],
                 "data_inscricao" => (string) $payload["data_inscricao"],
                 "valor_mensal" => (float) $payload["valor_mensalidade"],
-                "data_primeira_parcela" => (string) $payload["data_primeira_parcela"],
+                "data_primeira_parcela" => null,
                 "data_inicio" => (string) $payload["data_inicio"],
                 "data_matricula" => date("Y-m-d"),
                 "tamanho_camisa" => (string) ($payload["tamanho_camisa"] ?? ""),
                 "matricula_efetuada" => 0,
-                "uniforme_efetuado" => 0,
+                "uniforme_efetuado" => 1,
                 "material_efetuado" => 0,
+                "camiseta_status" => "pago",
+                "camiseta_data" => date("Y-m-d"),
                 "melhor_horario_ligacao" => (string) ($payload["melhor_horario_ligacao"] ?? ""),
                 "cidade_assinatura" => (string) $payload["cidade_assinatura"],
                 "estado_assinatura" => (string) $payload["estado_assinatura"],
@@ -138,24 +142,23 @@ final class LegacyOnlineStudentService
 
     private function createCharges(int $studentId, int $responsibleId, int $unitId, array $payload): void
     {
-        $firstDue = (string) $payload["data_primeira_parcela"];
-        $installments = max(1, (int) $payload["num_parcelas"]);
-        for ($i = 0; $i < $installments; $i++) {
-            $due = date("Y-m-d", strtotime($firstDue . " +" . $i . " month"));
-            $this->saveCharge([
-                "aluno_id" => $studentId,
-                "responsavel_id" => $responsibleId,
-                "unit_id" => $unitId,
-                "vencimento" => $due,
-                "valor" => (float) $payload["valor_mensalidade"],
-                "competencia" => date("m/Y", strtotime($due)),
-                "mes_referencia" => (int) date("m", strtotime($due)),
-                "ano_referencia" => (int) date("Y", strtotime($due)),
-                "descricao" => ($i + 1) . "ª parcela",
-                "status" => "Pendente",
-                "tipo" => "Mensalidade",
-            ]);
-        }
+        // Gera somente a competência inicial. O operacional cria as
+        // competências seguintes conforme o mês, enquanto o aluno estiver
+        // ativo; assim a matrícula não fica presa a um número de parcelas.
+        $due = (string) ($payload["data_inicio"] ?? date("Y-m-d"));
+        $this->saveCharge([
+            "aluno_id" => $studentId,
+            "responsavel_id" => $responsibleId,
+            "unit_id" => $unitId,
+            "vencimento" => $due,
+            "valor" => (float) $payload["valor_mensalidade"],
+            "competencia" => date("m/Y", strtotime($due)),
+            "mes_referencia" => (int) date("m", strtotime($due)),
+            "ano_referencia" => (int) date("Y", strtotime($due)),
+            "descricao" => "Mensalidade",
+            "status" => "Pendente",
+            "tipo" => "Mensalidade",
+        ]);
 
         $registrationDate = (string) $payload["data_inscricao"];
         $this->saveCharge([
@@ -172,20 +175,6 @@ final class LegacyOnlineStudentService
             "tipo" => "Matrícula",
         ]);
 
-        $today = date("Y-m-d");
-        $this->saveCharge([
-            "aluno_id" => $studentId,
-            "responsavel_id" => $responsibleId,
-            "unit_id" => $unitId,
-            "vencimento" => $today,
-            "valor" => 67.00,
-            "competencia" => date("m/Y"),
-            "mes_referencia" => (int) date("m"),
-            "ano_referencia" => (int) date("Y"),
-            "descricao" => "Camiseta",
-            "status" => "Pendente",
-            "tipo" => "Camiseta",
-        ]);
     }
 
     private function saveCharge(array $data): void

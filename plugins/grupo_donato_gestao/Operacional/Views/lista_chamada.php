@@ -460,6 +460,7 @@ foreach ($alunos as $aluno) {
     <?php echo form_open(get_uri("grupo_donato/operacional/salvar_presenca"), ["id" => "bombeiros-presenca-form", "class" => "general-form", "role" => "form"]); ?>
         <input type="hidden" name="data_aula" value="<?php echo esc($data_aula, "attr"); ?>" />
         <input type="hidden" name="turma" value="<?php echo esc($turma, "attr"); ?>" />
+        <input type="hidden" name="turma_id" value="<?php echo (int) ($turma_id ?? 0); ?>" />
 
         <?php foreach ($attendance_students as $student): ?>
             <input

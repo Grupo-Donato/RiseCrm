@@ -382,7 +382,7 @@ final class OnlineEnrollmentService
                 "student_name" => (string) ($payload["nome_aluno"] ?? ""),
                 "responsible_name" => (string) ($payload["responsavel_nome"] ?? ""),
                 "class_name" => (string) ($payload["horario"] ?? "Não informado"),
-                "monthly_value" => number_format((float) ($payload["valor_mensalidade"] ?? 237), 2, ",", "."),
+                "monthly_value" => number_format((float) ($payload["valor_mensalidade"] ?? 220), 2, ",", "."),
                 "whatsapp" => $this->formatPhone((string) ($payload["responsavel_whats"] ?? "")),
             ],
             "contract_number" => $contract["contract_number"] ?? null,
@@ -478,13 +478,11 @@ final class OnlineEnrollmentService
             "tamanho_camisa" => $text("tamanho_camisa", 50),
             "melhor_horario_ligacao" => $text("melhor_horario_ligacao", 20),
             "data_inicio" => $startDate,
-            "data_primeira_parcela" => $startDate,
             "data_inscricao" => $stored && $text("data_inscricao", 10) !== "" ? (string) $date("data_inscricao") : date("Y-m-d"),
             "cidade_assinatura" => $text("cidade_assinatura", 255, (string) ($unit["cidade"] ?? "São Bernardo do Campo")) ?: ((string) ($unit["cidade"] ?? "São Bernardo do Campo")),
             "estado_assinatura" => strtoupper($text("estado_assinatura", 2, "SP")) ?: "SP",
             "curso_nome" => "ACADEMIA DE TREINAMENTO MIRIM",
-            "num_parcelas" => 12,
-            "valor_mensalidade" => 237.00,
+            "valor_mensalidade" => 220.00,
             "valor_inscricao" => 100.00,
         ];
     }

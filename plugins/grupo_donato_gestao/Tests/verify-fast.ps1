@@ -79,6 +79,7 @@ $requiredRoutes = @(
     '$routes->get("evento-novo"',
     '$routes->get("evento/(:num)"',
     '$routes->get("evento/(:num)/categoria/(:num)"',
+    '$routes->get("evento/(:num)/categoria/(:num)/exportar-participantes"',
     '$routes->get("evento/(:num)/categoria/(:num)/partida/(:num)"',
     '$routes->get("evento/(:num)/categoria/(:num)/avaliacao/(:num)"'
 )

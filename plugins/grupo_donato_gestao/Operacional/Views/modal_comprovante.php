@@ -56,9 +56,10 @@ $formas_pagamento = [
 
         <div class="form-group">
             <div class="row">
-                <label for="bombeiros-comprovante-mensalidade" class="col-md-3">Mensalidade</label>
+                <label for="bombeiros-comprovante-competencia" class="col-md-3">Competência</label>
                 <div class="col-md-3">
-                    <?php echo form_input(["id" => "bombeiros-comprovante-mensalidade", "name" => "mensalidade_numero", "type" => "number", "min" => "1", "max" => "6", "value" => get_array_value($model_info, "mensalidade_numero"), "class" => "form-control"]); ?>
+                    <?php echo form_input(["id" => "bombeiros-comprovante-competencia", "name" => "competencia", "value" => get_array_value($model_info, "competencia"), "class" => "form-control", "readonly" => true]); ?>
+                    <input type="hidden" name="mensalidade_numero" value="1" />
                 </div>
                 <label for="bombeiros-comprovante-valor" class="col-md-2">Valor</label>
                 <div class="col-md-4">

@@ -232,7 +232,7 @@ $pagamento_select_options = function ($items) {
                     {title: "WhatsApp", "class": "w130"},
                     {title: "Turma/Pelotão", "class": "w140"},
                     {title: "Competência", "class": "w120"},
-                    {title: "Parcela/Descrição", "class": "w170"},
+                    {title: "Cobrança / Descrição", "class": "w170"},
                     {title: "Vencimento", "class": "w110"},
                     {title: "Status", "class": "text-center w120"},
                     {title: "Data pagamento", "class": "w130"},

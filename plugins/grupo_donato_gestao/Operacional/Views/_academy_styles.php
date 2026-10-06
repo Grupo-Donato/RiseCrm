@@ -112,6 +112,10 @@
     .gd-academy-page .gd-academy-participants-card { background: var(--academy-surface) !important; border: 1px solid var(--academy-line) !important; border-radius: 10px; margin-bottom: 17px; padding: 16px; }
     .gd-academy-page .gd-academy-participants-header { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; margin-bottom: 13px; }
     .gd-academy-page .gd-academy-participants-header h3 { color: var(--academy-text); font-size: 16px; font-weight: 600; margin: 0 0 5px; }
+    .gd-academy-page .gd-academy-participants-tools { align-items: center; display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .gd-academy-page .gd-academy-participants-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+    .gd-academy-page .gd-academy-participants-actions .btn { align-items: center; display: inline-flex; gap: 5px; }
+    .gd-academy-page .gd-academy-print-heading { display: none; }
     .gd-academy-page .gd-academy-participants-count { background: var(--academy-surface-2); border: 1px solid var(--academy-line); border-radius: 999px; color: var(--academy-muted); flex: 0 0 auto; font-size: 11px; font-weight: 700; padding: 5px 9px; }
     .gd-academy-page .gd-academy-participants-scroll { max-height: 580px; overflow-y: auto; margin: 0 -8px; padding: 0 3px 2px 0; scrollbar-color: var(--academy-line) transparent; scrollbar-width: thin; }
     .gd-academy-page .gd-academy-participants-scroll .gd-academy-participant-item { min-height: 176px; }
@@ -193,6 +197,8 @@
         .gd-academy-page .gd-academy-table td:last-child { padding-top: 9px; }
         .gd-academy-page .gd-academy-form-card { padding: 14px; }
         .gd-academy-page .gd-academy-participants-card { padding: 14px; }
+        .gd-academy-page .gd-academy-participants-header { flex-direction: column; }
+        .gd-academy-page .gd-academy-participants-tools { justify-content: space-between; width: 100%; }
         .gd-academy-page .gd-academy-participants-scroll { max-height: 1110px; }
         .gd-academy-page .gd-academy-lineup-row { display: block; }
         .gd-academy-page .gd-academy-lineup-row > [class*="col-"] { display: block; }
@@ -200,5 +206,68 @@
         .gd-academy-page .gd-academy-student-result .btn { margin-left: auto; }
         .gd-academy-page select[name="position"] { max-width: none !important; width: 100%; }
         .gd-academy-page .gd-academy-sticky-actions { position: static; }
+    }
+
+    @media print {
+        @page { margin: 12mm; }
+        html,
+        body { background: #fff !important; }
+        body * { visibility: hidden !important; }
+        .gd-academy-page .gd-academy-participants-print-area,
+        .gd-academy-page .gd-academy-participants-print-area * { visibility: visible !important; }
+        .gd-academy-page .gd-academy-participants-print-area {
+            background: #fff !important;
+            border: 0 !important;
+            color: #000 !important;
+            left: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            top: 0;
+            width: 100% !important;
+        }
+        .gd-academy-page .gd-academy-print-heading {
+            border-bottom: 2px solid #222;
+            color: #000 !important;
+            display: block;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            padding-bottom: 7px;
+        }
+        .gd-academy-page .gd-academy-participants-header {
+            align-items: center;
+            border-bottom: 1px solid #bbb;
+            color: #000 !important;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+        }
+        .gd-academy-page .gd-academy-participants-header h3,
+        .gd-academy-page .gd-academy-participants-header p,
+        .gd-academy-page .gd-academy-participants-count { color: #000 !important; }
+        .gd-academy-page .gd-academy-participants-header p { font-size: 10px; }
+        .gd-academy-page .gd-academy-participants-actions { display: none !important; }
+        .gd-academy-page .gd-academy-participants-scroll {
+            max-height: none !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            padding: 0 !important;
+        }
+        .gd-academy-page .gd-academy-participant-item {
+            background: #fff !important;
+            border: 1px solid #ccc !important;
+            break-inside: avoid;
+            color: #000 !important;
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            margin-bottom: 7px;
+            page-break-inside: avoid;
+        }
+        .gd-academy-page .gd-academy-participant-item > .w-100 { display: none !important; }
+        .gd-academy-page .gd-academy-list-item-main strong,
+        .gd-academy-page .gd-academy-list-item-main small,
+        .gd-academy-page .gd-academy-status,
+        .gd-academy-page .gd-academy-participants-count { color: #000 !important; }
+        .gd-academy-page .gd-academy-status { background: #fff !important; border: 1px solid #999; }
+        .gd-academy-page .gd-academy-avatar { filter: grayscale(1); }
     }
 </style>

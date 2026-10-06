@@ -211,7 +211,7 @@ $test('campanhas oferecem público escolar, cadastro manual e modelo de planilha
         $assert(str_contains($routes, "'{$route}'"), 'Rota de público ausente: ' . $route);
     }
     foreach (['audience_import', 'audience_template'] as $method) $assert(str_contains($controller, 'function ' . $method), 'Endpoint ausente: ' . $method);
-    foreach (['students', 'studentAudienceRows', 'import_audience', 'spreadsheetAutoloadPath', 'readAudienceCsv'] as $needle) $assert(str_contains($service, $needle), 'Suporte de público ausente: ' . $needle);
+    foreach (['students', 'studentAudienceRows', 'import_audience', 'spreadsheetAutoloadPath', 'readAudienceCsv', 'mb_check_encoding', 'Windows-1252'] as $needle) $assert(str_contains($service, $needle), 'Suporte de público ausente: ' . $needle);
     foreach (['impulso-campaign-manual-recipient-list', 'impulso-campaign-audience-file', 'download-campaign-audience-template', 'import-campaign-audience', 'student_status'] as $needle) $assert(str_contains($modal . $workspace, $needle), 'Jornada simplificada ausente: ' . $needle);
     $assert(substr_count($modal, 'id="impulso-campaign-recipient-list"') === 1, 'ID do histórico de destinatários colide com o editor manual.');
 });
@@ -220,6 +220,7 @@ $test('campanhas oferecem público escolar, cadastro manual e modelo de planilha
 $test('worker interno e histórico operacional estão disponíveis', static function () use ($read, $assert): void {
     $command = $read('Commands/Chatwoot_jobs.php');
     $cron = $read('cron.php');
+    $jobs = $read('Services/Integration_job_service.php');
     $workspace = $read('Assets/js/hub-workspace.js');
     $modal = $read('Views/modals/common.php');
     foreach (['impulso:chat-jobs', 'Integration_job_service'] as $needle) {
@@ -227,6 +228,9 @@ $test('worker interno e histórico operacional estão disponíveis', static func
     }
     foreach (['PHP_SAPI', 'Migration_runner', 'Integration_job_service'] as $needle) {
         $assert(str_contains($cron, $needle), 'Cron seguro incompleto: ' . $needle);
+    }
+    foreach (["WHEN 'campaign_recipient' THEN 0", "WHEN 'webhook_retry' THEN 2", "orderBy('id', 'ASC')"] as $needle) {
+        $assert(str_contains($jobs, $needle), 'Fila operacional sem prioridade de entrega: ' . $needle);
     }
     foreach (['openCampaignHistory', 'loadCampaignRunRecipients', 'data-campaign-run-id'] as $needle) {
         $assert(str_contains($workspace, $needle), 'Histórico de campanha ausente no workspace: ' . $needle);

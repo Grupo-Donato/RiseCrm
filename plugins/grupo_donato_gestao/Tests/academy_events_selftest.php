@@ -9,7 +9,7 @@ function gd_academy_events_selftest(): void
     $prefix = $db->getPrefix();
     $tables = [
         "gd_academy_events", "gd_academy_event_categories", "gd_academy_event_matches",
-        "gd_academy_external_athletes", "gd_academy_event_participants", "gd_academy_event_confirmations",
+        "gd_academy_external_athletes", "gd_academy_event_roster", "gd_academy_event_participants", "gd_academy_event_confirmations",
         "gd_academy_event_checklist", "gd_academy_evaluation_criteria", "gd_academy_athlete_evaluations",
         "gd_academy_evaluation_scores", "gd_academy_match_player_stats",
     ];
@@ -17,7 +17,19 @@ function gd_academy_events_selftest(): void
     $operationalRoutes = (string) @file_get_contents(__DIR__ . "/../Operacional/Config/Routes.php");
     $roleAccess = (string) @file_get_contents(__DIR__ . "/../Services/RoleAccessService.php");
     $controller = (string) @file_get_contents(__DIR__ . "/../Operacional/Controllers/Bombeiros.php");
-    gd_assert("exclusão de convocação passa pelo controle de acesso", strpos($operationalRoutes, "delete_event_participant") !== false && strpos($roleAccess, '"delete_event_participant" => "eventos"') !== false && strpos($controller, "public function delete_event_participant") !== false);
+    gd_assert("rotas da lista-base, convocação e exportação passam pelo controle de acesso",
+        strpos($operationalRoutes, "add_event_roster") !== false
+        && strpos($operationalRoutes, "delete_event_roster") !== false
+        && strpos($operationalRoutes, "delete_event_participant") !== false
+        && strpos($operationalRoutes, "exportar-participantes") !== false
+        && strpos($roleAccess, '"add_event_roster" => "eventos"') !== false
+        && strpos($roleAccess, '"delete_event_roster" => "eventos"') !== false
+        && strpos($roleAccess, '"delete_event_participant" => "eventos"') !== false
+        && strpos($roleAccess, '"export_category_participants" => "eventos"') !== false
+        && strpos($controller, "public function add_event_roster") !== false
+        && strpos($controller, "public function delete_event_roster") !== false
+        && strpos($controller, "public function delete_event_participant") !== false
+        && strpos($controller, "public function export_category_participants") !== false);
 
     $professor = (object) ["user_type" => "staff", "job_title" => "Professor", "permissions" => ["gd_academy_events_view" => "1"]];
     $professorAccess = new \grupo_donato_gestao\Services\AccessService($professor);
@@ -55,21 +67,27 @@ function gd_academy_events_selftest(): void
     $attackerCriteria = array_filter($service->criteria("Atacante"), static fn($criterion): bool => (string) ($criterion->scope ?? "") === "position");
     gd_assert("critérios de goleiro são filtrados pela posição", count($goalkeeperCriteria) === 4 && count($attackerCriteria) === 0);
     $token = substr(hash("sha256", uniqid("academy-events-", true)), 0, 12);
-    $eventId = $categoryId = $matchId = $participantId = $externalParticipantId = $readdedParticipantId = $externalAthleteId = $receivableId = $accountId = $staffId = $confirmationId = $evaluationId = $statsId = 0;
+    $eventId = $categoryId = $matchId = $rosterId = $externalRosterId = $participantId = $externalParticipantId = $readdedParticipantId = $externalAthleteId = $receivableId = $paidReceivableId = $accountId = $staffId = $confirmationId = $evaluationId = $statsId = 0;
     $accountWasExisting = $db->table($prefix . "gd_customer_accounts")->where("legacy_responsible_id", (int) $student->responsavel_id)->where("unit_id", $unitId)->where("deleted", 0)->countAllResults() > 0;
     try {
         $event = $service->saveEvent(["name" => "Self-test Academy " . $token, "event_type" => "championship", "starts_on" => "2099-02-10", "ends_on" => "2099-02-11", "status" => "confirmed", "default_participation_amount" => "75.00"]);
         $eventId = (int) $event["id"];
+        $roster = $service->addEventRoster($eventId, ["athlete_type" => "internal", "student_id" => (int) $student->id]);
+        $rosterId = (int) $roster["id"];
         $category = $service->saveCategory($eventId, ["name" => "Sub-test " . $token, "min_age" => 99, "max_age" => 100, "participation_amount" => "75.00"]);
         $categoryId = (int) $category["id"];
         $match = $service->saveMatch($categoryId, ["name" => "Jogo teste", "opponent" => "Adversário teste", "match_date" => "2099-02-10"]);
         $matchId = (int) $match["id"];
-        $participant = $service->addParticipant($categoryId, ["athlete_type" => "internal", "student_id" => (int) $student->id]);
+        $participant = $service->addParticipant($categoryId, ["roster_id" => $rosterId, "athlete_type" => "internal", "student_id" => (int) $student->id]);
         $participantId = (int) $participant["id"];
         $external = $service->addParticipant($categoryId, ["athlete_type" => "external", "external_name" => "Convidado " . $token, "birth_date" => "2015-05-10", "responsible_id" => (int) $student->responsavel_id, "origin_club" => "Clube parceiro"]);
         $externalParticipantId = (int) $external["id"];
         $externalRow = $db->table($prefix . "gd_academy_event_participants")->where("id", $externalParticipantId)->get(1)->getRow();
         $externalAthleteId = (int) ($externalRow->external_athlete_id ?? 0);
+        $externalRosterId = (int) ($externalRow->roster_id ?? 0);
+        $eventRoster = $service->eventRoster($eventId);
+        $categoryRosterSearch = $service->searchStudents("", $categoryId, $eventId);
+        gd_assert("lista-base do evento abastece a categoria", (int) ($eventRoster["count"] ?? 0) === 2 && count($categoryRosterSearch) === 2 && array_reduce($categoryRosterSearch, static fn(bool $ok, $row): bool => $ok && !empty($row->already_added), true));
         $service->updateParticipant($externalParticipantId, ["lineup_status" => "cut", "confirmation_status" => "confirmed"]);
         $courtesy = $service->setParticipantFinancialStatus($externalParticipantId, "courtesy", "Parceria de teste");
         gd_assert("cria evento, categoria e convocação fora da faixa como exceção autorizada", $eventId > 0 && $categoryId > 0 && $matchId > 0 && $participantId > 0 && $externalParticipantId > 0 && $externalAthleteId > 0 && ($participant["age_compatible"] ?? true) === false && !empty($courtesy["saved"]));
@@ -155,12 +173,29 @@ function gd_academy_events_selftest(): void
         $readdedParticipantId = (int) ($readded["id"] ?? 0);
         $readdedRow = $db->table($prefix . "gd_academy_event_participants")->where("id", $readdedParticipantId)->get(1)->getRow();
         gd_assert("atleta pode ser convocado novamente após desfazer a convocação", $readdedParticipantId > 0 && $readdedParticipantId !== $externalParticipantId && $readdedRow !== null && (int) $readdedRow->deleted === 0 && (int) $readdedRow->lock_version === 1);
-        $service->deleteParticipant($readdedParticipantId);
+        $paidCharge = $service->chargeParticipant($readdedParticipantId, ["charge_strategy" => "open", "due_date" => "2099-02-05"]);
+        $paidReceivableId = (int) ($paidCharge["id"] ?? 0);
+        $db->table($prefix . "gd_receivables")->where("id", $paidReceivableId)->where("unit_id", $unitId)->update([
+            "status" => "paid", "paid_amount" => "75.00", "balance_amount" => "0.00",
+        ]);
+        $deletedEvent = $service->deleteEvent($eventId);
+        $deletedEventRow = $db->table($prefix . "gd_academy_events")
+            ->where("id", $eventId)->where("unit_id", $unitId)->where("deleted", 1)->get(1)->getRow();
+        $cancelledReceivable = $db->table($prefix . "gd_receivables")->where("id", $receivableId)->where("unit_id", $unitId)->get(1)->getRow();
+        $preservedReceivable = $db->table($prefix . "gd_receivables")->where("id", $paidReceivableId)->where("unit_id", $unitId)->get(1)->getRow();
+        gd_assert("exclusão do evento remove logicamente todos os dados operacionais", !empty($deletedEvent["deleted"])
+            && $deletedEventRow !== null
+            && $db->table($prefix . "gd_academy_event_categories")->where("event_id", $eventId)->where("deleted", 0)->countAllResults() === 0
+            && $db->table($prefix . "gd_academy_event_matches")->where("event_id", $eventId)->where("deleted", 0)->countAllResults() === 0
+            && $db->table($prefix . "gd_academy_event_participants")->where("event_id", $eventId)->where("deleted", 0)->countAllResults() === 0);
+        gd_assert("exclusão mantém o histórico de pagamentos", $cancelledReceivable !== null && (string) $cancelledReceivable->status === "cancelled"
+            && $preservedReceivable !== null && (string) $preservedReceivable->status === "paid"
+            && (string) $preservedReceivable->paid_amount === "75.00" && (int) $preservedReceivable->deleted === 0);
     } finally {
         $audit = $prefix . "gd_audit_logs";
-        if ($receivableId > 0) {
-            $db->table($prefix . "gd_receivable_items")->where("receivable_id", $receivableId)->delete();
-            $db->table($prefix . "gd_receivables")->where("id", $receivableId)->where("unit_id", $unitId)->delete();
+        foreach (array_unique(array_filter([$receivableId, $paidReceivableId])) as $testReceivableId) {
+            $db->table($prefix . "gd_receivable_items")->where("receivable_id", $testReceivableId)->delete();
+            $db->table($prefix . "gd_receivables")->where("id", $testReceivableId)->where("unit_id", $unitId)->delete();
         }
         if ($participantId > 0) {
             $evaluationIds = array_column($db->table($prefix . "gd_academy_athlete_evaluations")->select("id")->where("participant_id", $participantId)->get()->getResultArray(), "id");
@@ -172,12 +207,15 @@ function gd_academy_events_selftest(): void
         }
         if ($externalParticipantId > 0) $db->table($prefix . "gd_academy_event_participants")->where("id", $externalParticipantId)->delete();
         if ($readdedParticipantId > 0) $db->table($prefix . "gd_academy_event_participants")->where("id", $readdedParticipantId)->delete();
+        if ($rosterId > 0) $db->table($prefix . "gd_academy_event_roster")->where("id", $rosterId)->delete();
+        if ($externalRosterId > 0) $db->table($prefix . "gd_academy_event_roster")->where("id", $externalRosterId)->delete();
+        if ($eventId > 0) $db->table($prefix . "gd_academy_event_roster")->where("event_id", $eventId)->delete();
         if ($externalAthleteId > 0) $db->table($prefix . "gd_academy_external_athletes")->where("id", $externalAthleteId)->where("unit_id", $unitId)->delete();
         if ($matchId > 0) $db->table($prefix . "gd_academy_event_matches")->where("id", $matchId)->delete();
         if ($categoryId > 0) $db->table($prefix . "gd_academy_event_categories")->where("id", $categoryId)->delete();
         if ($eventId > 0) { $db->table($prefix . "gd_academy_event_staff")->where("event_id", $eventId)->delete(); $db->table($prefix . "gd_academy_event_checklist")->where("event_id", $eventId)->delete(); $db->table($prefix . "gd_academy_events")->where("id", $eventId)->delete(); }
         if ($accountId > 0 && !$accountWasExisting) $db->table($prefix . "gd_customer_accounts")->where("id", $accountId)->where("legacy_responsible_id", (int) $student->responsavel_id)->delete();
-        foreach ([["academy_event", $eventId], ["academy_event_category", $categoryId], ["academy_event_match", $matchId], ["academy_event_participant", $participantId], ["academy_event_participant", $externalParticipantId], ["academy_event_participant", $readdedParticipantId], ["academy_event_staff", $staffId], ["academy_athlete_evaluation", $evaluationId], ["academy_match_player_stats", $statsId]] as [$entity, $id]) {
+        foreach ([["academy_event", $eventId], ["academy_event_category", $categoryId], ["academy_event_match", $matchId], ["academy_event_participant", $participantId], ["academy_event_participant", $externalParticipantId], ["academy_event_participant", $readdedParticipantId], ["academy_event_roster", $rosterId], ["academy_event_roster", $externalRosterId], ["academy_event_staff", $staffId], ["academy_athlete_evaluation", $evaluationId], ["academy_match_player_stats", $statsId]] as [$entity, $id]) {
             if ($id > 0) $db->table($audit)->where("entity_type", $entity)->where("entity_id", $id)->delete();
         }
     }

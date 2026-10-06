@@ -68,13 +68,9 @@ if (function_exists("service")) {
 
 if (!function_exists("bombeiros_install_or_update")) {
     /*
-     * Fonte única das turmas/horários do Grupo Donato. Todas as telas
-     * (cadastro de aluno, matrícula pública, chamada e filtro de pagamentos)
-     * consomem estas opções para não haver divergência entre os valores
-     * gravados no aluno e os valores oferecidos nos filtros/chamada.
-     *
-     * O VALOR (chave) é o texto completo gravado na coluna `turma`; o rótulo
-     * exibido é curto porque o próprio optgroup já indica o dia da semana.
+     * Valores legados mantidos para formulários antigos de matrícula e para
+     * semear as turmas configuráveis. O menu Turmas e as chamadas usam as
+     * tabelas operacionais e não dependem desta lista fixa.
      */
     function bombeiros_turmas_grouped($incluir_placeholder = true, $placeholder = "-")
     {
@@ -159,6 +155,7 @@ if (!function_exists("bombeiros_install_or_update")) {
         return [
             "dashboard" => ["name" => "Dashboard", "class" => "bar-chart-2"],
             "alunos" => ["name" => "Alunos", "class" => "users"],
+            "turmas" => ["name" => "Turmas", "class" => "calendar"],
             "responsaveis" => ["name" => "Responsáveis", "class" => "user"],
             "presenca" => ["name" => "Presença", "class" => "check-square"],
             "pagamentos" => ["name" => "Pagamentos", "class" => "credit-card"],
@@ -222,7 +219,9 @@ if (!function_exists("bombeiros_install_or_update")) {
                 "name" => $section[$key]["name"],
                 "url" => $key === "custos"
                     ? get_uri("grupo_donato/finance/costs")
-                    : get_uri("grupo_donato/operacional?gd_tab=" . $key),
+                    : ($key === "turmas"
+                        ? get_uri("grupo_donato/operacional/turmas")
+                        : get_uri("grupo_donato/operacional?gd_tab=" . $key)),
                 "is_custom_menu_item" => true,
                 "class" => $section[$key]["class"],
             ];
@@ -230,7 +229,7 @@ if (!function_exists("bombeiros_install_or_update")) {
 
         // Academia: as telas de operação da escola ficam sob um único item.
         $academy_submenu = [];
-        foreach (["alunos", "responsaveis", "presenca", "pagamentos", "eventos"] as $key) {
+        foreach (["alunos", "turmas", "responsaveis", "presenca", "pagamentos", "eventos"] as $key) {
             $item = $section_item($key);
             if ($item) {
                 $academy_submenu[] = $item;
@@ -282,6 +281,7 @@ if (!function_exists("bombeiros_install_or_update")) {
         $group_items = [
             ["name" => "GD Academy"],
             ["name" => "Alunos", "is_sub_menu" => "1"],
+            ["name" => "Turmas", "is_sub_menu" => "1"],
             ["name" => "Responsáveis", "is_sub_menu" => "1"],
             ["name" => "Presença", "is_sub_menu" => "1"],
             ["name" => "Pagamentos", "is_sub_menu" => "1"],
@@ -643,14 +643,39 @@ if (!function_exists("bombeiros_install_or_update")) {
             bombeiros_sync_left_menu_settings($db, $dbprefix);
 
             $ensure_column = function ($table, $column, $definition) use ($db) {
-                $exists = $db->query("SHOW COLUMNS FROM `" . $table . "` LIKE " . $db->escape($column))->getRow();
+                // O bootstrap roda no construtor das telas operacionais. Durante
+                // deploy/restart pode haver uma janela curta em que o MySQL ainda
+                // está concluindo uma migração/renomeação. Nesse caso query()
+                // retorna false; chamar getRow() diretamente transformava a
+                // checagem de manutenção em erro 500 da tela.
+                try {
+                    $result = $db->query("SHOW COLUMNS FROM `" . $table . "` LIKE " . $db->escape($column));
+                    if ($result === false) {
+                        log_message('warning', 'Grupo Donato: não foi possível verificar a coluna ' . $table . '.' . $column . ' durante o bootstrap.');
+                        return;
+                    }
+                    $exists = $result->getRow();
+                } catch (\Throwable $e) {
+                    log_message('warning', 'Grupo Donato: falha ao verificar a coluna ' . $table . '.' . $column . ': ' . $e->getMessage());
+                    return;
+                }
                 if (!$exists) {
                     $db->query("ALTER TABLE `" . $table . "` ADD `" . $column . "` " . $definition);
                 }
             };
 
             $ensure_index = function ($table, $index, $definition) use ($db) {
-                $exists = $db->query("SHOW INDEX FROM `" . $table . "` WHERE Key_name=" . $db->escape($index))->getRow();
+                try {
+                    $result = $db->query("SHOW INDEX FROM `" . $table . "` WHERE Key_name=" . $db->escape($index));
+                    if ($result === false) {
+                        log_message('warning', 'Grupo Donato: não foi possível verificar o índice ' . $table . '.' . $index . ' durante o bootstrap.');
+                        return;
+                    }
+                    $exists = $result->getRow();
+                } catch (\Throwable $e) {
+                    log_message('warning', 'Grupo Donato: falha ao verificar o índice ' . $table . '.' . $index . ': ' . $e->getMessage());
+                    return;
+                }
                 if (!$exists) {
                     $db->query("ALTER TABLE `" . $table . "` ADD " . $definition);
                 }
@@ -760,7 +785,7 @@ if (!function_exists("bombeiros_install_or_update")) {
                     `photo_path` varchar(255) DEFAULT NULL,
                     `turma` varchar(50) DEFAULT NULL,
                     `curso_nome` varchar(255) DEFAULT NULL,
-                    `num_parcelas` int(11) DEFAULT 12,
+                    `num_parcelas` int(11) DEFAULT 1,
                     `quer_camisa` tinyint(1) DEFAULT 0,
                     `tamanho_camisa` varchar(10) DEFAULT NULL,
                     `tamanho_camiseta` varchar(10) DEFAULT NULL,
@@ -810,7 +835,7 @@ if (!function_exists("bombeiros_install_or_update")) {
             $ensure_column($table_name, "matricula", "varchar(50) DEFAULT NULL AFTER `id`");
             $ensure_column($table_name, "photo_path", "varchar(255) DEFAULT NULL AFTER `cpf_aluno`");
             $ensure_column($table_name, "curso_nome", "varchar(255) DEFAULT NULL AFTER `turma`");
-            $ensure_column($table_name, "num_parcelas", "int(11) DEFAULT 12 AFTER `curso_nome`");
+            $ensure_column($table_name, "num_parcelas", "int(11) DEFAULT 1 AFTER `curso_nome`");
             $ensure_column($table_name, "valor_inscricao", "decimal(10,2) DEFAULT 100.00 AFTER `valor_mensalidade`");
             $ensure_column($table_name, "data_inscricao", "date DEFAULT NULL AFTER `valor_inscricao`");
             $ensure_column($table_name, "valor_mensal", "decimal(10,2) DEFAULT 237.00 AFTER `data_inscricao`");
@@ -906,6 +931,19 @@ if (!function_exists("bombeiros_install_or_update")) {
                 $db->query("ALTER TABLE `" . $table_name . "` MODIFY `status` enum('Pendente','Pago','Cancelado','Isento','Sem registro','Vencido') DEFAULT 'Pendente'");
             }
 
+            // O contrato agora é mensal e sem limite de parcelas. Os campos
+            // antigos ficam somente para compatibilidade com importações.
+            $db->query("ALTER TABLE `" . $dbprefix . "grupo_donato_alunos` MODIFY `num_parcelas` int(11) DEFAULT 1");
+            // Regra de transição: toda camiseta já existente foi considerada
+            // quitada. Itens lançados explicitamente depois podem ser marcados
+            // como pendentes pelo cadastro/comanda.
+            $db->query("UPDATE `" . $dbprefix . "grupo_donato_alunos`
+                SET `num_parcelas`=1,
+                    `uniforme_efetuado`=1,
+                    `camiseta_status`='pago',
+                    `camiseta_data`=COALESCE(`camiseta_data`, DATE(`created_at`))
+                WHERE `deleted`=0 AND COALESCE(`camiseta_status`, '')=''");
+
             $table_name = $dbprefix . "grupo_donato_custos_unidade";
             if (!$db->tableExists($table_name)) {
                 $db->query("CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -975,6 +1013,168 @@ if (!function_exists("bombeiros_install_or_update")) {
             $presenca_status_column = $db->query("SHOW COLUMNS FROM `" . $table_name . "` LIKE 'status_tipo'")->getRow();
             if ($presenca_status_column && strpos((string) $presenca_status_column->Type, "sem_registro") === false) {
                 $db->query("ALTER TABLE `" . $table_name . "` MODIFY `status_tipo` enum('presente','falta','feriado','aula_cancelada','sem_registro') DEFAULT 'sem_registro'");
+            }
+
+            // Horários deixam de ser uma lista fixa. A tabela de turmas guarda
+            // a agenda de cada unidade, e a tabela associativa permite que um
+            // aluno participe de mais de um horário sem duplicar seu cadastro.
+            $turmas_table = $dbprefix . "grupo_donato_turmas";
+            if (!$db->tableExists($turmas_table)) {
+                $db->query("CREATE TABLE IF NOT EXISTS `" . $turmas_table . "` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `unit_id` int(11) NOT NULL,
+                    `nome` varchar(160) NOT NULL,
+                    `dias_semana` varchar(80) DEFAULT NULL,
+                    `horario_inicio` time DEFAULT NULL,
+                    `horario_fim` time DEFAULT NULL,
+                    `legacy_value` varchar(160) DEFAULT NULL,
+                    `active` tinyint(1) NOT NULL DEFAULT 1,
+                    `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uniq_unit_nome` (`unit_id`,`nome`),
+                    UNIQUE KEY `uniq_unit_legacy` (`unit_id`,`legacy_value`),
+                    KEY `idx_unit_active` (`unit_id`,`active`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+
+            $aluno_turmas_table = $dbprefix . "grupo_donato_aluno_turmas";
+            if (!$db->tableExists($aluno_turmas_table)) {
+                $db->query("CREATE TABLE IF NOT EXISTS `" . $aluno_turmas_table . "` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `aluno_id` int(11) NOT NULL,
+                    `turma_id` int(11) NOT NULL,
+                    `unit_id` int(11) NOT NULL,
+                    `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uniq_aluno_turma` (`aluno_id`,`turma_id`),
+                    KEY `idx_turma_unit` (`turma_id`,`unit_id`),
+                    KEY `idx_aluno_unit` (`aluno_id`,`unit_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+
+            $presenca_table = $dbprefix . "grupo_donato_presenca";
+            $ensure_column($presenca_table, "turma_id", "int(11) DEFAULT NULL AFTER `turma`");
+            // A unicidade agora é por aluno, data e turma. O índice antigo
+            // impedia duas chamadas no mesmo dia quando o aluno frequenta dois
+            // horários; os registros antigos continuam preservados.
+            try {
+                $old_attendance_index = $db->query("SHOW INDEX FROM `" . $presenca_table . "` WHERE Key_name='unique_aluno_data'")->getRow();
+                if ($old_attendance_index) {
+                    $db->query("ALTER TABLE `" . $presenca_table . "` DROP INDEX `unique_aluno_data`");
+                }
+            } catch (\Throwable $e) {
+                log_message("warning", "Grupo Donato: não foi possível atualizar o índice de chamadas: " . $e->getMessage());
+            }
+            $ensure_index($presenca_table, "unique_aluno_data_turma", "UNIQUE KEY `unique_aluno_data_turma` (`aluno_id`,`data_aula`,`turma_id`)");
+            $ensure_index($presenca_table, "idx_turma_data", "KEY `idx_turma_data` (`turma_id`,`data_aula`)");
+
+            // Migra os horários existentes sem alterar os valores usados por
+            // matrículas, cobranças e relatórios antigos. Também descobre
+            // horários que já estejam em uso, como sexta-feira e GD.
+            $seed_by_unit = [];
+            $unit_rows = $db->query("SELECT id FROM `" . $dbprefix . "grupo_donato_unidades` WHERE deleted=0")->getResult();
+            foreach ($unit_rows as $unit_row) {
+                $seed_by_unit[(int) $unit_row->id] = array_fill_keys(array_keys(bombeiros_turmas_values()), true);
+                $seed_by_unit[(int) $unit_row->id]["GD"] = true;
+            }
+            $legacy_rows = $db->query("SELECT unidade_id AS unit_id, turma AS legacy_value FROM `" . $dbprefix . "grupo_donato_alunos`
+                WHERE deleted=0 AND turma IS NOT NULL AND TRIM(turma)<>''
+                UNION
+                SELECT a.unidade_id AS unit_id, p.turma AS legacy_value FROM `" . $presenca_table . "` p
+                INNER JOIN `" . $dbprefix . "grupo_donato_alunos` a ON a.id=p.aluno_id
+                WHERE a.deleted=0 AND p.turma IS NOT NULL AND TRIM(p.turma)<>''")->getResult();
+            foreach ($legacy_rows as $legacy_row) {
+                $unit_id = (int) ($legacy_row->unit_id ?? 0);
+                $legacy_value = trim((string) ($legacy_row->legacy_value ?? ""));
+                if ($unit_id > 0 && $legacy_value !== "") {
+                    if (!isset($seed_by_unit[$unit_id])) {
+                        $seed_by_unit[$unit_id] = [];
+                    }
+                    $seed_by_unit[$unit_id][$legacy_value] = true;
+                }
+            }
+
+            foreach ($seed_by_unit as $unit_id => $legacy_values) {
+                $has_friday = false;
+                foreach (array_keys($legacy_values) as $legacy_value) {
+                    $legacy_lower = mb_strtolower((string) $legacy_value, "UTF-8");
+                    if (strpos($legacy_lower, "sex") !== false || strpos($legacy_lower, "sexta") !== false) {
+                        $has_friday = true;
+                        break;
+                    }
+                }
+                if (!$has_friday) {
+                    $seed_by_unit[$unit_id]["Sexta-feira · Turmas reunidas"] = true;
+                }
+            }
+
+            $day_aliases = [
+                "seg" => ["seg", "segunda"], "ter" => ["ter", "terça", "terca"],
+                "qua" => ["qua", "quarta"], "qui" => ["qui", "quinta"],
+                "sex" => ["sex", "sexta"], "sab" => ["sab", "sáb", "sábado", "sabado"],
+                "dom" => ["dom", "domingo"]
+            ];
+            $seeded_rows = $db->query("SELECT unit_id,nome,legacy_value FROM `" . $turmas_table . "`")->getResult();
+            $seeded_values = [];
+            $seeded_names = [];
+            foreach ($seeded_rows as $seeded_row) {
+                $seeded_unit_id = (int) $seeded_row->unit_id;
+                $seeded_names[$seeded_unit_id][mb_strtolower((string) $seeded_row->nome, "UTF-8")] = true;
+                if ($seeded_row->legacy_value !== null) {
+                    $seeded_values[$seeded_unit_id][(string) $seeded_row->legacy_value] = true;
+                }
+            }
+            foreach ($seed_by_unit as $unit_id => $legacy_values) {
+                foreach (array_keys($legacy_values) as $legacy_value) {
+                    if (isset($seeded_values[(int) $unit_id][$legacy_value]) || isset($seeded_names[(int) $unit_id][mb_strtolower($legacy_value, "UTF-8")])) {
+                        continue;
+                    }
+                    $days = [];
+                    $normalized_legacy = mb_strtolower($legacy_value, "UTF-8");
+                    foreach ($day_aliases as $day_key => $aliases) {
+                        foreach ($aliases as $alias) {
+                            if (strpos($normalized_legacy, $alias) !== false) {
+                                $days[] = $day_key;
+                                break;
+                            }
+                        }
+                    }
+                    preg_match('/(\\d{2}:\\d{2})\\s*[-–a]\\s*(\\d{2}:\\d{2})/u', $legacy_value, $time_match);
+                    $start_time = $time_match[1] ?? null;
+                    $end_time = $time_match[2] ?? null;
+                    $db->query("INSERT IGNORE INTO `" . $turmas_table . "` (unit_id,nome,dias_semana,horario_inicio,horario_fim,legacy_value,active)
+                        VALUES (" . (int) $unit_id . "," . $db->escape($legacy_value) . "," . ($days ? $db->escape(implode(',', array_unique($days))) : "NULL") . "," . ($start_time ? $db->escape($start_time . ':00') : "NULL") . "," . ($end_time ? $db->escape($end_time . ':00') : "NULL") . "," . $db->escape($legacy_value) . ",1)");
+                    $seeded_values[(int) $unit_id][$legacy_value] = true;
+                    $seeded_names[(int) $unit_id][mb_strtolower($legacy_value, "UTF-8")] = true;
+                }
+            }
+
+            $alunos_table = $dbprefix . "grupo_donato_alunos";
+            $missing_membership = $db->query("SELECT a.id FROM `" . $alunos_table . "` a
+                INNER JOIN `" . $turmas_table . "` t ON t.unit_id=a.unidade_id AND COALESCE(t.legacy_value,t.nome)=a.turma
+                LEFT JOIN `" . $aluno_turmas_table . "` m ON m.aluno_id=a.id AND m.turma_id=t.id
+                WHERE a.deleted=0 AND a.turma IS NOT NULL AND TRIM(a.turma)<>'' AND m.id IS NULL LIMIT 1")->getRow();
+            if ($missing_membership) {
+                $db->query("INSERT IGNORE INTO `" . $aluno_turmas_table . "` (aluno_id,turma_id,unit_id)
+                    SELECT a.id,t.id,a.unidade_id FROM `" . $alunos_table . "` a
+                    INNER JOIN `" . $turmas_table . "` t ON t.unit_id=a.unidade_id AND COALESCE(t.legacy_value,t.nome)=a.turma
+                    WHERE a.deleted=0 AND a.turma IS NOT NULL AND TRIM(a.turma)<>''");
+            }
+
+            $missing_attendance_link = $db->query("SELECT p.id FROM `" . $presenca_table . "` p
+                INNER JOIN `" . $alunos_table . "` a ON a.id=p.aluno_id
+                INNER JOIN `" . $turmas_table . "` t ON t.unit_id=a.unidade_id
+                    AND COALESCE(t.legacy_value,t.nome)=COALESCE(NULLIF(p.turma,''),a.turma)
+                WHERE p.turma_id IS NULL AND COALESCE(NULLIF(p.turma,''),a.turma) IS NOT NULL
+                    AND TRIM(COALESCE(NULLIF(p.turma,''),a.turma))<>'' LIMIT 1")->getRow();
+            if ($missing_attendance_link) {
+                $db->query("UPDATE `" . $presenca_table . "` p
+                    INNER JOIN `" . $alunos_table . "` a ON a.id=p.aluno_id
+                    INNER JOIN `" . $turmas_table . "` t ON t.unit_id=a.unidade_id
+                        AND COALESCE(t.legacy_value,t.nome)=COALESCE(NULLIF(p.turma,''),a.turma)
+                    SET p.turma_id=t.id WHERE p.turma_id IS NULL AND COALESCE(NULLIF(p.turma,''),a.turma) IS NOT NULL
+                        AND TRIM(COALESCE(NULLIF(p.turma,''),a.turma))<>'");
             }
 
             $table_name = $dbprefix . "grupo_donato_comprovantes";

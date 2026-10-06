@@ -8,10 +8,10 @@ $contract_number = trim((string) ($contract_number ?? ""));
 $contract_version = trim((string) ($contract_version ?? ""));
 $cpf_digits = preg_replace("/\D+/", "", (string) ($payload["responsavel_cpf"] ?? ""));
 $cpf = strlen($cpf_digits) === 11 ? substr($cpf_digits, 0, 3) . "." . substr($cpf_digits, 3, 3) . "." . substr($cpf_digits, 6, 3) . "-" . substr($cpf_digits, 9, 2) : (string) ($payload["responsavel_cpf"] ?? "Não informado");
-$value = number_format((float) ($payload["valor_mensalidade"] ?? 237), 2, ",", ".");
+$value = number_format((float) ($payload["valor_mensalidade"] ?? 220), 2, ",", ".");
 $city = trim((string) ($payload["cidade_assinatura"] ?? "São Bernardo do Campo")) ?: "São Bernardo do Campo";
 $uf = strtoupper(trim((string) ($payload["estado_assinatura"] ?? "SP"))) ?: "SP";
-$due_day = (int) (($payload["data_primeira_parcela"] ?? "") ? date("d", strtotime((string) $payload["data_primeira_parcela"])) : date("d"));
+$due_day = (int) (($payload["data_inicio"] ?? "") ? date("d", strtotime((string) $payload["data_inicio"])) : date("d"));
 $due_day = max(1, $due_day);
 $date_line = $signed_at
     ? esc($city) . ", " . esc($signed_at["day"]) . " de " . esc($signed_at["month"]) . " de " . esc($signed_at["year"]) . "."

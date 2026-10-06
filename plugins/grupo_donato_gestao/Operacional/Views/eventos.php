@@ -148,7 +148,7 @@ $(function(){
     $(document).off("submit.gdEventDelete", ".gd-event-delete-form").on("submit.gdEventDelete", ".gd-event-delete-form", function(e){
         e.preventDefault();
         var form=$(this), button=form.find("button[type='submit']"), eventName=form.data("event-name")||"este evento";
-        if(!window.confirm("Excluir "+eventName+"? As categorias, convocações, partidas e checklist serão removidos da operação.")) return;
+        if(!window.confirm("Excluir "+eventName+"? As categorias, convocações, partidas e checklist serão removidos da operação. Pagamentos já registrados serão mantidos no financeiro.")) return;
         button.prop("disabled",true).html("<i data-feather='loader' class='icon-14'></i>");
         appAjaxRequest({url:form.attr("action"),type:"POST",data:form.serialize(),dataType:"json",success:function(result){
             if(result&&result.success){window.location.reload();return;}

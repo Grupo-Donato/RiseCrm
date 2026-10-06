@@ -228,12 +228,13 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         background: var(--gd-surface-3, #0e3a6e) !important;
     }
 
-    .gd-alunos-class-table th:nth-child(1) { width: 24%; }
-    .gd-alunos-class-table th:nth-child(2) { width: 11%; }
-    .gd-alunos-class-table th:nth-child(3) { width: 22%; }
-    .gd-alunos-class-table th:nth-child(4) { width: 17%; }
-    .gd-alunos-class-table th:nth-child(5) { width: 12%; }
-    .gd-alunos-class-table th:nth-child(6) { width: 12%; }
+    .gd-alunos-class-table th:nth-child(1) { width: 21%; }
+    .gd-alunos-class-table th:nth-child(2) { width: 10%; }
+    .gd-alunos-class-table th:nth-child(3) { width: 16%; }
+    .gd-alunos-class-table th:nth-child(4) { width: 20%; }
+    .gd-alunos-class-table th:nth-child(5) { width: 15%; }
+    .gd-alunos-class-table th:nth-child(6) { width: 10%; }
+    .gd-alunos-class-table th:nth-child(7) { width: 8%; }
 
     .gd-alunos-sort-button {
         align-items: center;
@@ -593,7 +594,203 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
         #ajaxModal .form-group .row > label[class*="col-md-"] {
             margin-bottom: 8px;
         }
+
     }
+
+    /* Student overview: the modal content is injected after this page is
+       loaded, so keep the critical layout rules in the page stylesheet as
+       well as in the partial view. */
+        #ajaxModal.gd-aluno-overview-open .modal-dialog {
+            max-width: 1180px;
+            width: calc(100% - 24px);
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal.gd-overview-root {
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            max-height: calc(100vh - 120px) !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            padding: 0 !important;
+            background: #f6f8fb !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-shell {
+            display: block !important;
+            width: 100% !important;
+            max-width: 1280px !important;
+            margin: 0 auto !important;
+            padding: 22px !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-hero {
+            display: flex !important;
+            width: 100% !important;
+            align-items: center !important;
+            gap: 16px !important;
+            padding: 20px !important;
+            border: 1px solid #e5eaf0 !important;
+            border-radius: 16px !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%) !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-avatar {
+            display: block !important;
+            width: 72px !important;
+            min-width: 72px !important;
+            max-width: 72px !important;
+            height: 72px !important;
+            min-height: 72px !important;
+            max-height: 72px !important;
+            flex: 0 0 72px !important;
+            border-radius: 50% !important;
+            object-fit: cover !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-hero-main {
+            min-width: 0 !important;
+            flex: 1 1 auto !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-hero h2 {
+            margin: 0 0 5px !important;
+            color: #172554 !important;
+            font-size: 24px !important;
+            line-height: 1.2 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-metrics {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+            margin: 16px 0 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-metric,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-section {
+            border: 1px solid #e5eaf0 !important;
+            border-radius: 14px !important;
+            padding: 18px !important;
+            background: #fff !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-metric {
+            border-radius: 12px !important;
+            padding: 15px !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-layout {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) minmax(360px, .85fr) !important;
+            gap: 16px !important;
+            align-items: start !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-detail-grid,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-materials {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 13px 20px !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-materials {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-section-heading h3 {
+            margin: 0 !important;
+            color: #172554 !important;
+            font-size: 17px !important;
+            font-weight: 700 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-section-heading p,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-detail span,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-meta,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-event-meta {
+            color: #64748b !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-detail strong,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-material strong,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-title strong,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-event-head strong {
+            color: #334155 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-list,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-event-list {
+            display: grid !important;
+            gap: 9px !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-row,
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-event {
+            border: 1px solid #e8edf3 !important;
+            border-radius: 10px !important;
+            padding: 12px !important;
+            background: #fff !important;
+            color: #1f2937 !important;
+        }
+
+        #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-row {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            gap: 12px !important;
+        }
+
+        @media (max-width: 900px) {
+            #ajaxModal.gd-aluno-overview-open .modal-dialog {
+                width: 100%;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-layout {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        @media (max-width: 640px) {
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-shell {
+                padding: 12px !important;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-hero {
+                align-items: flex-start !important;
+                padding: 15px !important;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-avatar {
+                width: 56px !important;
+                min-width: 56px !important;
+                max-width: 56px !important;
+                height: 56px !important;
+                min-height: 56px !important;
+                max-height: 56px !important;
+                flex-basis: 56px !important;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 8px !important;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-detail-grid,
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-materials {
+                grid-template-columns: 1fr !important;
+            }
+
+            #ajaxModal.gd-aluno-overview-open #gd-aluno-overview-modal .gd-overview-finance-row {
+                grid-template-columns: 1fr !important;
+            }
+        }
 </style>
 
 <div id="page-content" class="page-wrapper clearfix gd-mobile-ready gd-operacional-page">
@@ -966,7 +1163,15 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                             <div class="form-group">
                                 <label for="bombeiros-chamada-turma">Turma</label>
                                 <?php
-                                echo form_dropdown("turma", bombeiros_turmas_grouped(), "", ["id" => "bombeiros-chamada-turma", "class" => "form-control"]);
+                                $turma_chamada_options = ["" => "Selecione"];
+                                foreach (($turmas_chamada ?? []) as $turma_chamada) {
+                                    $label = $turma_chamada->nome;
+                                    if (!empty($turma_chamada->descricao)) {
+                                        $label .= " · " . $turma_chamada->descricao;
+                                    }
+                                    $turma_chamada_options[(int) $turma_chamada->id] = $label;
+                                }
+                                echo form_dropdown("turma_id", $turma_chamada_options, $turma_chamada_selected ?? "", ["id" => "bombeiros-chamada-turma", "class" => "form-control"]);
                                 ?>
                             </div>
                         </div>
@@ -1230,15 +1435,21 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             var columnIndexes = {
                 aluno: 0,
                 matricula: 1,
-                responsavel: 2,
-                whatsapp: 3,
-                faltas: 4,
-                mensalidade: 5
+                idade: 2,
+                responsavel: 3,
+                whatsapp: 4,
+                faltas: 5,
+                mensalidade: 6
             };
             var $cell = $row.children("td").eq(columnIndexes[key]);
 
             if (key === "faltas") {
                 return parseInt($cell.find("[data-absence-count]").attr("data-absence-count") || "0", 10) || 0;
+            }
+
+            if (key === "idade") {
+                var age = $.trim($cell.text()).match(/^(\d+)/);
+                return age ? parseInt(age[1], 10) : -1;
             }
 
             if (key === "mensalidade") {
@@ -1500,6 +1711,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                 columns: [
                     {title: "Matrícula", "class": "w90"},
                     {title: "Aluno", "class": "all"},
+                    {title: "Idade", "class": "w150"},
                     {title: "Responsável"},
                     {title: "WhatsApp", "class": "w140"},
                     {title: "Turma", "class": "w120"},
@@ -1518,8 +1730,8 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     {title: "Mensalidade", "class": "text-right w120"},
                     {title: "<i data-feather='menu' class='icon-16'></i>", "class": "all text-center option w100"}
                 ],
-                printColumns: [0, 1, 2, 3, 4, 5, 6],
-                xlsColumns: [0, 1, 2, 3, 4, 5, 6]
+                printColumns: [0, 1, 2, 3, 4, 5, 6, 7],
+                xlsColumns: [0, 1, 2, 3, 4, 5, 6, 7]
             });
         }
 
@@ -1552,9 +1764,9 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
 
         $("#bombeiros-carregar-chamada").on("click", function () {
             var data = $("#bombeiros-chamada-data").val();
-            var turma = $("#bombeiros-chamada-turma").val();
+            var turmaId = $("#bombeiros-chamada-turma").val();
 
-            if (!data || !turma) {
+            if (!data || !turmaId) {
                 appAlert.error("Informe a data e a turma.");
                 return;
             }
@@ -1563,7 +1775,7 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
             appAjaxRequest({
                 url: "<?php echo_uri("grupo_donato/operacional/lista_chamada"); ?>",
                 type: "POST",
-                data: {data: data, turma: turma},
+                data: {data: data, turma_id: turmaId},
                 success: function (html) {
                     $("#bombeiros-chamada-area").html(html);
                     appLoader.hide();
@@ -1574,6 +1786,17 @@ $dashboard_resultado_label = $dashboard_resultado > 0 ? "Lucro" : ($dashboard_re
                     appAlert.error(AppLanugage.somethingWentWrong);
                 }
             });
+        });
+
+        // O conteúdo do modal é carregado por AJAX. Marcar o modal no clique
+        // garante que o layout da visão geral seja aplicado antes mesmo de a
+        // resposta HTML chegar, inclusive quando o navegador não executa o
+        // script embutido no conteúdo injetado.
+        $("body").off("click.gdAlunoOverviewModal", "[data-act='ajax-modal'][data-action-url*='aluno_overview_modal']").on("click.gdAlunoOverviewModal", "[data-act='ajax-modal'][data-action-url*='aluno_overview_modal']", function () {
+            $("#ajaxModal").addClass("gd-aluno-overview-open");
+        });
+        $("#ajaxModal").off("hidden.bs.modal.gdAlunoOverviewModal").on("hidden.bs.modal.gdAlunoOverviewModal", function () {
+            $(this).removeClass("gd-aluno-overview-open");
         });
 
         $('a[data-bs-toggle="tab"]').on("shown.bs.tab", function (event) {

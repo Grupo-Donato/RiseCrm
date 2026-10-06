@@ -576,7 +576,10 @@ function setModalScrollbar() {
 
     if (height > maxHeight) {
         height = maxHeight;
-        initScrollbar($scroll, { setHeight: height });
+        // Keep semantic IDs used by injected modal views. initScrollbar()
+        // generates a random ID only when it receives a jQuery object.
+        var scrollSelector = $scroll.attr("id") ? "#" + $scroll.attr("id") : $scroll;
+        initScrollbar(scrollSelector, { setHeight: height });
     } else {
         if (isMobile()) {
             var lessHeight = 130;

@@ -1,7 +1,9 @@
 <?php
-$turmas = bombeiros_turmas_grouped();
+$turmas = is_array($turmas ?? null) ? $turmas : bombeiros_turmas_grouped();
 $status_options = ["Ativo" => "Ativo", "Pendente" => "Pendente", "Inadimplente" => "Inadimplente", "Concluido" => "Concluído", "Inativo" => "Inativo", "Cancelado" => "Cancelado"];
 $melhor_horario_options = ["" => "-", "manha" => "Manhã", "tarde" => "Tarde", "qualquer" => "Qualquer horário"];
+$comanda_item_options = ["" => "- Selecione um item avulso -", "Camiseta" => "Uniforme / camiseta", "Caneleira" => "Caneleira", "Meião" => "Meião", "Passeio" => "Passeio"];
+$comanda_status_options = ["Pago" => "Pago", "Pendente" => "Pendente"];
 $exame_medico_nome = !empty($model_info->exame_medico_nome) ? $model_info->exame_medico_nome : "Exame médico anexado";
 $exame_medico_tamanho = (int) ($model_info->exame_medico_tamanho ?? 0);
 $exame_medico_tamanho_label = "";
@@ -49,8 +51,126 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
         background: #eef1f5;
     }
 
+    #bombeiros-aluno-form .gd-cross-unit-panel {
+        margin-bottom: 20px;
+        padding: 18px 16px 14px;
+        border: 1px solid #b8dce8;
+        border-left: 4px solid #148a9a;
+        border-radius: 6px;
+        background: #eef8fb;
+        color: #17365f;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-panel .form-group {
+        margin-bottom: 14px;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-panel label {
+        display: block;
+        margin-bottom: 6px;
+        color: #17365f;
+        font-weight: 600;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-panel .form-control {
+        min-height: 38px;
+        border-color: #9ebdca !important;
+        background: #ffffff !important;
+        color: #17365f !important;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-panel .form-control:focus {
+        border-color: #148a9a !important;
+        background: #ffffff !important;
+        box-shadow: 0 0 0 3px rgba(20, 138, 154, 0.16) !important;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-panel .form-control::placeholder {
+        color: #7590a1 !important;
+        opacity: 1;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-search-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-search-group .form-control {
+        min-width: 0;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-search-button {
+        flex: 0 0 auto;
+        border: 1px solid #17365f;
+        background: #17365f;
+        color: #ffffff;
+        font-weight: 600;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-search-button:hover,
+    #bombeiros-aluno-form .gd-cross-unit-search-button:focus {
+        border-color: #0f2848;
+        background: #0f2848;
+        color: #ffffff;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-results {
+        max-height: 220px;
+        overflow-y: auto;
+    }
+
     #bombeiros-aluno-form .gd-cross-unit-results .list-group-item {
         cursor: pointer;
+        width: 100%;
+        margin-bottom: 6px;
+        padding: 10px 12px;
+        border: 1px solid #c5d8e2;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #17365f;
+        text-align: left;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-results .list-group-item:hover,
+    #bombeiros-aluno-form .gd-cross-unit-results .list-group-item:focus {
+        border-color: #148a9a;
+        background: #f5fcfd;
+        color: #17365f;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-results .list-group-item .small {
+        color: #587184 !important;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-selected {
+        display: block;
+        padding: 8px 10px;
+        border: 1px solid #a9d9bd;
+        border-radius: 5px;
+        background: #eaf8ef;
+        color: #17633d;
+    }
+
+    #bombeiros-aluno-form .gd-cross-unit-help {
+        display: block;
+        color: #31576d;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+
+    @media (max-width: 575px) {
+        #bombeiros-aluno-form .gd-cross-unit-panel {
+            padding: 15px 12px 11px;
+        }
+
+        #bombeiros-aluno-form .gd-cross-unit-search-group {
+            display: block;
+        }
+
+        #bombeiros-aluno-form .gd-cross-unit-search-button {
+            width: 100%;
+            margin-top: 8px;
+        }
     }
 </style>
 
@@ -64,7 +184,7 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
             <input type="hidden" name="origem_aluno_id" id="bombeiros-aluno-origem-id" class="validate-hidden" value="" />
             <input type="hidden" name="origem_unidade_id" id="bombeiros-aluno-origem-unidade-id" value="" />
 
-            <div class="alert alert-info mb20">
+            <div class="gd-cross-unit-panel">
                 <div class="form-group mb0">
                     <label for="bombeiros-aluno-origem-tipo"><strong>Como deseja cadastrar este aluno?</strong></label>
                     <select id="bombeiros-aluno-origem-tipo" class="form-control">
@@ -86,15 +206,15 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
                         </div>
                         <div class="col-md-7">
                             <label for="bombeiros-aluno-origem-busca">Buscar aluno</label>
-                            <div class="input-group">
+                            <div class="gd-cross-unit-search-group">
                                 <input type="search" id="bombeiros-aluno-origem-busca" class="form-control" placeholder="Nome, matrícula, CPF ou responsável" autocomplete="off" />
-                                <button type="button" id="bombeiros-aluno-origem-buscar" class="btn btn-default">Buscar</button>
+                                <button type="button" id="bombeiros-aluno-origem-buscar" class="btn gd-cross-unit-search-button">Buscar</button>
                             </div>
                         </div>
                     </div>
                     <div id="bombeiros-aluno-origem-resultados" class="gd-cross-unit-results list-group mt10"></div>
-                    <div id="bombeiros-aluno-origem-selecionado" class="small mt10 hide"></div>
-                    <div class="text-off mt5">A turma, cobrança, assinatura e histórico serão preenchidos para a unidade atual.</div>
+                    <div id="bombeiros-aluno-origem-selecionado" class="small mt10 hide gd-cross-unit-selected"></div>
+                    <div class="gd-cross-unit-help mt5">A turma, cobrança, assinatura e histórico serão preenchidos para a unidade atual.</div>
                 </div>
             </div>
         <?php } ?>
@@ -283,7 +403,7 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
             </div>
         </div>
 
-        <h5 class="mb15 mt20">Curso e pagamento</h5>
+        <h5 class="mb15 mt20">Curso e mensalidade</h5>
 
         <div class="form-group">
             <div class="row">
@@ -296,13 +416,10 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
 
         <div class="form-group">
             <div class="row">
-                <label for="bombeiros-aluno-parcelas" class="col-md-3">Nº parcelas</label>
+                <label for="bombeiros-aluno-mensalidade" class="col-md-3">Mensalidade</label>
                 <div class="col-md-3">
-                    <?php echo form_input(["id" => "bombeiros-aluno-parcelas", "name" => "num_parcelas", "type" => "number", "min" => "1", "value" => $model_info->num_parcelas, "class" => "form-control"]); ?>
-                </div>
-                <label for="bombeiros-aluno-valor" class="col-md-2">Valor da parcela</label>
-                <div class="col-md-4">
-                    <?php echo form_input(["id" => "bombeiros-aluno-valor", "name" => "valor_mensalidade", "value" => $model_info->valor_mensalidade, "class" => "form-control"]); ?>
+                    <?php echo form_input(["id" => "bombeiros-aluno-mensalidade", "name" => "valor_mensalidade", "value" => $model_info->valor_mensalidade ?: $model_info->valor_mensal, "class" => "form-control", "placeholder" => "Ex.: 237,00"]); ?>
+                    <div class="text-off mt5">Valor recorrente enquanto o aluno permanecer ativo.</div>
                 </div>
             </div>
         </div>
@@ -316,19 +433,6 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
                 <label for="bombeiros-aluno-inscricao-data" class="col-md-2">Data da inscrição</label>
                 <div class="col-md-4">
                     <?php echo form_input(["id" => "bombeiros-aluno-inscricao-data", "name" => "data_inscricao", "type" => "date", "value" => $model_info->data_inscricao, "class" => "form-control"]); ?>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <div class="row">
-                <label for="bombeiros-aluno-valor-mensal" class="col-md-3">Valor mensal</label>
-                <div class="col-md-3">
-                    <?php echo form_input(["id" => "bombeiros-aluno-valor-mensal", "name" => "valor_mensal", "value" => $model_info->valor_mensal, "class" => "form-control"]); ?>
-                </div>
-                <label for="bombeiros-aluno-primeira-parcela" class="col-md-2">1ª parcela</label>
-                <div class="col-md-4">
-                    <?php echo form_input(["id" => "bombeiros-aluno-primeira-parcela", "name" => "data_primeira_parcela", "type" => "date", "value" => $model_info->data_primeira_parcela, "class" => "form-control"]); ?>
                 </div>
             </div>
         </div>
@@ -371,6 +475,33 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
                     <label class="mr15"><?php echo form_checkbox("matricula_efetuada", "1", (int) $model_info->matricula_efetuada === 1, "id='bombeiros-aluno-matricula-efetuada'"); ?> Matrícula</label>
                     <label class="mr15"><?php echo form_checkbox("uniforme_efetuado", "1", (int) $model_info->uniforme_efetuado === 1, "id='bombeiros-aluno-uniforme-efetuado'"); ?> Uniforme</label>
                     <label><?php echo form_checkbox("material_efetuado", "1", (int) $model_info->material_efetuado === 1, "id='bombeiros-aluno-material-efetuado'"); ?> Material</label>
+                </div>
+            </div>
+        </div>
+
+        <h5 class="mb15 mt20">Comanda / pagamentos avulsos</h5>
+        <p class="text-off mb15">A mensalidade é recorrente e continua por competência. Use este lançamento para registrar um item consumido pelo aluno; campeonatos são atribuídos na área de eventos.</p>
+        <div class="form-group">
+            <div class="row">
+                <label for="bombeiros-aluno-comanda-item" class="col-md-3">Item consumido</label>
+                <div class="col-md-4">
+                    <?php echo form_dropdown("comanda_item", $comanda_item_options, "", ["id" => "bombeiros-aluno-comanda-item", "class" => "form-control"]); ?>
+                </div>
+                <label for="bombeiros-aluno-comanda-status" class="col-md-2">Status</label>
+                <div class="col-md-3">
+                    <?php echo form_dropdown("comanda_item_status", $comanda_status_options, "Pago", ["id" => "bombeiros-aluno-comanda-status", "class" => "form-control"]); ?>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="row">
+                <label for="bombeiros-aluno-comanda-descricao" class="col-md-3">Descrição</label>
+                <div class="col-md-5">
+                    <?php echo form_input(["id" => "bombeiros-aluno-comanda-descricao", "name" => "comanda_item_descricao", "class" => "form-control", "placeholder" => "Ex.: passeio de julho"]); ?>
+                </div>
+                <label for="bombeiros-aluno-comanda-valor" class="col-md-1">Valor</label>
+                <div class="col-md-3">
+                    <?php echo form_input(["id" => "bombeiros-aluno-comanda-valor", "name" => "comanda_item_valor", "type" => "number", "step" => "0.01", "min" => "0.01", "class" => "form-control", "placeholder" => "0,00"]); ?>
                 </div>
             </div>
         </div>
@@ -690,9 +821,15 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
                     }
                     renderCrossUnitResults(result.data || []);
                 },
-                error: function () {
+                error: function (xhr) {
                     $originResults.empty();
-                    appAlert.error("Não foi possível buscar alunos.", {container: ".modal-body", animate: false});
+                    var response = xhr && xhr.responseJSON ? xhr.responseJSON : null;
+                    var message = response && response.message
+                        ? response.message
+                        : xhr && xhr.status === 403
+                            ? "Você não tem permissão para consultar alunos nesta unidade."
+                            : "Não foi possível buscar alunos.";
+                    appAlert.error(message, {container: ".modal-body", animate: false});
                 }
             });
         }

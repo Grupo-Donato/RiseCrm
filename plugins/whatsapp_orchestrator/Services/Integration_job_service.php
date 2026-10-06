@@ -53,6 +53,18 @@ class Integration_job_service
                 ->where('deleted', 0)
                 ->whereIn('status', ['pending', 'retry'])
                 ->where('available_at <=', gmdate('Y-m-d H:i:s'))
+                // Do not let a historical bot backlog delay user-visible work.
+                // Campaign recipients and webhook retries have an external
+                // delivery/read impact, while bot and maintenance jobs are
+                // advisory and can safely yield to them.
+                ->orderBy("CASE job_type
+                    WHEN 'campaign_recipient' THEN 0
+                    WHEN 'campaign_schedule' THEN 1
+                    WHEN 'webhook_retry' THEN 2
+                    WHEN 'instance_status' THEN 3
+                    WHEN 'bot_process' THEN 4
+                    ELSE 5
+                END", '', false)
                 ->orderBy('id', 'ASC')
                 ->limit(min(200, max(1, $limit)))
                 ->get()

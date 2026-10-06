@@ -48,8 +48,12 @@ class Webhook_normalizer
             $root['message_id'] ?? null,
             $root['messageId'] ?? null,
             $root['idMessage'] ?? null,
+            $root['keyId'] ?? null,
             $this->path($root, ['key', 'id']),
             $this->path($data, ['key', 'id']),
+            // Evolution's messages.update payload uses data.keyId instead of
+            // nesting the message key under data.key.id.
+            $data['keyId'] ?? null,
             $this->path($data, ['message', 'key', 'id']),
             $data['message_id'] ?? null,
             $data['messageId'] ?? null,

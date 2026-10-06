@@ -748,7 +748,7 @@ class Campaign_service
         $delimiter = $this->audienceDelimiter($path);
         $grid = [];
         while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
-            $row = array_map(static fn ($cell): string => trim((string) $cell), $row);
+            $row = array_map(fn ($cell): string => $this->normalizeAudienceCell((string) $cell), $row);
             if (array_filter($row, static fn (string $cell): bool => $cell !== '')) $grid[] = $row;
         }
         fclose($handle);
@@ -756,6 +756,13 @@ class Campaign_service
         $grid[0][0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($grid[0][0] ?? '')) ?: '';
         $header = array_map(static fn ($cell): string => trim((string) $cell), array_shift($grid));
         return [$header, array_values($grid)];
+    }
+
+    private function normalizeAudienceCell(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '' || !function_exists('mb_check_encoding') || mb_check_encoding($value, 'UTF-8')) return $value;
+        return trim(mb_convert_encoding($value, 'UTF-8', 'Windows-1252'));
     }
 
     private function spreadsheetAutoloadPath(): string

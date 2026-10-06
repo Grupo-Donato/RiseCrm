@@ -14,7 +14,7 @@ class Bombeiros_presenca_model extends Crud_model
         parent::__construct($this->table);
     }
 
-    public function get_by_date($data_aula, $unidade_id = 0)
+    public function get_by_date($data_aula, $unidade_id = 0, $turma_id = 0, $legacy_turma = null)
     {
         $presenca_table = $this->db->prefixTable("grupo_donato_presenca");
         $alunos_table = $this->db->prefixTable("grupo_donato_alunos");
@@ -23,6 +23,13 @@ class Bombeiros_presenca_model extends Crud_model
         if ($unidade_id) {
             $where .= " AND $alunos_table.unidade_id=" . (int) $unidade_id;
         }
+        if ($turma_id) {
+            $where .= " AND ($presenca_table.turma_id=" . (int) $turma_id;
+            if ($legacy_turma !== null && (string) $legacy_turma !== "") {
+                $where .= " OR ($presenca_table.turma_id IS NULL AND $presenca_table.turma=" . $this->db->escape($legacy_turma) . ")";
+            }
+            $where .= ")";
+        }
 
         $sql = "SELECT $presenca_table.*
             FROM $presenca_table
@@ -30,6 +37,13 @@ class Bombeiros_presenca_model extends Crud_model
             WHERE $alunos_table.deleted=0 $where";
 
         return $this->db->query($sql)->getResult();
+    }
+
+    public function get_for_student_date($aluno_id, $data_aula, $turma_id = 0)
+    {
+        $table = $this->db->prefixTable("grupo_donato_presenca");
+        $class_filter = $turma_id ? " AND turma_id=" . (int) $turma_id : " AND turma_id IS NULL";
+        return $this->db->query("SELECT * FROM $table WHERE aluno_id=" . (int) $aluno_id . " AND data_aula=" . $this->db->escape($data_aula) . $class_filter . " ORDER BY id DESC LIMIT 1")->getRow();
     }
 
     public function get_totals($unidade_id = 0, $mes_referencia = 0, $ano_referencia = 0)

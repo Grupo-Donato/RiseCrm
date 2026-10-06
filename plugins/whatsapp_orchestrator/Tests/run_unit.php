@@ -329,6 +329,25 @@ $test('Evolution v2 image webhook normalization', static function () use ($asser
     $assertSame('delivered', $normalized['message_status']);
 });
 
+$test('Evolution messages.update uses keyId as the external message id', static function () use ($assertSame): void {
+    $normalizer = new Webhook_normalizer();
+    $normalized = $normalizer->normalize([
+        'event' => 'MESSAGES_UPDATE',
+        'instance' => 'loja-receipts',
+        'data' => [
+            'keyId' => 'OUTBOUND-MESSAGE-1',
+            'remoteJid' => '5511999999999@s.whatsapp.net',
+            'fromMe' => true,
+            'status' => 'DELIVERY_ACK',
+            'messageId' => 'provider-event-1',
+        ],
+    ]);
+
+    $assertSame('messages.update', $normalized['event']);
+    $assertSame('OUTBOUND-MESSAGE-1', $normalized['external_message_id']);
+    $assertSame('delivered', $normalized['message_status']);
+});
+
 $test('Evolution LID keeps conversation identity and uses remoteJidAlt as phone', static function () use ($assertSame): void {
     $normalizer = new Webhook_normalizer();
     $normalized = $normalizer->normalize([

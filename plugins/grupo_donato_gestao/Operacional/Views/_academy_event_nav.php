@@ -10,7 +10,7 @@ $eventSection = $section ?? "resumo";
     <div class="gd-academy-header-actions"><span class="badge <?php echo esc($eventStatusClass); ?>"><?php echo esc($eventStatusLabels[$event->status] ?? $event->status); ?></span><a class="btn btn-default btn-sm" href="<?php echo esc(get_uri("grupo_donato/operacional?gd_tab=eventos")); ?>">← Eventos</a></div>
 </div>
 <nav class="gd-academy-nav" aria-label="Navegação do evento">
-    <?php foreach (["resumo" => "Resumo", "categorias" => "Categorias", "financeiro" => "Financeiro", "checklist" => "Checklist", "configuracoes" => "Configurações"] as $key => $label): ?>
+    <?php foreach (["resumo" => "Resumo", "participantes" => "Lista de atletas", "categorias" => "Categorias", "financeiro" => "Financeiro", "checklist" => "Checklist", "configuracoes" => "Configurações"] as $key => $label): ?>
         <?php if ($key === "financeiro" && empty($can_finance)) continue; ?><?php if ($key === "configuracoes" && empty($can_manage)) continue; ?>
         <a class="<?php echo $eventSection === $key ? "active" : ""; ?>" href="<?php echo esc($key === "resumo" ? $eventUrl : $eventUrl . "/" . $key); ?>"><?php echo esc($label); ?></a>
     <?php endforeach; ?>

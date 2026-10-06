@@ -6,15 +6,15 @@ O módulo de eventos vive dentro da tela operacional oficial da Academy. A entra
 
 - Alunos e responsáveis internos continuam sendo lidos de `grupo_donato_alunos` e `grupo_donato_responsaveis`.
 - A unidade legada é mapeada para uma unidade ativa de `gd_units`. O mapeamento é feito por id, nome ou unidade padrão, nesta ordem.
-- Categorias, partidas, convocação, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067; a V068 ajusta os índices da convocação para preservar históricos removidos sem impedir uma nova convocação.
+- A lista-base de atletas por evento fica em `gd_academy_event_roster`. Categorias, partidas, convocações, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067; a V068 ajusta os índices da convocação para preservar históricos removidos sem impedir uma nova convocação e a V074 vincula as convocações à lista-base.
 - Atleta externo é um registro contextual do evento. Ele não cria um segundo aluno nem um segundo responsável.
 
 ## Fluxo
 
 1. Criar o evento com período, local, organizador e valor padrão.
-2. Criar categorias com faixa etária, gênero, equipe técnica, limite e valor.
-3. Registrar partidas e atualizar o placar após o jogo.
-4. Pesquisar alunos da operação e adicionar convidados externos com dados de origem.
+2. Montar, ao longo dos dias, a lista-base de todos os alunos e convidados que participarão do evento.
+3. Criar categorias com faixa etária, gênero, equipe técnica, limite e valor. A convocação da categoria só oferece atletas da lista-base; a faixa etária continua sendo aplicada como filtro/priorização e exceções autorizadas permanecem possíveis.
+4. Registrar partidas e atualizar o placar após o jogo.
 5. Registrar confirmação e escalação. A escalação da partida permite definir todos os atletas e salvar a convocação de uma vez; a mudança da confirmação também grava a linha de confirmação/auditoria.
 6. Gerar o recebível individual, baixar pagamentos parciais ou totais e consultar a conta familiar.
 7. Registrar avaliação de 1 a 5, pontos fortes, desenvolvimento, recomendação e nota interna.
@@ -45,6 +45,8 @@ Os endpoints continuam sob o grupo CSRF de `grupo_donato/operacional` e todas as
 ## Endpoints principais
 
 `eventos_list_data`, `evento_modal_form`, `save_event`, `save_event_category`, `save_event_match`, `save_event_match_score`, `save_event_staff`, `academy_student_search`, `add_event_participant`, `update_event_participant`, `save_event_lineup`, `delete_event_participant`, `save_event_confirmation`, `event_charge`, `event_payment`, `save_event_evaluation`, `save_event_stat`, `save_event_checklist`, `toggle_event_checklist`, `event_family_account`, `student_sport_history`, `finalize_event` e `cancel_event`.
+
+`academy_student_search`, `add_event_roster` e `delete_event_roster` administram a lista-base do evento. `add_event_participant` recebe o `roster_id` para distribuir um atleta em uma categoria sem repetir seu cadastro no evento.
 
 `save_event_lineup` recebe os participantes da partida em uma única requisição,
 valida a categoria e a versão de cada registro e grava as alterações em uma

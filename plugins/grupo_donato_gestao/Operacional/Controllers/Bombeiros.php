@@ -43,10 +43,6 @@ class Bombeiros extends Security_Controller
             $this->access_only_team_members();
         }
 
-        if (function_exists("bombeiros_install_or_update")) {
-            bombeiros_install_or_update();
-        }
-
         $this->General_files_model = model("App\Models\General_files_model");
         $this->Bombeiros_unidades_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_unidades_model");
         $this->Bombeiros_responsaveis_model = model("grupo_donato_gestao\Operacional\Models\Bombeiros_responsaveis_model");
@@ -101,6 +97,8 @@ class Bombeiros extends Security_Controller
         $view_data["unidade_atual"] = $unidade_atual;
         $view_data["unidades_contexto_dropdown"] = $this->_unidades_contexto_dropdown();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown(false);
+        $view_data["turmas_chamada"] = $this->_turmas_da_unidade($this->_active_unit_id(), true);
+        $view_data["turma_chamada_selected"] = (int) $this->request->getGet("turma_id");
         $view_data["gd_active_tab"] = $gd_active_tab;
         $view_data["gd_allowed_sections"] = $gd_allowed_sections;
         $view_data["dashboard_periodo"] = $dashboard_periodo;
@@ -145,6 +143,106 @@ class Bombeiros extends Security_Controller
     public function academy_category(int $eventId = 0, int $categoryId = 0)
     {
         return $this->_academy_category_page($eventId, $categoryId, "resumo");
+    }
+
+    public function export_category_participants(int $eventId = 0, int $categoryId = 0)
+    {
+        $this->_event_require("gd_academy_events_view");
+        if ($eventId <= 0 || $categoryId <= 0) return show_404();
+
+        try {
+            $service = $this->_academy_event_service();
+            $overview = $service->categoryOverview($eventId, $categoryId);
+            $participants = $service->categoryParticipants($eventId, $categoryId);
+        } catch (\DomainException $e) {
+            if ($e->getMessage() === "gd_record_not_found") return show_404();
+            throw $e;
+        }
+
+        $event = $overview["event"] ?? (object) [];
+        $category = $overview["category"] ?? (object) [];
+        $lineupLabels = [
+            "called" => "Convocado", "starter" => "Titular", "substitute" => "Reserva",
+            "absent" => "Ausente", "cut" => "Cortado",
+        ];
+        $confirmationLabels = [
+            "waiting" => "Aguardando", "confirmed" => "Confirmado", "refused" => "Recusado",
+            "no_response" => "Sem resposta", "pending" => "Aguardando",
+        ];
+        $date = static function ($value): string {
+            $value = trim((string) $value);
+            if ($value === "") return "";
+            $timestamp = strtotime($value);
+            return $timestamp ? date("d/m/Y", $timestamp) : $value;
+        };
+        $slug = static function ($value): string {
+            $value = trim((string) $value);
+            if (function_exists("iconv")) {
+                $converted = iconv("UTF-8", "ASCII//TRANSLIT//IGNORE", $value);
+                if ($converted !== false) $value = $converted;
+            }
+            $value = strtolower((string) preg_replace("/[^a-z0-9]+/i", "-", $value));
+            return trim($value, "-") ?: "categoria";
+        };
+
+        $headers = [
+            "Nome", "Tipo", "Idade", "Nascimento", "Turma / clube", "Responsável",
+            "Situação esportiva", "Confirmação", "Posição",
+        ];
+        $rows = [];
+
+        foreach ($participants as $participant) {
+            $type = ($participant->athlete_type ?? "") === "external" ? "Convidado" : "Aluno GD Academy";
+            $origin = ($participant->athlete_type ?? "") === "internal"
+                ? (string) ($participant->turma ?? "")
+                : (string) ($participant->origin_club ?? "");
+            $rows[] = [
+                (string) ($participant->athlete_name ?? ""),
+                $type,
+                $participant->age !== null ? (int) $participant->age : "",
+                $date($participant->birth_date ?? ""),
+                $origin,
+                (string) ($participant->responsible_name ?? ""),
+                $lineupLabels[$participant->lineup_status ?? ""] ?? (string) ($participant->lineup_status ?? ""),
+                $confirmationLabels[$participant->confirmation_status ?? ""] ?? (string) ($participant->confirmation_status ?? ""),
+                (string) ($participant->position ?? ""),
+            ];
+        }
+
+        $filenameBase = "atletas-" . $slug($event->name ?? "evento") . "-" . $slug($category->name ?? "categoria");
+        $spreadsheetAutoload = rtrim(APPPATH, "/\\") . "/ThirdParty/PHPOffice-PhpSpreadsheet/vendor/autoload.php";
+        if (is_file($spreadsheetAutoload)) {
+            require_once $spreadsheetAutoload;
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle("Convocados");
+            $sheet->fromArray([$headers, ...$rows], null, "A1");
+            $sheet->freezePane("A2");
+            $sheet->setAutoFilter("A1:I" . max(1, count($rows) + 1));
+            $sheet->getStyle("A1:I1")->getFont()->setBold(true)->getColor()->setARGB("FFFFFFFF");
+            $sheet->getStyle("A1:I1")->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB("1B3218");
+            foreach (range(1, count($headers)) as $column) $sheet->getColumnDimensionByColumn($column)->setAutoSize(true);
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            ob_start();
+            $writer->save("php://output");
+            $contents = (string) ob_get_clean();
+            $spreadsheet->disconnectWorksheets();
+            return $this->response->download($filenameBase . ".xlsx", $contents)
+                ->setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+
+        $handle = fopen("php://temp", "r+");
+        fputcsv($handle, ["Evento", (string) ($event->name ?? "")], ";");
+        fputcsv($handle, ["Categoria", (string) ($category->name ?? "")], ";");
+        fputcsv($handle, ["Total de atletas", count($participants)], ";");
+        fputcsv($handle, [], ";");
+        fputcsv($handle, $headers, ";");
+        foreach ($rows as $row) fputcsv($handle, $row, ";");
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+        return $this->response->download($filenameBase . ".csv", "\xEF\xBB\xBF" . $csv)->setContentType("text/csv; charset=UTF-8");
     }
 
     public function academy_category_section(int $eventId = 0, int $categoryId = 0, string $section = "resumo")
@@ -236,7 +334,23 @@ class Bombeiros extends Security_Controller
     public function academy_student_search()
     {
         $this->_event_require("gd_academy_events_view");
-        return $this->_event_json(fn() => ["data" => $this->_academy_event_service()->searchStudents((string) $this->request->getPost("query"), (int) $this->request->getPost("category_id"))]);
+        return $this->_event_json(fn() => ["data" => $this->_academy_event_service()->searchStudents(
+            (string) $this->request->getPost("query"),
+            (int) $this->request->getPost("category_id"),
+            (int) $this->request->getPost("event_id")
+        )]);
+    }
+
+    public function add_event_roster()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->addEventRoster((int) $this->request->getPost("event_id"), $this->request->getPost()));
+    }
+
+    public function delete_event_roster()
+    {
+        $this->_event_require("gd_academy_events_lineup");
+        return $this->_event_json(fn() => $this->_academy_event_service()->deleteEventRoster((int) $this->request->getPost("roster_id")));
     }
 
     public function add_event_participant()
@@ -436,8 +550,7 @@ class Bombeiros extends Security_Controller
             "melhor_horario_options" => $this->_melhor_horario_ligacao_options(),
             "defaults" => [
                 "curso_nome" => "ACADEMIA DE TREINAMENTO MIRIM",
-                "num_parcelas" => 12,
-                "valor_mensalidade" => "237.00",
+                "valor_mensalidade" => "220.00",
                 "valor_inscricao" => "100.00",
                 "data_inicio" => date("Y-m-d")
             ],
@@ -596,6 +709,249 @@ class Bombeiros extends Security_Controller
         return $this->template->view('grupo_donato_gestao\Operacional\Views\unidades');
     }
 
+    public function turmas()
+    {
+        $unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($unit_id, "can_view_students")) {
+            return $this->template->render('grupo_donato_gestao\Operacional\Views\turmas', [
+                "access_denied" => true,
+                "turmas" => [], "alunos" => [], "membros_por_turma" => [], "chamadas_por_turma" => [],
+                "historico_detalhe" => [], "historico_data" => "", "can_manage" => false,
+                "unidade_atual" => $this->_active_unit()
+            ]);
+        }
+
+        $db = db_connect();
+        $turmas_table = $db->prefixTable("grupo_donato_turmas");
+        $aluno_turmas_table = $db->prefixTable("grupo_donato_aluno_turmas");
+        $alunos_table = $db->prefixTable("grupo_donato_alunos");
+        $presenca_table = $db->prefixTable("grupo_donato_presenca");
+
+        $turmas = $db->query("SELECT t.*, COUNT(DISTINCT a.id) AS total_alunos
+            FROM $turmas_table t
+            LEFT JOIN $aluno_turmas_table m ON m.turma_id=t.id AND m.unit_id=t.unit_id
+            LEFT JOIN $alunos_table a ON a.id=m.aluno_id AND a.unidade_id=t.unit_id AND a.deleted=0 AND a.status='Ativo'
+            WHERE t.unit_id=" . (int) $unit_id . "
+            GROUP BY t.id ORDER BY t.active DESC, t.nome ASC")->getResult();
+        foreach ($turmas as $turma) {
+            $turma->descricao = $this->_turma_descricao($turma);
+        }
+        $alunos = $db->query("SELECT id, matricula, nome_aluno FROM $alunos_table
+            WHERE unidade_id=" . (int) $unit_id . " AND deleted=0 AND status='Ativo'
+            ORDER BY nome_aluno ASC")->getResult();
+
+        $membros_por_turma = [];
+        $members = $db->query("SELECT m.turma_id, a.id, a.matricula, a.nome_aluno
+            FROM $aluno_turmas_table m
+            INNER JOIN $alunos_table a ON a.id=m.aluno_id
+            WHERE m.unit_id=" . (int) $unit_id . " AND a.unidade_id=" . (int) $unit_id . "
+                AND a.deleted=0 AND a.status='Ativo'
+            ORDER BY a.nome_aluno ASC")->getResult();
+        foreach ($members as $member) {
+            $membros_por_turma[(int) $member->turma_id][] = $member;
+        }
+
+        $chamadas_por_turma = [];
+        $sessions = $db->query("SELECT p.turma_id, p.data_aula,
+                COUNT(*) AS total,
+                SUM(CASE WHEN p.status_tipo='presente' OR (p.status=1 AND p.status_tipo IS NULL) THEN 1 ELSE 0 END) AS presentes,
+                SUM(CASE WHEN p.status_tipo='falta' OR (p.status=0 AND p.status_tipo IS NULL) THEN 1 ELSE 0 END) AS faltas
+            FROM $presenca_table p
+            INNER JOIN $alunos_table a ON a.id=p.aluno_id
+            WHERE a.unidade_id=" . (int) $unit_id . " AND a.deleted=0 AND p.turma_id IS NOT NULL
+            GROUP BY p.turma_id,p.data_aula ORDER BY p.data_aula DESC")->getResult();
+        foreach ($sessions as $session) {
+            $chamadas_por_turma[(int) $session->turma_id][] = $session;
+        }
+
+        $historico_turma_id = (int) $this->request->getGet("historico_turma_id");
+        $historico_data = trim((string) $this->request->getGet("historico_data"));
+        $historico_detalhe = [];
+        if ($historico_turma_id > 0 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $historico_data)) {
+            $turma_row = $db->query("SELECT id FROM $turmas_table WHERE id=" . $historico_turma_id . " AND unit_id=" . (int) $unit_id)->getRow();
+            if ($turma_row) {
+                $historico_detalhe = $db->query("SELECT p.status, p.status_tipo, p.observacao, a.nome_aluno, a.matricula
+                    FROM $presenca_table p INNER JOIN $alunos_table a ON a.id=p.aluno_id
+                    WHERE p.turma_id=" . $historico_turma_id . " AND p.data_aula=" . $db->escape($historico_data) . "
+                        AND a.unidade_id=" . (int) $unit_id . " AND a.deleted=0
+                    ORDER BY a.nome_aluno ASC")->getResult();
+            }
+        }
+
+        return $this->template->render('grupo_donato_gestao\Operacional\Views\turmas', [
+            "turmas" => $turmas,
+            "alunos" => $alunos,
+            "membros_por_turma" => $membros_por_turma,
+            "chamadas_por_turma" => $chamadas_por_turma,
+            "historico_detalhe" => $historico_detalhe,
+            "historico_turma_id" => $historico_turma_id,
+            "historico_data" => $historico_data,
+            "can_manage" => $this->_usuario_tem_acesso_unidade($unit_id, "can_manage_students"),
+            "unidade_atual" => $this->_active_unit(),
+            "access_denied" => false
+        ]);
+    }
+
+    public function save_turma()
+    {
+        $unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($unit_id, "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar turmas nesta unidade."]);
+            return;
+        }
+
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_turmas");
+        $id = (int) $this->request->getPost("turma_id");
+        $nome = trim((string) $this->request->getPost("nome"));
+        $dias = $this->request->getPost("dias_semana");
+        $dias_validos = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"];
+        $dias = is_array($dias) ? array_values(array_intersect($dias_validos, array_map("strval", $dias))) : [];
+        $dias = array_values(array_unique($dias));
+        $inicio = trim((string) $this->request->getPost("horario_inicio"));
+        $fim = trim((string) $this->request->getPost("horario_fim"));
+        $active = (int) $this->request->getPost("active") === 1 ? 1 : 0;
+
+        if ($nome === "" || mb_strlen($nome, "UTF-8") > 50) {
+            echo json_encode(["success" => false, "message" => "Informe um nome de até 50 caracteres."]);
+            return;
+        }
+        $valid_time = static function ($value) {
+            return $value === "" || (bool) preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value);
+        };
+        if (!$valid_time($inicio) || !$valid_time($fim) || (($inicio === "") !== ($fim === "")) || ($inicio !== "" && $inicio >= $fim)) {
+            echo json_encode(["success" => false, "message" => "Informe um intervalo de horário válido."]);
+            return;
+        }
+        $existing = $id ? $db->query("SELECT id FROM $table WHERE id=$id AND unit_id=" . (int) $unit_id)->getRow() : null;
+        if ($id && !$existing) {
+            echo json_encode(["success" => false, "message" => "Turma não encontrada nesta unidade."]);
+            return;
+        }
+        $duplicate = $db->query("SELECT id FROM $table WHERE unit_id=" . (int) $unit_id . " AND nome=" . $db->escape($nome) . " AND id<>" . $id . " LIMIT 1")->getRow();
+        if ($duplicate) {
+            echo json_encode(["success" => false, "message" => "Já existe uma turma com esse nome nesta unidade."]);
+            return;
+        }
+
+        $record = [
+            "unit_id" => (int) $unit_id,
+            "nome" => $nome,
+            "dias_semana" => $dias ? implode(",", $dias) : null,
+            "horario_inicio" => $inicio !== "" ? $inicio . ":00" : null,
+            "horario_fim" => $fim !== "" ? $fim . ":00" : null,
+            "active" => $active
+        ];
+        $ok = $id ? $db->table($table)->where("id", $id)->where("unit_id", $unit_id)->update($record) : $db->table($table)->insert($record);
+        echo json_encode(["success" => (bool) $ok, "message" => $ok ? "Turma salva." : app_lang("error_occurred")]);
+    }
+
+    public function atualizar_turma_aluno()
+    {
+        $unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($unit_id, "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar turmas nesta unidade."]);
+            return;
+        }
+        $db = db_connect();
+        $turmas_table = $db->prefixTable("grupo_donato_turmas");
+        $members_table = $db->prefixTable("grupo_donato_aluno_turmas");
+        $alunos_table = $db->prefixTable("grupo_donato_alunos");
+        $turma_id = (int) $this->request->getPost("turma_id");
+        $aluno_id = (int) $this->request->getPost("aluno_id");
+        $action = (string) $this->request->getPost("action");
+        $turma = $db->query("SELECT id, active FROM $turmas_table WHERE id=$turma_id AND unit_id=" . (int) $unit_id)->getRow();
+        $aluno = $db->query("SELECT id, matricula, nome_aluno FROM $alunos_table WHERE id=$aluno_id AND unidade_id=" . (int) $unit_id . " AND deleted=0 AND status='Ativo'")->getRow();
+        if (!$turma || !$aluno || !in_array($action, ["add", "remove"], true) || ($action === "add" && !(int) $turma->active)) {
+            echo json_encode(["success" => false, "message" => "Aluno ou turma indisponível para esta unidade."]);
+            return;
+        }
+
+        $member_html = "";
+        $member_option_text = trim((string) $aluno->nome_aluno) . (!empty($aluno->matricula) ? " · " . trim((string) $aluno->matricula) : "");
+        if ($action === "add") {
+            $existing = $db->table($members_table)
+                ->where("aluno_id", $aluno_id)
+                ->where("turma_id", $turma_id)
+                ->where("unit_id", (int) $unit_id)
+                ->get(1)->getRow();
+            if ($existing) {
+                echo json_encode(["success" => false, "message" => "Este aluno já está neste horário."]);
+                return;
+            }
+
+            $ok = $db->query("INSERT IGNORE INTO $members_table (aluno_id,turma_id,unit_id) VALUES ($aluno_id,$turma_id," . (int) $unit_id . ")");
+            $message = "Aluno adicionado à turma.";
+            if ($ok && $db->affectedRows() > 0) {
+                $member_html = view("grupo_donato_gestao\\Operacional\\Views\\turma_roster_member", [
+                    "member" => $aluno,
+                    "turma_id" => $turma_id,
+                    "can_manage" => true,
+                ]);
+            } else {
+                $ok = false;
+                $message = app_lang("error_occurred");
+            }
+        } else {
+            $ok = $db->query("DELETE FROM $members_table WHERE aluno_id=$aluno_id AND turma_id=$turma_id AND unit_id=" . (int) $unit_id);
+            $message = "Aluno removido da turma.";
+        }
+        $member_count_row = $db->query("SELECT COUNT(*) AS total FROM $members_table m
+            INNER JOIN $alunos_table a ON a.id=m.aluno_id
+            WHERE m.turma_id=$turma_id AND m.unit_id=" . (int) $unit_id . "
+                AND a.unidade_id=" . (int) $unit_id . " AND a.deleted=0 AND a.status='Ativo'")->getRow();
+        $member_count = (int) ($member_count_row->total ?? 0);
+        echo json_encode([
+            "success" => (bool) $ok,
+            "message" => $ok ? $message : app_lang("error_occurred"),
+            "member_html" => $member_html,
+            "member_count" => $member_count,
+            "member_id" => $aluno_id,
+            "member_option_text" => $member_option_text,
+        ]);
+    }
+
+    public function mesclar_turmas()
+    {
+        $unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($unit_id, "can_manage_students")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para gerenciar turmas nesta unidade."]);
+            return;
+        }
+        $db = db_connect();
+        $turmas_table = $db->prefixTable("grupo_donato_turmas");
+        $members_table = $db->prefixTable("grupo_donato_aluno_turmas");
+        $target_id = (int) $this->request->getPost("turma_destino_id");
+        $source_ids = $this->request->getPost("turmas_origem");
+        $source_ids = is_array($source_ids) ? array_values(array_unique(array_filter(array_map("intval", $source_ids)))) : [];
+        $target = $db->query("SELECT id FROM $turmas_table WHERE id=$target_id AND unit_id=" . (int) $unit_id . " AND active=1")->getRow();
+        if (!$target || !$source_ids) {
+            echo json_encode(["success" => false, "message" => "Escolha a turma de destino e ao menos uma turma para juntar."]);
+            return;
+        }
+        $source_ids = array_values(array_diff($source_ids, [$target_id]));
+        if (!$source_ids) {
+            echo json_encode(["success" => false, "message" => "A turma de destino não pode ser juntada a si mesma."]);
+            return;
+        }
+
+        $ids_sql = implode(",", $source_ids);
+        $valid_sources = $db->query("SELECT COUNT(*) AS total FROM $turmas_table WHERE unit_id=" . (int) $unit_id . " AND active=1 AND id IN ($ids_sql)")->getRow();
+        if ((int) ($valid_sources->total ?? 0) !== count($source_ids)) {
+            echo json_encode(["success" => false, "message" => "Uma das turmas de origem não está ativa nesta unidade."]);
+            return;
+        }
+
+        $db->transStart();
+        $db->query("INSERT IGNORE INTO $members_table (aluno_id,turma_id,unit_id)
+            SELECT aluno_id,$target_id," . (int) $unit_id . " FROM $members_table
+            WHERE unit_id=" . (int) $unit_id . " AND turma_id IN ($ids_sql)");
+        $db->query("UPDATE $turmas_table SET active=0 WHERE unit_id=" . (int) $unit_id . " AND id IN ($ids_sql)");
+        $db->transComplete();
+        $success = $db->transStatus();
+        echo json_encode(["success" => $success, "message" => $success ? "Turmas juntadas. Os horários de origem foram arquivados e o histórico foi mantido." : app_lang("error_occurred")]);
+    }
+
     public function leads_palestra()
     {
         return $this->template->view('grupo_donato_gestao\Operacional\Views\lista_leads_palestra');
@@ -626,6 +982,7 @@ class Bombeiros extends Security_Controller
         $turmas = [];
 
         foreach ($list_data as $aluno) {
+            $aluno->idade_nascimento = $this->_format_student_age($aluno->nascimento_aluno ?? "");
             $turma = trim((string) ($aluno->turma ?? ""));
             $turma_key = $turma ?: "__sem_turma__";
             if (!isset($turmas[$turma_key])) {
@@ -911,6 +1268,7 @@ class Bombeiros extends Security_Controller
 
         $view_data["model_info"] = $model_info ?: $this->_empty_aluno();
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown();
+        $view_data["turmas"] = $this->_turmas_matricula_options();
         $view_data["cross_unit_units"] = empty($id) ? $this->_unidades_cross_unit_dropdown() : [];
         $view_data["can_manage_student_photo"] = $this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_students");
         $view_data["student_sport_history"] = [];
@@ -924,6 +1282,52 @@ class Bombeiros extends Security_Controller
             }
         }
         return $this->template->view('grupo_donato_gestao\Operacional\Views\modal_aluno', $view_data);
+    }
+
+    /**
+     * Visão consolidada e somente leitura do aluno.
+     * O formulário continua separado para não transformar uma consulta rápida
+     * em uma tela de edição extensa, principalmente no celular.
+     */
+    public function aluno_overview_modal()
+    {
+        $this->validate_submitted_data(["id" => "required|numeric"]);
+
+        $active_unit_id = $this->_active_unit_id();
+        if (!$this->_usuario_tem_acesso_unidade($active_unit_id, "can_view_students")) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Você não tem permissão para visualizar alunos nesta unidade.</div></div>";
+            return;
+        }
+
+        $id = (int) $this->request->getPost("id");
+        $model_info = $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $active_unit_id])->getRow();
+        if (!$model_info) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Aluno não encontrado nesta unidade.</div></div>";
+            return;
+        }
+
+        $view_data = [
+            "model_info" => $model_info,
+            "student_age" => $this->_format_student_age($model_info->nascimento_aluno ?? ""),
+            "finance_overview" => $this->Bombeiros_alunos_model->get_student_overview_finance(
+                $id,
+                $active_unit_id,
+                $this->_academy_event_modern_unit_id()
+            ),
+            "student_sport_history" => [],
+            "can_edit" => $this->_usuario_tem_acesso_unidade($active_unit_id, "can_manage_students"),
+            "can_manage_finance" => $this->_usuario_tem_acesso_unidade($active_unit_id, "can_manage_finance"),
+        ];
+
+        if ($this->_gd_can_access_section("eventos")) {
+            try {
+                $view_data["student_sport_history"] = $this->_academy_event_service()->studentHistory($id);
+            } catch (\Throwable $e) {
+                log_message("error", "GD Academy: falha ao carregar visão geral do aluno: " . $e->getMessage());
+            }
+        }
+
+        return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\aluno_overview_modal", $view_data);
     }
 
     /** Pesquisa controlada para reaproveitar o cadastro de uma unidade irmã. */
@@ -1029,7 +1433,7 @@ class Bombeiros extends Security_Controller
 
     public function baixa_pagamento_modal_form()
     {
-        $this->validate_submitted_data(["id" => "required|numeric"]);
+        $this->validate_submitted_data(["id" => "numeric", "aluno_id" => "numeric"]);
 
         if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_finance")) {
             echo "<div class='modal-body'><div class='alert alert-danger'>Você não tem permissão para baixar pagamentos nesta unidade.</div></div>";
@@ -1037,14 +1441,174 @@ class Bombeiros extends Security_Controller
         }
 
         $id = (int) $this->request->getPost("id");
-        $cobranca = $this->Bombeiros_cobrancas_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
-        if (!$cobranca) {
-            echo "<div class='modal-body'><div class='alert alert-danger'>Cobrança não encontrada.</div></div>";
+        $aluno_id = (int) $this->request->getPost("aluno_id");
+        $cobranca = $id ? $this->Bombeiros_cobrancas_model->get_details([
+            "id" => $id,
+            "unidade_id" => $this->_active_unit_id()
+        ])->getRow() : null;
+
+        if (!$aluno_id && $cobranca) {
+            $aluno_id = (int) $cobranca->aluno_id;
+        }
+
+        if (!$aluno_id) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Aluno da cobrança não encontrado.</div></div>";
             return;
         }
 
-        $view_data["model_info"] = $cobranca;
+        $charges = $this->Bombeiros_cobrancas_model->get_details([
+            "aluno_id" => $aluno_id,
+            "unidade_id" => $this->_active_unit_id()
+        ])->getResult();
+        $open_charges = array_values(array_filter($charges, static function ($charge) {
+            return in_array((string) ($charge->status ?? ""), ["Pendente", "Vencido"], true);
+        }));
+
+        if (!$open_charges) {
+            echo "<div class='modal-body'><div class='alert alert-info'>Este aluno não possui cobranças em aberto.</div></div>";
+            return;
+        }
+
+        $selected_charge_id = 0;
+        foreach ($open_charges as $open_charge) {
+            if ((int) $open_charge->id === $id) {
+                $selected_charge_id = $id;
+                break;
+            }
+        }
+
+        $view_data["model_info"] = $cobranca ?: $open_charges[0];
+        $view_data["open_charges"] = $open_charges;
+        $view_data["selected_charge_id"] = $selected_charge_id;
         return $this->template->view('grupo_donato_gestao\Operacional\Views\modal_baixa_pagamento', $view_data);
+    }
+
+    public function nova_cobranca_modal_form()
+    {
+        $this->validate_submitted_data(["aluno_id" => "required|numeric"]);
+
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_finance")) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Você não tem permissão para lançar cobranças nesta unidade.</div></div>";
+            return;
+        }
+
+        $aluno_id = (int) $this->request->getPost("aluno_id");
+        $aluno = $this->Bombeiros_alunos_model->get_details([
+            "id" => $aluno_id,
+            "unidade_id" => $this->_active_unit_id()
+        ])->getRow();
+
+        if (!$aluno) {
+            echo "<div class='modal-body'><div class='alert alert-danger'>Aluno não encontrado na unidade ativa.</div></div>";
+            return;
+        }
+
+        return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\modal_nova_cobranca", [
+            "aluno" => $aluno,
+            "data_padrao" => date("Y-m-d")
+        ]);
+    }
+
+    public function salvar_cobranca_avulsa()
+    {
+        if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_finance")) {
+            echo json_encode(["success" => false, "message" => "Você não tem permissão para lançar cobranças nesta unidade."]);
+            return;
+        }
+
+        $this->validate_submitted_data([
+            "aluno_id" => "required|numeric",
+            "item" => "required",
+            "valor" => "required",
+            "vencimento" => "required",
+            "status" => "required"
+        ]);
+
+        $aluno_id = (int) $this->request->getPost("aluno_id");
+        $unidade_id = $this->_active_unit_id();
+        $aluno = $this->Bombeiros_alunos_model->get_details([
+            "id" => $aluno_id,
+            "unidade_id" => $unidade_id
+        ])->getRow();
+
+        if (!$aluno) {
+            echo json_encode(["success" => false, "message" => "Aluno não encontrado na unidade ativa."]);
+            return;
+        }
+
+        $item = trim((string) $this->request->getPost("item"));
+        $itens_validos = ["Camiseta", "Caneleira", "Meião", "Passeio", "Outro"];
+        if (!in_array($item, $itens_validos, true)) {
+            echo json_encode(["success" => false, "message" => "Selecione um tipo de cobrança válido."]);
+            return;
+        }
+
+        $valor = $this->_money_to_float($this->request->getPost("valor"));
+        if ($valor <= 0) {
+            echo json_encode(["success" => false, "message" => "Informe um valor maior que zero."]);
+            return;
+        }
+
+        $vencimento = $this->_date_value($this->request->getPost("vencimento"));
+        if (!$vencimento) {
+            echo json_encode(["success" => false, "message" => "Informe uma data de vencimento válida."]);
+            return;
+        }
+
+        $status = trim((string) $this->request->getPost("status"));
+        if (!in_array($status, ["Pendente", "Pago"], true)) {
+            echo json_encode(["success" => false, "message" => "Status de cobrança inválido."]);
+            return;
+        }
+
+        $data_pagamento = null;
+        if ($status === "Pago") {
+            $data_pagamento = $this->_date_value($this->request->getPost("data_pagamento")) ?: date("Y-m-d");
+            $data_pagamento .= " " . date("H:i:s");
+        }
+
+        $forma_pagamento = trim((string) $this->request->getPost("forma_pagamento"));
+        $formas_validas = ["", "PIX", "DINHEIRO", "CARTAO_CREDITO", "CARTAO_DEBITO", "BOLETO", "TRANSFERENCIA", "OUTRO"];
+        if (!in_array($forma_pagamento, $formas_validas, true)) {
+            echo json_encode(["success" => false, "message" => "Forma de pagamento inválida."]);
+            return;
+        }
+        if ($status !== "Pago") {
+            $forma_pagamento = "";
+        }
+
+        $descricao = trim((string) $this->request->getPost("descricao"));
+        $observacao = trim((string) $this->request->getPost("observacao"));
+
+        $db = db_connect();
+        try {
+            $db->transBegin();
+            $charge_id = $this->_salvar_cobranca_avulsa(
+                $aluno_id,
+                $unidade_id,
+                (int) ($aluno->responsavel_id ?? 0),
+                $item,
+                $status,
+                $descricao,
+                $valor,
+                $vencimento,
+                $data_pagamento,
+                $forma_pagamento,
+                $observacao
+            );
+            $success = $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message("error", "GD Academy: falha ao lançar cobrança avulsa para o aluno " . $aluno_id . ": " . $e->getMessage());
+            echo json_encode(["success" => false, "message" => "Não foi possível lançar a cobrança."]);
+            return;
+        }
+
+        echo json_encode([
+            "success" => (bool) $success,
+            "message" => $success ? "Cobrança lançada com sucesso." : app_lang("error_occurred"),
+            "cobranca_id" => $success ? $charge_id : 0
+        ]);
     }
 
     public function save_aluno($public_matricula = false, $public_unidade_id = 0, $origem_matricula = "")
@@ -1216,16 +1780,33 @@ class Bombeiros extends Security_Controller
                 "deleted" => 0
             ];
 
-            $valor_mensalidade = $public_matricula ? 237.00 : $this->_money_to_float($this->request->getPost("valor_mensalidade") ?: $this->request->getPost("valor_parcela"));
+            $valor_mensalidade = $public_matricula ? 220.00 : $this->_money_to_float($this->request->getPost("valor_mensalidade") ?: $this->request->getPost("valor_parcela"));
             if (!$valor_mensalidade) {
-                $valor_mensalidade = 237.00;
+                $valor_mensalidade = $public_matricula ? 220.00 : 237.00;
             }
-            $valor_mensal = $public_matricula ? $valor_mensalidade : $this->_money_to_float($this->request->getPost("valor_mensal"));
-            if (!$valor_mensal) {
-                $valor_mensal = $valor_mensalidade;
+            // A cobrança deixou de ser um plano parcelado: existe um único
+            // valor mensal, renovado por competência enquanto o aluno estiver
+            // ativo. Os campos antigos continuam na tabela somente para
+            // compatibilidade com cadastros históricos.
+            $valor_mensal = $valor_mensalidade;
+            $num_parcelas = 1;
+            $comanda_item = trim((string) $this->request->getPost("comanda_item"));
+            $comanda_status = trim((string) $this->request->getPost("comanda_item_status"));
+            $comanda_descricao = trim((string) $this->request->getPost("comanda_item_descricao"));
+            $comanda_valor = $this->_money_to_float($this->request->getPost("comanda_item_valor"));
+            $comanda_itens_validos = ["Camiseta", "Caneleira", "Meião", "Passeio"];
+            if ($comanda_item !== "" && !in_array($comanda_item, $comanda_itens_validos, true)) {
+                echo json_encode(["success" => false, "message" => "Item da comanda inválido."]);
+                return;
             }
-            $num_parcelas = $public_matricula ? 12 : (int) ($this->request->getPost("num_parcelas") ?: 12);
-            $num_parcelas = $num_parcelas > 0 ? $num_parcelas : 12;
+            if ($comanda_item !== "" && !in_array($comanda_status, ["Pago", "Pendente"], true)) {
+                echo json_encode(["success" => false, "message" => "Informe o status do item da comanda."]);
+                return;
+            }
+            if ($comanda_item !== "" && $comanda_valor <= 0) {
+                echo json_encode(["success" => false, "message" => "Informe um valor válido para o item da comanda."]);
+                return;
+            }
             $origem_matricula = trim((string) $origem_matricula);
             if (!$origem_matricula) {
                 $origem_matricula = trim((string) $this->request->getPost("origem_matricula"));
@@ -1254,11 +1835,15 @@ class Bombeiros extends Security_Controller
                 "valor_inscricao" => $public_matricula ? 100.00 : $this->_money_to_float($this->request->getPost("valor_inscricao")),
                 "data_inscricao" => $data_inscricao,
                 "valor_mensal" => $valor_mensal,
-                "data_primeira_parcela" => $data_primeira_parcela,
+                "data_primeira_parcela" => $id && !$this->request->getPost("data_primeira_parcela")
+                    ? ($aluno_atual->data_primeira_parcela ?? null)
+                    : null,
                 "data_inicio" => $data_inicio ?: date("Y-m-d"),
                 "tamanho_camisa" => trim($this->request->getPost("tamanho_camisa")),
                 "matricula_efetuada" => $public_matricula ? 0 : $this->_bool_value($this->request->getPost("matricula_efetuada")),
-                "uniforme_efetuado" => $public_matricula ? 0 : $this->_bool_value($this->request->getPost("uniforme_efetuado")),
+                // A camiseta é considerada quitada na matrícula. Uma nova
+                // pendência só nasce de um lançamento explícito na comanda.
+                "uniforme_efetuado" => $public_matricula ? 1 : ($id ? $this->_bool_value($this->request->getPost("uniforme_efetuado")) : 1),
                 "material_efetuado" => $public_matricula ? 0 : $this->_bool_value($this->request->getPost("material_efetuado")),
                 "melhor_horario_ligacao" => trim($this->request->getPost("melhor_horario_ligacao")),
                 "cidade_assinatura" => trim($this->request->getPost("cidade_assinatura")),
@@ -1272,6 +1857,10 @@ class Bombeiros extends Security_Controller
                 "origem_matricula" => $origem_matricula,
                 "status" => $public_matricula ? "Ativo" : $this->_normalizar_status_aluno($this->request->getPost("status") ?: "Ativo")
             ];
+            $dados_aluno["camiseta_status"] = $dados_aluno["uniforme_efetuado"] ? "pago" : "pendente";
+            $dados_aluno["camiseta_data"] = $dados_aluno["uniforme_efetuado"]
+                ? ($aluno_atual->camiseta_data ?? date("Y-m-d"))
+                : null;
             if ($dados_aluno["status"] === "Cancelado") {
                 $dados_aluno["data_cancelamento"] = $this->_date_value($this->request->getPost("data_cancelamento")) ?: date("Y-m-d");
                 $dados_aluno["motivo_cancelamento"] = trim($this->request->getPost("motivo_cancelamento"));
@@ -1342,13 +1931,23 @@ class Bombeiros extends Security_Controller
 
             if (!$id) {
                 $this->_gerar_cobrancas_matricula($save_id, $dados_aluno["data_inicio"], $valor_mensalidade, [
-                    "num_parcelas" => $num_parcelas,
-                    "data_primeira_parcela" => $data_primeira_parcela,
                     "valor_inscricao" => $dados_aluno["valor_inscricao"],
                     "data_inscricao" => $data_inscricao,
                     "matricula_efetuada" => $dados_aluno["matricula_efetuada"],
                     "uniforme_efetuado" => $dados_aluno["uniforme_efetuado"]
                 ]);
+            }
+
+            if ($comanda_item !== "") {
+                $this->_salvar_comanda_item(
+                    (int) $save_id,
+                    (int) $unidade_id,
+                    (int) $responsavel_id,
+                    $comanda_item,
+                    $comanda_status,
+                    $comanda_descricao,
+                    $comanda_valor
+                );
             }
 
             if ($exame_file) {
@@ -1852,16 +2451,28 @@ class Bombeiros extends Security_Controller
 
     public function lista_chamada()
     {
-        $this->validate_submitted_data([
-            "data" => "required",
-            "turma" => "required"
-        ]);
+        $this->validate_submitted_data(["data" => "required"]);
 
         $data = $this->request->getPost("data");
-        $turma = $this->request->getPost("turma");
         $unidade_id = $this->_active_unit_id();
-        $alunos = $this->Bombeiros_alunos_model->get_details(["turma" => $turma, "status" => "Ativo", "unidade_id" => $unidade_id])->getResult();
-        $presencas = $this->Bombeiros_presenca_model->get_by_date($data, $unidade_id);
+        $turma_id = (int) $this->request->getPost("turma_id");
+        if (!$turma_id) {
+            $turma_id = $this->_turma_id_por_valor($unidade_id, $this->_normalizar_horario_operacional($this->request->getPost("turma")));
+        }
+        $turma = $this->_turma_da_unidade($turma_id, $unidade_id, true);
+        if (!$turma) {
+            echo "<div class='alert alert-warning mb0'>Horário não encontrado ou inativo.</div>";
+            return;
+        }
+
+        $db = db_connect();
+        $members_table = $db->prefixTable("grupo_donato_aluno_turmas");
+        $alunos_table = $db->prefixTable("grupo_donato_alunos");
+        $alunos = $db->query("SELECT a.* FROM $alunos_table a
+            INNER JOIN $members_table m ON m.aluno_id=a.id AND m.unit_id=a.unidade_id
+            WHERE m.turma_id=" . (int) $turma_id . " AND a.unidade_id=" . (int) $unidade_id . "
+                AND a.deleted=0 AND a.status='Ativo' ORDER BY a.nome_aluno ASC")->getResult();
+        $presencas = $this->Bombeiros_presenca_model->get_by_date($data, $unidade_id, $turma_id, $turma->legacy_value ?? null);
         $historico = [];
 
         foreach ($presencas as $presenca) {
@@ -1872,7 +2483,8 @@ class Bombeiros extends Security_Controller
             "alunos" => $alunos,
             "historico" => $historico,
             "data_aula" => $data,
-            "turma" => $turma
+            "turma" => $turma->nome,
+            "turma_id" => $turma_id
         ]);
     }
 
@@ -1882,9 +2494,22 @@ class Bombeiros extends Security_Controller
 
         $db = db_connect();
         $data_aula = $this->request->getPost("data_aula");
-        $turma = $this->_normalizar_horario_operacional($this->request->getPost("turma"));
+        $unit_id = $this->_active_unit_id();
+        $turma_id = (int) $this->request->getPost("turma_id");
+        if (!$turma_id) {
+            $legacy_name = $this->_normalizar_horario_operacional($this->request->getPost("turma"));
+            $db_turmas = $db->prefixTable("grupo_donato_turmas");
+            $legacy_turma = $db->query("SELECT id FROM $db_turmas WHERE unit_id=" . (int) $unit_id . " AND active=1
+                AND (nome=" . $db->escape($legacy_name) . " OR legacy_value=" . $db->escape($legacy_name) . ") LIMIT 1")->getRow();
+            $turma_id = (int) ($legacy_turma->id ?? 0);
+        }
+        $turma = $this->_turma_da_unidade($turma_id, $unit_id, true);
         $presencas = $this->request->getPost("presencas");
 
+        if (!$turma) {
+            echo json_encode(["success" => false, "message" => "Horário não encontrado ou inativo."]);
+            return;
+        }
         if (!$presencas || !is_array($presencas)) {
             echo json_encode(["success" => false, "message" => "Nenhuma presença selecionada."]);
             return;
@@ -1892,11 +2517,26 @@ class Bombeiros extends Security_Controller
 
         try {
             $db->transStart();
+            $members_table = $db->prefixTable("grupo_donato_aluno_turmas");
+            $alunos_table = $db->prefixTable("grupo_donato_alunos");
+            $membership_rows = $db->query("SELECT m.aluno_id FROM $members_table m
+                INNER JOIN $alunos_table a ON a.id=m.aluno_id AND a.unidade_id=m.unit_id
+                WHERE m.turma_id=" . (int) $turma_id . " AND m.unit_id=" . (int) $unit_id . "
+                    AND a.deleted=0 AND a.status='Ativo'")->getResult();
+            $member_ids = array_fill_keys(array_map(static function ($row) { return (int) $row->aluno_id; }, $membership_rows), true);
             foreach ($presencas as $aluno_id => $status) {
-                $where = ["aluno_id" => (int) $aluno_id, "data_aula" => $data_aula];
-                $registro = $this->Bombeiros_presenca_model->get_one_where($where);
+                $aluno_id = (int) $aluno_id;
+                if (!isset($member_ids[$aluno_id])) {
+                    continue;
+                }
+                $where = ["aluno_id" => $aluno_id, "data_aula" => $data_aula, "turma_id" => $turma_id];
+                $registro = $this->Bombeiros_presenca_model->get_for_student_date($aluno_id, $data_aula, $turma_id);
                 $status_tipo = $this->_normalizar_presenca($status);
-                $data = $where + ["status" => $status_tipo === "presente" ? 1 : 0, "status_tipo" => $status_tipo, "turma" => $turma];
+                $turma_label = (string) ($turma->legacy_value ?: $turma->nome);
+                if (mb_strlen($turma_label, "UTF-8") > 50) {
+                    $turma_label = mb_substr($turma_label, 0, 50, "UTF-8");
+                }
+                $data = $where + ["status" => $status_tipo === "presente" ? 1 : 0, "status_tipo" => $status_tipo, "turma" => $turma_label];
                 $this->Bombeiros_presenca_model->ci_save($data, $registro && $registro->id ? $registro->id : 0);
             }
             $db->transComplete();
@@ -1909,29 +2549,88 @@ class Bombeiros extends Security_Controller
 
     public function baixar_pagamento()
     {
-        $this->validate_submitted_data(["id" => "required|numeric"]);
         if (!$this->_usuario_tem_acesso_unidade($this->_active_unit_id(), "can_manage_finance")) {
             echo json_encode(["success" => false, "message" => "Você não tem permissão para baixar pagamentos nesta unidade."]);
             return;
         }
 
-        $id = $this->request->getPost("id");
-        $cobranca = $this->Bombeiros_cobrancas_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow();
-        if (!$cobranca) {
-            echo json_encode(["success" => false, "message" => "Cobrança não encontrada na unidade ativa."]);
+        $posted_ids = $this->request->getPost("ids");
+        $posted_ids = is_array($posted_ids) ? $posted_ids : ($posted_ids !== null && $posted_ids !== "" ? [$posted_ids] : []);
+        $legacy_id = (int) $this->request->getPost("id");
+        if ($legacy_id) {
+            $posted_ids[] = $legacy_id;
+        }
+
+        $ids = [];
+        foreach ($posted_ids as $posted_id) {
+            $posted_id = (int) $posted_id;
+            if ($posted_id > 0) {
+                $ids[$posted_id] = $posted_id;
+            }
+        }
+        $ids = array_values($ids);
+        if (!$ids) {
+            echo json_encode(["success" => false, "message" => "Selecione ao menos uma cobrança para dar baixa."]);
             return;
         }
 
-        $dados_baixa = [
-            "status" => "Pago",
-            "data_pagamento" => $this->_date_value($this->request->getPost("data_pagamento")) ?: date("Y-m-d H:i:s"),
-            "forma_pagamento" => trim($this->request->getPost("forma_pagamento")) ?: ($cobranca->forma_pagamento ?? null),
-            "observacao" => trim($this->request->getPost("observacao")) ?: ($cobranca->observacao ?? null),
-            "valor" => $this->_money_to_float($this->request->getPost("valor")) ?: (float) $cobranca->valor
-        ];
-        $success = $this->Bombeiros_cobrancas_model->ci_save($dados_baixa, $id);
+        $cobrancas = [];
+        $total = 0;
+        foreach ($ids as $id) {
+            $cobranca = $this->Bombeiros_cobrancas_model->get_details([
+                "id" => $id,
+                "unidade_id" => $this->_active_unit_id()
+            ])->getRow();
+            if (!$cobranca) {
+                echo json_encode(["success" => false, "message" => "Uma das cobranças não foi encontrada na unidade ativa."]);
+                return;
+            }
+            if (!in_array((string) ($cobranca->status ?? ""), ["Pendente", "Vencido"], true)) {
+                echo json_encode(["success" => false, "message" => "Só é possível baixar cobranças que estejam em aberto."]);
+                return;
+            }
 
-        echo json_encode(["success" => (bool) $success, "message" => $success ? "Pagamento baixado com sucesso." : app_lang("error_occurred")]);
+            $cobrancas[] = $cobranca;
+            $total += (float) ($cobranca->valor ?? 0);
+        }
+
+        $data_pagamento = $this->_date_value($this->request->getPost("data_pagamento")) ?: date("Y-m-d H:i:s");
+        $forma_pagamento = trim((string) $this->request->getPost("forma_pagamento"));
+        $observacao = trim((string) $this->request->getPost("observacao"));
+        $db = db_connect();
+        $success = false;
+        $failed_id = 0;
+        $table = $db->prefixTable("grupo_donato_cobrancas");
+
+        try {
+            $db->transBegin();
+            foreach ($cobrancas as $cobranca) {
+                $failed_id = (int) $cobranca->id;
+                $update = [
+                    "status" => "Pago",
+                    "data_pagamento" => $data_pagamento,
+                    "forma_pagamento" => $forma_pagamento ?: ($cobranca->forma_pagamento ?? null),
+                    "observacao" => $observacao ?: ($cobranca->observacao ?? null)
+                ];
+                $updated = $db->table($table)
+                    ->where("id", $failed_id)
+                    ->whereIn("status", ["Pendente", "Vencido"])
+                    ->update($update);
+                if ($updated === false) {
+                    $db_error = $db->error();
+                    throw new \RuntimeException(($db_error["message"] ?? "falha de atualização") . " [cobrança " . $failed_id . "]");
+                }
+                $this->_sincronizar_item_material($cobranca->aluno_id ?? 0, $this->_active_unit_id(), $cobranca->tipo ?? "");
+            }
+            $success = $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            $success = false;
+            log_message("error", "GD Academy: falha ao baixar cobranças " . implode(",", $ids) . ", unidade " . $this->_active_unit_id() . ", cobrança " . $failed_id . ": " . $e->getMessage());
+        }
+
+        $message = count($cobrancas) . " cobrança(s) baixada(s) com sucesso. Total: R$ " . number_format($total, 2, ",", ".");
+        echo json_encode(["success" => $success, "message" => $success ? $message : app_lang("error_occurred")]);
     }
 
     public function marcar_pagamento_pendente()
@@ -1955,6 +2654,9 @@ class Bombeiros extends Security_Controller
             "forma_pagamento" => null
         ];
         $success = $this->Bombeiros_cobrancas_model->ci_save($dados_cobranca, $id);
+        if ($success) {
+            $this->_sincronizar_item_material($cobranca->aluno_id ?? 0, $this->_active_unit_id(), $cobranca->tipo ?? "");
+        }
 
         echo json_encode(["success" => (bool) $success, "message" => $success ? "Pagamento marcado como pendente." : app_lang("error_occurred")]);
     }
@@ -2495,13 +3197,21 @@ class Bombeiros extends Security_Controller
                     continue;
                 }
 
-                $where = ["aluno_id" => $aluno_map[$matricula], "data_aula" => $data_aula];
-                $registro = $this->Bombeiros_presenca_model->get_one_where($where);
                 $status_tipo = $this->_normalizar_presenca($presenca["status"] ?? "");
                 if ($status_tipo === "sem_registro") {
                     continue;
                 }
+                $turma_valor = trim((string) ($presenca["turma"] ?? ""));
+                if ($turma_valor === "") {
+                    $legacy_student = $db->query("SELECT turma FROM " . $db->prefixTable("grupo_donato_alunos") . " WHERE id=" . (int) $aluno_map[$matricula])->getRow();
+                    $turma_valor = trim((string) ($legacy_student->turma ?? ""));
+                }
+                $turma_id = $this->_turma_id_por_valor($unidade_id, $turma_valor);
+                $where = ["aluno_id" => $aluno_map[$matricula], "data_aula" => $data_aula];
+                $registro = $this->Bombeiros_presenca_model->get_for_student_date($aluno_map[$matricula], $data_aula, $turma_id);
                 $dados_presenca = $where + [
+                    "turma_id" => $turma_id ?: null,
+                    "turma" => $turma_valor ?: null,
                     "status" => $status_tipo === "presente" ? 1 : 0,
                     "status_tipo" => $status_tipo
                 ];
@@ -2996,7 +3706,13 @@ class Bombeiros extends Security_Controller
     private function _aluno_row($data)
     {
         $matricula = $data->matricula ?: (string) $data->id;
-        $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
+        $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_overview_modal"), "<i data-feather='eye' class='icon-16'></i>", [
+            "class" => "view",
+            "title" => "Visão geral do aluno",
+            "data-post-id" => $data->id,
+            "data-modal-lg" => "1"
+        ]);
+        $options .= modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
             "class" => "edit",
             "title" => "Editar aluno",
             "data-post-id" => $data->id
@@ -3015,6 +3731,7 @@ class Bombeiros extends Security_Controller
         return [
             esc($matricula),
             esc($data->nome_aluno),
+            esc($this->_format_student_age($data->nascimento_aluno ?? "")),
             esc($data->responsavel_nome ?: "-"),
             esc($this->_format_phone($data->responsavel_whats)),
             esc($data->turma ?: "-"),
@@ -3022,6 +3739,30 @@ class Bombeiros extends Security_Controller
             "R$ " . number_format((float) $data->valor_mensalidade, 2, ",", "."),
             $options
         ];
+    }
+
+    private function _format_student_age($birth_date)
+    {
+        $birth_date = trim((string) $birth_date);
+        if (!$birth_date) {
+            return "-";
+        }
+
+        $birth = \DateTimeImmutable::createFromFormat("!Y-m-d", $birth_date);
+        $errors = \DateTimeImmutable::getLastErrors();
+        if (!$birth || ($errors !== false && ($errors["warning_count"] || $errors["error_count"]))) {
+            return "-";
+        }
+
+        $today = new \DateTimeImmutable("today");
+        if ($birth > $today) {
+            return "- - " . $birth->format("d/m/Y");
+        }
+
+        $age = $birth->diff($today)->y;
+        $age_label = $age === 1 ? "1 ano" : $age . " anos";
+
+        return $age_label . " - " . $birth->format("d/m/Y");
     }
 
     private function _cancelado_row($data)
@@ -3366,6 +4107,120 @@ class Bombeiros extends Security_Controller
         ];
     }
 
+    private function _pagamento_overview_row(array $data, bool $can_manage_finance = false)
+    {
+        $status = (string) ($data["status"] ?? "");
+        $status_labels = [
+            "paid" => "Pago",
+            "open" => "Em aberto",
+            "partial" => "Parcial",
+            "overdue" => "Vencido",
+            "cancelled" => "Cancelado",
+            "exempt" => "Isento",
+            "awaiting_charge" => "Aguardando cobrança",
+        ];
+        $status_classes = [
+            "paid" => "bg-success",
+            "open" => "bg-warning",
+            "partial" => "bg-warning",
+            "overdue" => "bg-danger",
+            "cancelled" => "bg-secondary",
+            "exempt" => "bg-info",
+            "awaiting_charge" => "bg-warning",
+        ];
+        $category_labels = [
+            "mensalidade" => "Mensalidade",
+            "campeonato" => "Campeonato",
+            "uniforme" => "Uniforme",
+            "caneleira" => "Caneleira",
+            "meiao" => "Meião",
+            "passeio" => "Passeio",
+            "matricula" => "Matrícula",
+            "outros" => "Outros",
+        ];
+        $category = (string) ($data["category"] ?? "outros");
+        $status_label = $status_labels[$status] ?? ($status ?: "Sem registro");
+        $status_class = $status_classes[$status] ?? "bg-secondary";
+        $money = static fn($value): string => "R$ " . number_format((float) ($value ?? 0), 2, ",", ".");
+        $whats = $this->_digits($data["responsavel_whats"] ?? "");
+        $whatsapp = $whats
+            ? anchor("https://wa.me/55" . $whats, esc($this->_format_phone($whats)), ["target" => "_blank", "title" => "Abrir WhatsApp"])
+            : "-";
+        $turma_pelotao = trim(($data["turma"] ?? "") . (!empty($data["pelotao"]) ? " / " . $data["pelotao"] : ""));
+        $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_overview_modal"), "<i data-feather='eye' class='icon-16'></i>", [
+            "class" => "edit",
+            "title" => "Visão geral do aluno",
+            "data-post-id" => (int) ($data["aluno_id"] ?? 0),
+            "data-modal-lg" => "1"
+        ]);
+
+        if ($can_manage_finance) {
+            if (($data["source"] ?? "") === "operacional" && !empty($data["charge_id"])) {
+                if ($status === "paid") {
+                    $options .= js_anchor("<i data-feather='rotate-ccw' class='icon-16'></i>", [
+                        "class" => "edit bombeiros-marcar-pendente",
+                        "title" => "Desfazer baixa",
+                        "data-id" => (int) $data["charge_id"]
+                    ]);
+                } elseif (!in_array($status, ["cancelled", "exempt"], true)) {
+                    $options .= modal_anchor(get_uri("grupo_donato/operacional/baixa_pagamento_modal_form"), "<i data-feather='check-circle' class='icon-16'></i>", [
+                        "class" => "edit",
+                        "title" => "Baixar pagamento",
+                        "data-post-id" => (int) $data["charge_id"]
+                    ]);
+                }
+                $options .= modal_anchor(get_uri("grupo_donato/operacional/comprovante_modal_form"), "<i data-feather='file-text' class='icon-16'></i>", [
+                    "class" => "edit",
+                    "title" => "Gerar comprovante",
+                    "data-post-cobranca_id" => (int) $data["charge_id"],
+                    "data-post-aluno_id" => (int) ($data["aluno_id"] ?? 0)
+                ]);
+            } elseif (($data["source"] ?? "") === "academy" && !empty($data["participant_id"])) {
+                if ($status === "awaiting_charge") {
+                    $options .= modal_anchor(get_uri("grupo_donato/operacional/event_charge_modal"), "<i data-feather='file-plus' class='icon-16'></i>", [
+                        "class" => "edit",
+                        "title" => "Gerar cobrança do campeonato",
+                        "data-post-participant_id" => (int) $data["participant_id"],
+                        "data-modal-class" => "gd-payment-modal"
+                    ]);
+                } elseif (in_array($status, ["open", "partial", "overdue"], true)) {
+                    $options .= modal_anchor(get_uri("grupo_donato/operacional/event_payment_modal"), "<i data-feather='check-circle' class='icon-16'></i>", [
+                        "class" => "edit",
+                        "title" => "Baixar pagamento do campeonato",
+                        "data-post-participant_id" => (int) $data["participant_id"],
+                        "data-post-reload_target" => "bombeiros-pagamentos-table",
+                        "data-modal-class" => "gd-payment-modal"
+                    ]);
+                } elseif ($status === "paid") {
+                    $options .= ajax_anchor(get_uri("grupo_donato/operacional/event_reverse_payment"), "<i data-feather='rotate-ccw' class='icon-16'></i>", [
+                        "class" => "edit",
+                        "title" => "Desfazer baixa do campeonato",
+                        "data-post-participant_id" => (int) $data["participant_id"],
+                        "data-post-reason" => "Estorno manual de pagamento de evento",
+                        "data-reload-on-success" => 1
+                    ]);
+                }
+            }
+        }
+
+        return [
+            esc($data["matricula"] ?: ($data["aluno_id"] ?? "-")),
+            esc($data["nome_aluno"] ?: "-"),
+            esc($this->_format_student_age($data["nascimento_aluno"] ?? "")),
+            esc($data["responsavel_nome"] ?: "-"),
+            $whatsapp,
+            esc($turma_pelotao ?: "-"),
+            esc($category_labels[$category] ?? "Outros"),
+            esc($data["description"] ?: "-"),
+            $this->_format_date($data["due_date"] ?? ""),
+            $money($data["original_amount"] ?? 0),
+            $money($data["paid_amount"] ?? 0),
+            $money($data["balance_amount"] ?? 0),
+            "<span class='badge " . $status_class . "'>" . esc($status_label) . "</span>",
+            $options ?: "-",
+        ];
+    }
+
     private function _pagamento_mensal_row($data, $mes_referencia, $ano_referencia)
     {
         $tem_cobranca = !empty($data->cobranca_id);
@@ -3412,7 +4267,8 @@ class Bombeiros extends Security_Controller
             $options .= modal_anchor(get_uri("grupo_donato/operacional/baixa_pagamento_modal_form"), "<i data-feather='check-circle' class='icon-16'></i> Baixar pagamento", [
                 "class" => "btn btn-primary btn-sm",
                 "title" => "Baixar pagamento",
-                "data-post-id" => $data->cobranca_id
+                "data-post-id" => $data->cobranca_id,
+                "data-post-aluno_id" => $data->aluno_id
             ]);
         } else {
             $options .= js_anchor("<i data-feather='plus-circle' class='icon-16'></i> Criar cobrança", [
@@ -3440,7 +4296,7 @@ class Bombeiros extends Security_Controller
             $whatsapp,
             esc($turma_pelotao ?: "-"),
             esc($competencia),
-            esc($data->cobranca_descricao ?: "-"),
+            "Mensalidade",
             $tem_cobranca ? $this->_format_date($vencimento) : "-",
             "<span class='badge $status_class'>$status_label</span>",
             $tem_cobranca && $data->data_pagamento ? $this->_format_date($data->data_pagamento) : "-",
@@ -3499,7 +4355,7 @@ class Bombeiros extends Security_Controller
     private function _inadimplencia_row($data)
     {
         $whats = $this->_digits($data->responsavel_whats);
-        $mensagem = "Olá " . $data->responsavel_nome . ", notamos que a parcela de " . ($data->competencia ?: date("m/Y", strtotime($data->vencimento))) . " do aluno " . $data->nome_aluno . " está em aberto. Podemos ajudar?";
+        $mensagem = "Olá " . $data->responsavel_nome . ", notamos que a mensalidade de " . ($data->competencia ?: date("m/Y", strtotime($data->vencimento))) . " do aluno " . $data->nome_aluno . " está em aberto. Podemos ajudar?";
         $link = $whats ? anchor("https://wa.me/55" . $whats . "?text=" . urlencode($mensagem), "<i data-feather='message-circle' class='icon-16'></i>", ["target" => "_blank", "title" => "Notificar via WhatsApp"]) : "-";
 
         return [
@@ -3656,6 +4512,7 @@ class Bombeiros extends Security_Controller
                         FROM $cobrancas_table c
                         WHERE c.aluno_id=$alunos_table.id
                             AND c.tipo='Mensalidade'
+                            AND c.status IN ('Pendente','Vencido','Pago')
                     ) AS ultima_mensalidade_vencimento
                 FROM $alunos_table
                 WHERE $alunos_table.deleted=0
@@ -3667,6 +4524,7 @@ class Bombeiros extends Security_Controller
                         FROM $cobrancas_table c2
                         WHERE c2.aluno_id=$alunos_table.id
                             AND c2.tipo='Mensalidade'
+                            AND c2.status IN ('Pendente','Vencido','Pago')
                             AND COALESCE(c2.mes_referencia, MONTH(c2.vencimento))=" . (int) $mes . "
                             AND COALESCE(c2.ano_referencia, YEAR(c2.vencimento))=" . (int) $ano . "
                     )";
@@ -3683,7 +4541,7 @@ class Bombeiros extends Security_Controller
                     "competencia" => sprintf("%02d/%04d", $mes, $ano),
                     "mes_referencia" => $mes,
                     "ano_referencia" => $ano,
-                    "descricao" => "Mensalidade " . sprintf("%02d/%04d", $mes, $ano),
+                    "descricao" => "Mensalidade",
                     "status" => "Pendente",
                     "tipo" => "Mensalidade"
                 ];
@@ -3716,6 +4574,7 @@ class Bombeiros extends Security_Controller
             FROM $cobrancas_table
             WHERE aluno_id=" . (int) $aluno_id . "
                 AND tipo='Mensalidade'
+                AND status IN ('Pendente','Vencido','Pago')
                 AND COALESCE(mes_referencia, MONTH(vencimento))=" . (int) $mes . "
                 AND COALESCE(ano_referencia, YEAR(vencimento))=" . (int) $ano . "
             ORDER BY CASE WHEN status='Pago' THEN 0 ELSE 1 END, id DESC
@@ -3782,7 +4641,8 @@ class Bombeiros extends Security_Controller
             $ultima = $db->query("SELECT MAX(vencimento) AS ultima_mensalidade_vencimento
                 FROM $cobrancas_table
                 WHERE aluno_id=" . (int) $aluno->id . "
-                    AND tipo='Mensalidade'")->getRow();
+                    AND tipo='Mensalidade'
+                    AND status IN ('Pendente','Vencido','Pago')")->getRow();
             $aluno->ultima_mensalidade_vencimento = $ultima->ultima_mensalidade_vencimento ?? null;
         }
 
@@ -3797,7 +4657,7 @@ class Bombeiros extends Security_Controller
             "competencia" => sprintf("%02d/%04d", $mes, $ano),
             "mes_referencia" => $mes,
             "ano_referencia" => $ano,
-            "descricao" => "Mensalidade " . sprintf("%02d/%04d", $mes, $ano),
+            "descricao" => "Mensalidade",
             "status" => "Pendente",
             "tipo" => "Mensalidade"
         ];
@@ -3830,11 +4690,6 @@ class Bombeiros extends Security_Controller
             return null;
         }
 
-        $mensalidade_num = 1;
-        if (!empty($cobranca->competencia) && preg_match('/^(\d+)\//', $cobranca->competencia, $matches)) {
-            $mensalidade_num = (int) $matches[1];
-        }
-
         return [
             "cobranca_id" => $cobranca->id,
             "aluno_id" => $cobranca->aluno_id,
@@ -3842,7 +4697,11 @@ class Bombeiros extends Security_Controller
             "responsavel_cpf" => $this->_format_cpf($cobranca->responsavel_cpf),
             "aluno_nome" => $cobranca->nome_aluno,
             "valor" => number_format((float) $cobranca->valor, 2, ",", "."),
-            "mensalidade_numero" => $mensalidade_num,
+            // Compatibilidade com a coluna antiga. A interface não usa mais
+            // número de parcela; usa a competência da cobrança.
+            "mensalidade_numero" => 1,
+            "competencia" => (string) ($cobranca->competencia ?? ""),
+            "descricao" => (string) ($cobranca->descricao ?? $cobranca->tipo ?? "Cobrança"),
             "data_emissao" => date("Y-m-d"),
             "conferido_por" => "",
             "data_conferencia" => date("Y-m-d")
@@ -3851,31 +4710,29 @@ class Bombeiros extends Security_Controller
 
     private function _gerar_cobrancas_matricula($aluno_id, $data_inicio, $valor_mensalidade, $options = [])
     {
-        $num_parcelas = (int) (get_array_value($options, "num_parcelas") ?: $this->request->getPost("num_parcelas") ?: 12);
-        $num_parcelas = $num_parcelas > 0 ? $num_parcelas : 12;
-        $primeiro_vencimento = $this->_date_value(get_array_value($options, "data_primeira_parcela") ?: $this->request->getPost("data_primeira_parcela")) ?: $data_inicio;
+        // A matrícula gera somente a competência inicial. As próximas
+        // mensalidades são criadas por competência em
+        // _garantir_mensalidades_periodo(), até o cancelamento do aluno.
+        $primeiro_vencimento = $this->_date_value($data_inicio) ?: date("Y-m-d");
         $aluno_info = $this->Bombeiros_alunos_model->get_details(["id" => $aluno_id])->getRow();
         $unit_id = (int) ($aluno_info->unidade_id ?? $this->_active_unit_id());
         $responsavel_id = (int) ($aluno_info->responsavel_id ?? 0);
 
-        for ($i = 0; $i < $num_parcelas; $i++) {
-            $vencimento = date("Y-m-d", strtotime($primeiro_vencimento . " +$i month"));
-            $competencia = date("m/Y", strtotime($vencimento));
-            $dados_cobranca = [
-                "aluno_id" => $aluno_id,
-                "responsavel_id" => $responsavel_id ?: null,
-                "unit_id" => $unit_id ?: null,
-                "vencimento" => $vencimento,
-                "valor" => $valor_mensalidade,
-                "competencia" => $competencia,
-                "mes_referencia" => (int) date("m", strtotime($vencimento)),
-                "ano_referencia" => (int) date("Y", strtotime($vencimento)),
-                "descricao" => ($i + 1) . "ª parcela",
-                "status" => "Pendente",
-                "tipo" => "Mensalidade"
-            ];
-            $this->Bombeiros_cobrancas_model->ci_save($dados_cobranca);
-        }
+        $competencia = date("m/Y", strtotime($primeiro_vencimento));
+        $dados_cobranca = [
+            "aluno_id" => $aluno_id,
+            "responsavel_id" => $responsavel_id ?: null,
+            "unit_id" => $unit_id ?: null,
+            "vencimento" => $primeiro_vencimento,
+            "valor" => $valor_mensalidade,
+            "competencia" => $competencia,
+            "mes_referencia" => (int) date("m", strtotime($primeiro_vencimento)),
+            "ano_referencia" => (int) date("Y", strtotime($primeiro_vencimento)),
+            "descricao" => "Mensalidade",
+            "status" => "Pendente",
+            "tipo" => "Mensalidade"
+        ];
+        $this->Bombeiros_cobrancas_model->ci_save($dados_cobranca);
 
         $valor_inscricao = array_key_exists("valor_inscricao", $options)
             ? (float) $options["valor_inscricao"]
@@ -3898,20 +4755,99 @@ class Bombeiros extends Security_Controller
             $this->Bombeiros_cobrancas_model->ci_save($dados_inscricao);
         }
 
-        $dados_camiseta = [
-            "aluno_id" => $aluno_id,
-            "responsavel_id" => $responsavel_id ?: null,
-            "unit_id" => $unit_id ?: null,
-            "vencimento" => date("Y-m-d"),
-            "valor" => 67.00,
-            "competencia" => date("m/Y"),
-            "mes_referencia" => (int) date("m"),
-            "ano_referencia" => (int) date("Y"),
-            "descricao" => "Camiseta",
-            "status" => $this->_bool_value(array_key_exists("uniforme_efetuado", $options) ? $options["uniforme_efetuado"] : $this->request->getPost("uniforme_efetuado")) ? "Pago" : "Pendente",
-            "tipo" => "Camiseta"
+    }
+
+    private function _salvar_comanda_item($aluno_id, $unidade_id, $responsavel_id, $item, $status, $descricao, $valor)
+    {
+        $aluno_id = (int) $aluno_id;
+        $unidade_id = (int) $unidade_id;
+        $data_item = date("Y-m-d");
+        $this->_salvar_cobranca_avulsa(
+            $aluno_id,
+            $unidade_id,
+            $responsavel_id,
+            $item,
+            $status === "Pago" ? "Pago" : "Pendente",
+            $descricao,
+            (float) $valor,
+            $data_item,
+            $status === "Pago" ? date("Y-m-d H:i:s") : null
+        );
+    }
+
+    private function _salvar_cobranca_avulsa($aluno_id, $unidade_id, $responsavel_id, $item, $status, $descricao, $valor, $vencimento, $data_pagamento = null, $forma_pagamento = "", $observacao = "")
+    {
+        $item = trim((string) $item);
+        $status = $status === "Pago" ? "Pago" : "Pendente";
+        $tipo = $item === "Camiseta" ? "Camiseta" : $item;
+        $descricao = trim((string) $descricao) ?: ([
+            "Camiseta" => "Uniforme / camiseta",
+            "Caneleira" => "Caneleira",
+            "Meião" => "Meião",
+            "Passeio" => "Passeio",
+            "Outro" => "Cobrança avulsa"
+        ][$item] ?? "Cobrança avulsa");
+        $vencimento = $this->_date_value($vencimento) ?: date("Y-m-d");
+        $dados = [
+            "aluno_id" => (int) $aluno_id,
+            "responsavel_id" => (int) $responsavel_id ?: null,
+            "unit_id" => (int) $unidade_id ?: null,
+            "vencimento" => $vencimento,
+            "valor" => (float) $valor,
+            "competencia" => date("m/Y", strtotime($vencimento)),
+            "mes_referencia" => (int) date("m", strtotime($vencimento)),
+            "ano_referencia" => (int) date("Y", strtotime($vencimento)),
+            "descricao" => $descricao,
+            "status" => $status,
+            "data_pagamento" => $status === "Pago" ? ($data_pagamento ?: date("Y-m-d H:i:s")) : null,
+            "forma_pagamento" => $status === "Pago" ? trim((string) $forma_pagamento) : null,
+            "observacao" => trim((string) $observacao) ?: null,
+            "tipo" => $tipo,
+            "origem_importacao" => "manual"
         ];
-        $this->Bombeiros_cobrancas_model->ci_save($dados_camiseta);
+
+        // Lançamentos avulsos são históricos: nunca reaproveitar a última
+        // cobrança do mesmo tipo, pois um aluno pode comprar mais de um uniforme.
+        $saved = $this->Bombeiros_cobrancas_model->ci_save($dados, 0);
+        if (!$saved) {
+            throw new \RuntimeException("Não foi possível salvar a cobrança avulsa.");
+        }
+
+        $this->_sincronizar_item_material($aluno_id, $unidade_id, $item);
+
+        return (int) $saved;
+    }
+
+    private function _sincronizar_item_material($aluno_id, $unidade_id, $item)
+    {
+        $item = trim((string) $item);
+        $campo = [
+            "Camiseta" => ["efetuado" => "uniforme_efetuado", "status" => "camiseta_status", "data" => "camiseta_data", "entregue" => false],
+            "Caneleira" => ["efetuado" => "material_01", "status" => "material_01_status", "data" => "material_01_data", "entregue" => true],
+            "Meião" => ["efetuado" => "material_02", "status" => "material_02_status", "data" => "material_02_data", "entregue" => true]
+        ][$item] ?? null;
+        if (!$campo || !(int) $aluno_id) {
+            return true;
+        }
+
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_cobrancas");
+        $last_charge = $db->query(
+            "SELECT status, data_pagamento FROM `{$table}` WHERE aluno_id=? AND unit_id=? AND tipo=? ORDER BY id DESC LIMIT 1",
+            [(int) $aluno_id, (int) $unidade_id, $item]
+        )->getRow();
+        $paid = $last_charge && (string) ($last_charge->status ?? "") === "Pago";
+        $paid_date = $paid && !empty($last_charge->data_pagamento) ? substr((string) $last_charge->data_pagamento, 0, 10) : null;
+        $student_data = [
+            $campo["efetuado"] => $paid ? ($campo["entregue"] ? "entregue" : 1) : ($campo["entregue"] ? "pendente" : 0),
+            $campo["status"] => $paid ? "pago" : "pendente",
+            $campo["data"] => $paid_date
+        ];
+        if (!$this->Bombeiros_alunos_model->ci_save($student_data, (int) $aluno_id)) {
+            throw new \RuntimeException("Não foi possível atualizar o item consumido do aluno.");
+        }
+
+        return true;
     }
 
     private function _comprovante_view_data($data)
@@ -3926,6 +4862,8 @@ class Bombeiros extends Security_Controller
             "aluno_nome" => $row["aluno_nome"] ?? "",
             "aluno_nome_adicional" => $row["aluno_nome_adicional"] ?? "",
             "mensalidade_numero" => $row["mensalidade_numero"] ?? 1,
+            "competencia" => $row["competencia"] ?? "",
+            "descricao" => $row["descricao"] ?? "Mensalidade",
             "valor" => (float) ($row["valor"] ?? 0),
             "forma_pagamento" => $row["forma_pagamento"] ?? "",
             "conferido_por" => $row["conferido_por"] ?? "",
@@ -3974,7 +4912,28 @@ class Bombeiros extends Security_Controller
 
     private function _turmas_matricula_options()
     {
-        return bombeiros_turmas_grouped(true, "Selecione");
+        $unit_id = $this->_active_unit_id();
+        $rows = $this->_turmas_da_unidade($unit_id, true);
+        if (!$rows) {
+            return bombeiros_turmas_grouped(true, "Selecione");
+        }
+
+        $options = ["" => "Selecione"];
+        foreach ($rows as $row) {
+            $value = trim((string) ($row->legacy_value ?: $row->nome));
+            // A coluna legada do cadastro do aluno ainda comporta até 50
+            // caracteres. Horários maiores continuam gerenciáveis pelo menu
+            // Turmas e não aparecem neste campo de matrícula.
+            if ($value === "" || mb_strlen($value, "UTF-8") > 50) {
+                continue;
+            }
+            $label = $row->nome;
+            if (!empty($row->descricao)) {
+                $label .= " · " . $row->descricao;
+            }
+            $options[$value] = $label;
+        }
+        return $options;
     }
 
     private function _melhor_horario_ligacao_options()
@@ -4174,6 +5133,72 @@ class Bombeiros extends Security_Controller
     private function _active_unit_id()
     {
         return $this->_get_unidade_id_ativa();
+    }
+
+    private function _turmas_da_unidade($unit_id, $active_only = false)
+    {
+        $unit_id = (int) $unit_id;
+        if (!$unit_id) {
+            return [];
+        }
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_turmas");
+        $where = "unit_id=" . $unit_id . ($active_only ? " AND active=1" : "");
+        $rows = $db->query("SELECT * FROM $table WHERE $where ORDER BY active DESC,nome ASC")->getResult();
+        foreach ($rows as $row) {
+            $row->descricao = $this->_turma_descricao($row);
+        }
+        return $rows;
+    }
+
+    private function _turma_da_unidade($turma_id, $unit_id, $active_only = false)
+    {
+        $turma_id = (int) $turma_id;
+        $unit_id = (int) $unit_id;
+        if (!$turma_id || !$unit_id) {
+            return null;
+        }
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_turmas");
+        $row = $db->query("SELECT * FROM $table WHERE id=$turma_id AND unit_id=$unit_id" . ($active_only ? " AND active=1" : "") . " LIMIT 1")->getRow();
+        if ($row) {
+            $row->descricao = $this->_turma_descricao($row);
+        }
+        return $row;
+    }
+
+    private function _turma_id_por_valor($unit_id, $value)
+    {
+        $unit_id = (int) $unit_id;
+        $value = trim((string) $value);
+        if (!$unit_id || $value === "") {
+            return 0;
+        }
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_turmas");
+        $row = $db->query("SELECT id FROM $table WHERE unit_id=$unit_id
+            AND (legacy_value=" . $db->escape($value) . " OR nome=" . $db->escape($value) . ")
+            ORDER BY active DESC,id ASC LIMIT 1")->getRow();
+        return (int) ($row->id ?? 0);
+    }
+
+    private function _turma_descricao($turma)
+    {
+        $day_labels = ["seg" => "Seg", "ter" => "Ter", "qua" => "Qua", "qui" => "Qui", "sex" => "Sex", "sab" => "Sáb", "dom" => "Dom"];
+        $days = array_filter(array_map("trim", explode(",", (string) ($turma->dias_semana ?? ""))));
+        $days = array_map(static function ($day) use ($day_labels) {
+            return $day_labels[$day] ?? $day;
+        }, $days);
+        $start = !empty($turma->horario_inicio) ? substr((string) $turma->horario_inicio, 0, 5) : "";
+        $end = !empty($turma->horario_fim) ? substr((string) $turma->horario_fim, 0, 5) : "";
+        $parts = [];
+        if ($days) {
+            $parts[] = implode(" / ", $days);
+        }
+        if ($start && $end) {
+            $parts[] = $start . "–" . $end;
+        }
+        return implode(" · ", $parts);
     }
 
     private function _unit_context_payload($unidade)
@@ -5060,9 +6085,11 @@ class Bombeiros extends Security_Controller
                     $relatorio["presencas_ignoradas"]++;
                     continue;
                 }
+                $turma_id = $this->_turma_id_por_valor($unit_id, $presenca["turma"] ?? "");
                 $where = ["aluno_id" => $aluno_id, "data_aula" => $presenca["data_aula"]];
-                $registro = $this->Bombeiros_presenca_model->get_one_where($where);
+                $registro = $this->Bombeiros_presenca_model->get_for_student_date($aluno_id, $presenca["data_aula"], $turma_id);
                 $dados_presenca = $where + [
+                    "turma_id" => $turma_id ?: null,
                     "status" => $presenca["status_tipo"] === "presente" ? 1 : 0,
                     "status_tipo" => $presenca["status_tipo"],
                     "turma" => $presenca["turma"],
@@ -6159,6 +7186,12 @@ class Bombeiros extends Security_Controller
     private function _academy_event_service(): AcademyEventService
     {
         $legacyUnitId = $this->_active_unit_id();
+        return new AcademyEventService($this->_academy_event_modern_unit_id(), (int) ($this->login_user->id ?? 0), $this->login_user, $legacyUnitId);
+    }
+
+    private function _academy_event_modern_unit_id(): int
+    {
+        $legacyUnitId = $this->_active_unit_id();
         $modernUnitId = $legacyUnitId;
         $db = db_connect();
         $units = $db->prefixTable("gd_units");
@@ -6173,7 +7206,7 @@ class Bombeiros extends Security_Controller
                 if ($fallback) $modernUnitId = (int) $fallback->id;
             }
         }
-        return new AcademyEventService($modernUnitId, (int) ($this->login_user->id ?? 0), $this->login_user, $legacyUnitId);
+        return (int) $modernUnitId;
     }
 
     private function _online_enrollment(): OnlineEnrollmentService
@@ -6198,7 +7231,7 @@ class Bombeiros extends Security_Controller
 
     private function _academy_event_page(int $eventId, string $section)
     {
-        $allowed = ["resumo", "categorias", "financeiro", "checklist", "configuracoes"];
+        $allowed = ["resumo", "participantes", "categorias", "financeiro", "checklist", "configuracoes"];
         if ($eventId <= 0 || !in_array($section, $allowed, true)) return show_404();
         $this->_event_require("gd_academy_events_view");
         if ($section === "financeiro") $this->_event_require_finance();
@@ -6207,6 +7240,9 @@ class Bombeiros extends Security_Controller
         $service = $this->_academy_event_service();
         try {
             switch ($section) {
+                case "participantes":
+                    $data = $service->eventRoster($eventId);
+                    break;
                 case "categorias":
                     $data = $service->eventOverview($eventId);
                     $data["categories"] = $service->eventCategories($eventId);
@@ -6344,6 +7380,13 @@ class Bombeiros extends Security_Controller
             $messages = [
                 "gd_event_pending" => "Existem pendencias. Informe uma justificativa para finalizar.",
                 "gd_duplicate_participant" => "Este atleta ja esta convocado nesta categoria.",
+                "gd_duplicate_event_roster" => "Este atleta ja esta na lista deste evento.",
+                "gd_event_roster_not_found" => "O atleta selecionado nao pertence a este evento.",
+                "gd_event_roster_in_use" => "Remova primeiro as convocacoes deste atleta nas categorias.",
+                "gd_student_not_found" => "Aluno nao encontrado ou inativo na unidade ativa.",
+                "gd_external_name_required" => "Informe o nome do atleta convidado.",
+                "gd_responsible_not_found" => "Responsavel nao encontrado.",
+                "gd_invalid_value" => "Os dados informados sao invalidos.",
                 "gd_event_name_required" => "Informe o nome do evento.",
                 "gd_category_name_required" => "Informe o nome da categoria.",
                 "gd_match_name_required" => "Informe a identificacao da partida.",
@@ -6359,13 +7402,15 @@ class Bombeiros extends Security_Controller
                 "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
                 "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",
                 "gd_invalid_event_transition" => "A transicao deste evento nao e permitida.",
-                "gd_event_delete_paid" => "Nao e possivel excluir o evento enquanto houver recebimentos registrados. Estorne os pagamentos antes.",
                 "gd_record_not_found" => "A convocacao nao foi encontrada ou ja foi excluida.",
                 "gd_edit_conflict" => "A convocacao foi alterada por outra pessoa. Atualize a pagina e tente novamente.",
                 "gd_finance_paid_cannot_cancel" => "Nao e possivel excluir um convocado com pagamento registrado. Estorne o pagamento antes.",
             ];
             $key = $e->getMessage();
-            echo json_encode(["success" => false, "message" => $messages[$key] ?? $key ?: "Nao foi possivel concluir a operacao.", "error_code" => $key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $message = $messages[$key] ?? ($e instanceof \DomainException && $key
+                ? $key
+                : "Nao foi possivel concluir a operacao.");
+            echo json_encode(["success" => false, "message" => $message, "error_code" => $key], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
         return null;
     }

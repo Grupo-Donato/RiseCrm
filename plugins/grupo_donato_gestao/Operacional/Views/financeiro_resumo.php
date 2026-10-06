@@ -40,7 +40,7 @@ $periodo_label = sprintf("%02d/%04d", $mes_referencia, $ano_referencia);
                     </div>
                     <div class="widget-details">
                         <h1><?php echo to_currency($total_inadimplencia, "R$"); ?></h1>
-                        <span><?php echo (int) $total_parcelas_atraso; ?> parcelas em atraso em <?php echo esc($periodo_label); ?></span>
+                        <span><?php echo (int) $total_parcelas_atraso; ?> mensalidades em atraso em <?php echo esc($periodo_label); ?></span>
                     </div>
                 </div>
             </div>

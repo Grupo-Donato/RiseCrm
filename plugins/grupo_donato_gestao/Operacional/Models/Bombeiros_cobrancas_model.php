@@ -131,6 +131,7 @@ class Bombeiros_cobrancas_model extends Crud_model
                 COALESCE(NULLIF(MAX(CASE WHEN status='Pago' THEN id ELSE 0 END), 0), MAX(id)) AS cobranca_id
             FROM $cobrancas_table
             WHERE tipo='Mensalidade'
+                AND status IN ('Pendente','Vencido','Pago')
                 AND COALESCE(mes_referencia, MONTH(vencimento))=$mes_referencia
                 AND COALESCE(ano_referencia, YEAR(vencimento))=$ano_referencia
             GROUP BY aluno_id";
@@ -194,6 +195,7 @@ class Bombeiros_cobrancas_model extends Crud_model
                 COALESCE(NULLIF(MAX(CASE WHEN status='Pago' THEN id ELSE 0 END), 0), MAX(id)) AS cobranca_id
             FROM $cobrancas_table
             WHERE tipo='Mensalidade'
+                AND status IN ('Pendente','Vencido','Pago')
                 AND COALESCE(mes_referencia, MONTH(vencimento))=$mes_referencia
                 AND COALESCE(ano_referencia, YEAR(vencimento))=$ano_referencia
             GROUP BY aluno_id";

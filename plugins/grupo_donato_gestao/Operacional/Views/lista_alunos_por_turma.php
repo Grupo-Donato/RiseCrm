@@ -28,6 +28,7 @@ $total_alunos = (int) ($total_alunos ?? 0);
                             <tr>
                                 <th scope="col" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="aluno" aria-label="Ordenar por aluno">Aluno <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
                                 <th scope="col" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="matricula" aria-label="Ordenar por matrícula">Matrícula <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
+                                <th scope="col" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="idade" aria-label="Ordenar por idade">Idade <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
                                 <th scope="col" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="responsavel" aria-label="Ordenar por responsável">Responsável <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
                                 <th scope="col" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="whatsapp" aria-label="Ordenar por WhatsApp">WhatsApp <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
                                 <th scope="col" class="text-center" aria-sort="none"><button type="button" class="gd-alunos-sort-button" data-gd-alunos-sort-key="faltas" aria-label="Ordenar por faltas consecutivas">Faltas consecutivas <span class="gd-alunos-sort-icon" aria-hidden="true">↕</span></button></th>
@@ -38,7 +39,13 @@ $total_alunos = (int) ($total_alunos ?? 0);
                         <tbody>
                             <?php foreach (($turma["alunos"] ?? []) as $aluno): ?>
                                 <?php
-                                $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
+                                $options = modal_anchor(get_uri("grupo_donato/operacional/aluno_overview_modal"), "<i data-feather='eye' class='icon-16'></i>", [
+                                    "class" => "view",
+                                    "title" => "Visão geral do aluno",
+                                    "data-post-id" => $aluno->id,
+                                    "data-modal-lg" => "1"
+                                ]);
+                                $options .= modal_anchor(get_uri("grupo_donato/operacional/aluno_modal_form"), "<i data-feather='edit' class='icon-16'></i>", [
                                     "class" => "edit",
                                     "title" => "Editar aluno",
                                     "data-post-id" => $aluno->id
@@ -57,6 +64,7 @@ $total_alunos = (int) ($total_alunos ?? 0);
                                 <tr>
                                     <td><?php echo esc($aluno->nome_aluno); ?></td>
                                     <td><?php echo esc($aluno->matricula ?: (string) $aluno->id); ?></td>
+                                    <td><?php echo esc($aluno->idade_nascimento ?? "-"); ?></td>
                                     <td><?php echo esc($aluno->responsavel_nome ?: "-"); ?></td>
                                     <td><?php echo esc($aluno->responsavel_whats ?: "-"); ?></td>
                                     <td class="text-center"><?php echo bombeiros_faltas_indicator($aluno->faltas_count ?? 0); ?></td>

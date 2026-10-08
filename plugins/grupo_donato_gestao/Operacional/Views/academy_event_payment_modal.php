@@ -8,11 +8,11 @@ $methods = \grupo_donato_gestao\Config\Constants::PAYMENT_METHODS;
 ?>
 <?php echo form_open(get_uri("grupo_donato/operacional/event_payment"), ["id" => "gd-academy-event-payment-form", "class" => "general-form"]); ?>
 <div class="modal-body">
-    <input type="hidden" name="participant_id" value="<?php echo (int) ($participant->id ?? 0); ?>">
+    <input type="hidden" name="roster_id" value="<?php echo (int) ($roster->id ?? $participant->roster_id ?? 0); ?>">
     <input type="hidden" name="reload_target" value="<?php echo esc((string) ($reload_target ?? "")); ?>">
     <div class="alert alert-info">
         <strong><?php echo esc((string) ($participant->athlete_name ?? "Atleta")); ?></strong>
-        <br><small><?php echo esc((string) ($event->name ?? "Evento")); ?> · <?php echo esc((string) ($participant->category_name ?? "Categoria")); ?></small>
+        <br><small><?php echo esc((string) ($event->name ?? "Evento")); ?><?php if (!empty($participant->category_name)): ?> · Categorias: <?php echo esc((string) $participant->category_name); ?><?php endif; ?></small>
     </div>
     <div class="row">
         <div class="col-md-4 form-group">

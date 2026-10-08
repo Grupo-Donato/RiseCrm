@@ -4,6 +4,7 @@ $status_options = ["Ativo" => "Ativo", "Pendente" => "Pendente", "Inadimplente" 
 $melhor_horario_options = ["" => "-", "manha" => "Manhã", "tarde" => "Tarde", "qualquer" => "Qualquer horário"];
 $comanda_item_options = ["" => "- Selecione um item avulso -", "Camiseta" => "Uniforme / camiseta", "Caneleira" => "Caneleira", "Meião" => "Meião", "Passeio" => "Passeio"];
 $comanda_status_options = ["Pago" => "Pago", "Pendente" => "Pendente"];
+$mensalidade_padrao = (float) ($mensalidade_padrao ?? 237.00);
 $exame_medico_nome = !empty($model_info->exame_medico_nome) ? $model_info->exame_medico_nome : "Exame médico anexado";
 $exame_medico_tamanho = (int) ($model_info->exame_medico_tamanho ?? 0);
 $exame_medico_tamanho_label = "";
@@ -418,7 +419,7 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
             <div class="row">
                 <label for="bombeiros-aluno-mensalidade" class="col-md-3">Mensalidade</label>
                 <div class="col-md-3">
-                    <?php echo form_input(["id" => "bombeiros-aluno-mensalidade", "name" => "valor_mensalidade", "value" => $model_info->valor_mensalidade ?: $model_info->valor_mensal, "class" => "form-control", "placeholder" => "Ex.: 237,00"]); ?>
+                    <?php echo form_input(["id" => "bombeiros-aluno-mensalidade", "name" => "valor_mensalidade", "value" => $model_info->valor_mensalidade ?: $model_info->valor_mensal, "class" => "form-control", "placeholder" => "Ex.: " . number_format($mensalidade_padrao, 2, ",", "."), "data-mensalidade-padroes" => json_encode($mensalidade_padroes_por_unidade ?? [])]); ?>
                     <div class="text-off mt5">Valor recorrente enquanto o aluno permanecer ativo.</div>
                 </div>
             </div>
@@ -711,6 +712,19 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
         var $originResults = $("#bombeiros-aluno-origem-resultados");
         var $originSelected = $("#bombeiros-aluno-origem-selecionado");
         var crossUnitStudents = {};
+        var $monthlyValue = $("#bombeiros-aluno-mensalidade");
+        var monthlyDefaults = {};
+        try {
+            monthlyDefaults = JSON.parse($monthlyValue.attr("data-mensalidade-padroes") || "{}");
+        } catch (e) {
+            monthlyDefaults = {};
+        }
+
+        function updateMonthlyPlaceholder() {
+            var unitId = String($("#bombeiros-aluno-unidade").val() || "");
+            var monthlyDefault = parseFloat(monthlyDefaults[unitId] || 237);
+            $monthlyValue.attr("placeholder", "Ex.: " + monthlyDefault.toFixed(2).replace(".", ","));
+        }
 
         function crossUnitField(name, value) {
             $studentForm.find("[name='" + name + "']").val(value == null ? "" : value);
@@ -851,6 +865,7 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
             clearCrossUnitSelection(false);
         });
         $("#bombeiros-aluno-unidade").on("change", updateCrossUnitSourceOptions);
+        $("#bombeiros-aluno-unidade").on("change", updateMonthlyPlaceholder);
         $("#bombeiros-aluno-origem-buscar").on("click", searchCrossUnitStudents);
         $originSearch.on("keydown", function (event) {
             if (event.key === "Enter") {
@@ -870,6 +885,7 @@ $cross_unit_units = is_array($cross_unit_units ?? null) ? $cross_unit_units : []
             }
         });
         setCrossUnitMode();
+        updateMonthlyPlaceholder();
         <?php } ?>
 
         $("#bombeiros-aluno-form").appForm({

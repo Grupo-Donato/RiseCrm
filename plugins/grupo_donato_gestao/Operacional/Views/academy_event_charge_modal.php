@@ -5,14 +5,14 @@ $amount = (float) ($participant->amount ?? 0);
 ?>
 <?php echo form_open(get_uri("grupo_donato/operacional/event_charge"), ["id" => "gd-academy-event-charge-form", "class" => "general-form"]); ?>
 <div class="modal-body">
-    <input type="hidden" name="participant_id" value="<?php echo (int) ($participant->id ?? 0); ?>">
+    <input type="hidden" name="roster_id" value="<?php echo (int) ($roster->id ?? $participant->roster_id ?? 0); ?>">
     <div class="alert alert-info">
         <strong><?php echo esc((string) ($participant->athlete_name ?? "Atleta")); ?></strong>
-        <br><small><?php echo esc((string) ($event->name ?? "Evento")); ?> · <?php echo esc((string) ($participant->category_name ?? "Categoria")); ?></small>
+        <br><small><?php echo esc((string) ($event->name ?? "Evento")); ?><?php if (!empty($participant->category_name)): ?> · Categorias: <?php echo esc((string) $participant->category_name); ?><?php endif; ?></small>
     </div>
     <div class="row">
         <div class="col-md-6 form-group">
-            <label>Valor da participação</label>
+            <label>Valor por atleta</label>
             <input class="form-control" name="amount" inputmode="decimal" value="<?php echo esc(number_format($amount, 2, ",", ".")); ?>" required>
         </div>
         <div class="col-md-6 form-group">

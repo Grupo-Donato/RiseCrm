@@ -6,7 +6,7 @@ O módulo de eventos vive dentro da tela operacional oficial da Academy. A entra
 
 - Alunos e responsáveis internos continuam sendo lidos de `grupo_donato_alunos` e `grupo_donato_responsaveis`.
 - A unidade legada é mapeada para uma unidade ativa de `gd_units`. O mapeamento é feito por id, nome ou unidade padrão, nesta ordem.
-- A lista-base de atletas por evento fica em `gd_academy_event_roster`. Categorias, partidas, convocações, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067; a V068 ajusta os índices da convocação para preservar históricos removidos sem impedir uma nova convocação e a V074 vincula as convocações à lista-base.
+- A lista-base de atletas por evento fica em `gd_academy_event_roster`. Categorias, partidas, convocações, confirmações, atletas externos, checklist, avaliações e estatísticas são armazenados nas tabelas `gd_academy_*` criadas pela V067; a V068 ajusta os índices da convocação para preservar históricos removidos sem impedir uma nova convocação, a V074 vincula as convocações à lista-base e a V075 move o valor individual para essa lista.
 - Atleta externo é um registro contextual do evento. Ele não cria um segundo aluno nem um segundo responsável.
 
 ## Fluxo
@@ -16,14 +16,14 @@ O módulo de eventos vive dentro da tela operacional oficial da Academy. A entra
 3. Criar categorias com faixa etária, gênero, equipe técnica, limite e valor. A convocação da categoria só oferece atletas da lista-base; a faixa etária continua sendo aplicada como filtro/priorização e exceções autorizadas permanecem possíveis.
 4. Registrar partidas e atualizar o placar após o jogo.
 5. Registrar confirmação e escalação. A escalação da partida permite definir todos os atletas e salvar a convocação de uma vez; a mudança da confirmação também grava a linha de confirmação/auditoria.
-6. Gerar o recebível individual, baixar pagamentos parciais ou totais e consultar a conta familiar.
+6. Gerar um recebível por atleta da lista-base, independentemente da quantidade de categorias, baixar pagamentos parciais ou totais e consultar a conta familiar.
 7. Registrar avaliação de 1 a 5, pontos fortes, desenvolvimento, recomendação e nota interna.
 8. Registrar estatísticas por partida e concluir o checklist.
 9. Finalizar somente sem pendências; quando houver pendência, o backend exige justificativa explícita. Cancelamento tenta cancelar recebíveis abertos e preserva aviso para recebíveis já pagos.
 
 ## Financeiro
 
-O recebível usa `source_type=academy_event_participation` e `source_id=participant_id`. A chave `(unit_id, source_type, source_id, reference_month, deleted)` mantém a geração idempotente. O `reference_month` do evento fica vazio de propósito: cada participação é uma cobrança única, não uma mensalidade.
+Novos recebíveis usam `source_type=academy_event_roster` e `source_id=roster_id`, para que cada atleta da lista-base gere no máximo uma cobrança, independentemente de quantas categorias dispute. A chave `(unit_id, source_type, source_id, reference_month, deleted)` mantém a geração idempotente. O `reference_month` do evento fica vazio de propósito: cada atleta gera uma cobrança única, não uma mensalidade. Recebíveis antigos em `academy_event_participation` continuam associados ao atleta e impedem a criação de uma cobrança duplicada.
 
 Para aluno interno, o responsável legado é ligado a uma única conta familiar moderna por `gd_customer_accounts.legacy_responsible_id`. A tela de conta familiar mostra os recebíveis modernos do evento e também as cobranças mensais legadas, sem migrá-las ou duplicá-las.
 

@@ -1052,6 +1052,8 @@ return [
     "gd_finance_open_total" => "Total em aberto",
     "gd_finance_last_payment" => "Último pagamento",
     "gd_finance_source_enrollment" => "Matrícula",
+    "gd_finance_source_academy_event_roster" => "Evento esportivo",
+    "gd_finance_source_academy_event_participation" => "Evento esportivo (legado)",
     "gd_finance_source_court_rental" => "Locação",
     "gd_finance_source_manual" => "Manual",
     "gd_finance_source_other" => "Outro",

@@ -123,7 +123,14 @@ final class AcademyEventService extends CustomerDataService
         $athletes = (int) ($this->db->table($participantTable)->where("unit_id", $this->unit_id)->where("deleted", 0)->where("lineup_status !=", "cut")->countAllResults());
         $pendingConfirmations = (int) ($this->db->table($participantTable)->where("unit_id", $this->unit_id)->where("deleted", 0)->whereIn("confirmation_status", ["pending", "waiting", "no_response"])->countAllResults());
         $pendingEvaluations = (int) ($this->db->query("SELECT COUNT(*) total FROM `$participantTable` p LEFT JOIN `$evaluationTable` e ON e.participant_id=p.id AND e.unit_id=p.unit_id AND e.deleted=0 WHERE p.unit_id=? AND p.deleted=0 AND p.lineup_status NOT IN ('cut','absent') AND e.id IS NULL", [$this->unit_id])->getRow()->total ?? 0);
-        $finance = $this->db->query("SELECT COALESCE(SUM(r.original_amount),0) expected_amount, COALESCE(SUM(r.paid_amount),0) received_amount, COALESCE(SUM(r.balance_amount),0) open_amount, SUM(r.balance_amount>0) pending_count FROM `$receivableTable` r WHERE r.unit_id=? AND r.source_type='academy_event_participation' AND r.deleted=0 AND r.status<>'cancelled'", [$this->unit_id])->getRow();
+        $rosterTable = $this->table("gd_academy_event_roster");
+        $finance = $this->db->query("SELECT COALESCE(SUM(rc.original_amount),0) expected_amount,
+            COALESCE(SUM(rc.paid_amount),0) received_amount,COALESCE(SUM(rc.balance_amount),0) open_amount,
+            COUNT(DISTINCT CASE WHEN rc.balance_amount>0 THEN COALESCE(rr.id,p.roster_id,p.id) END) pending_count
+            FROM `$receivableTable` rc
+            LEFT JOIN `$rosterTable` rr ON rc.source_type='academy_event_roster' AND rr.id=rc.source_id AND rr.unit_id=rc.unit_id
+            LEFT JOIN `$participantTable` p ON rc.source_type='academy_event_participation' AND p.id=rc.source_id AND p.unit_id=rc.unit_id
+            WHERE rc.unit_id=? AND rc.source_type IN ('academy_event_participation','academy_event_roster') AND rc.deleted=0 AND rc.status<>'cancelled'", [$this->unit_id])->getRow();
 
         $pending = [];
         foreach ($events as $event) {
@@ -225,16 +232,28 @@ final class AcademyEventService extends CustomerDataService
     public function eventFinance(int $eventId): array
     {
         $event = $this->assertEvent($eventId);
+        $roster = $this->table("gd_academy_event_roster");
         $p = $this->table("gd_academy_event_participants");
         $s = $this->table("grupo_donato_alunos");
         $x = $this->table("gd_academy_external_athletes");
         $r = $this->table("grupo_donato_responsaveis");
         $c = $this->table("gd_academy_event_categories");
         $receivables = $this->table("gd_receivables");
-        $sql = "SELECT p.id,p.event_id,p.category_id,p.athlete_type,p.student_id,p.external_athlete_id,p.responsible_id,p.financial_status,p.amount,p.due_date,p.receivable_id,
-            COALESCE(s.nome_aluno,x.name) athlete_name, c.name category_name, COALESCE(r.nome,x.responsible_name) responsible_name,
+        $unbilledStatusSql = "(SELECT CASE WHEN COUNT(*)=0 THEN 'pending' WHEN SUM(fp.financial_status NOT IN ('exempt','courtesy','cancelled','not_applicable'))>0 THEN 'pending' WHEN SUM(fp.financial_status='exempt')>0 THEN 'exempt' WHEN SUM(fp.financial_status='courtesy')>0 THEN 'courtesy' WHEN SUM(fp.financial_status='not_applicable')>0 THEN 'not_applicable' ELSE 'pending' END FROM `$p` fp WHERE fp.unit_id=rr.unit_id AND fp.roster_id=rr.id AND fp.deleted=0)";
+        $sql = "SELECT rr.id roster_id,
+            (SELECT MIN(pp.id) FROM `$p` pp WHERE pp.unit_id=rr.unit_id AND pp.roster_id=rr.id AND pp.deleted=0) participant_id,
+            rr.event_id,rr.athlete_type,rr.student_id,rr.external_athlete_id,
+            COALESCE(rr.responsible_id,s.responsavel_id,x.responsible_id) responsible_id,
+            COALESCE(s.nome_aluno,x.name) athlete_name,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT cc.name ORDER BY cc.name SEPARATOR ', ') FROM `$p` cp JOIN `$c` cc ON cc.id=cp.category_id AND cc.unit_id=cp.unit_id AND cc.deleted=0 WHERE cp.unit_id=rr.unit_id AND cp.roster_id=rr.id AND cp.deleted=0), '') category_name,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT cp.category_id ORDER BY cp.category_id SEPARATOR ',') FROM `$p` cp WHERE cp.unit_id=rr.unit_id AND cp.roster_id=rr.id AND cp.deleted=0), '') category_ids,
+            COALESCE(r.nome,x.responsible_name) responsible_name,
+            COALESCE(rc.original_amount,NULLIF(rr.participation_amount,0),NULLIF(ev.default_participation_amount,0),0) amount,
+            rc.due_date,rc.id receivable_id,
+            (SELECT COUNT(DISTINCT lrc.id) FROM `$p` lp JOIN `$receivables` lrc ON lrc.id=lp.receivable_id AND lrc.unit_id=lp.unit_id AND lrc.source_type='academy_event_participation' AND lrc.deleted=0 AND lrc.status<>'cancelled' WHERE lp.unit_id=rr.unit_id AND lp.roster_id=rr.id AND lp.deleted=0) legacy_receivable_count,
+            $unbilledStatusSql financial_status,
             CASE
-                WHEN rc.id IS NULL AND p.financial_status IN ('exempt','courtesy','not_applicable') THEN p.financial_status
+                WHEN rc.id IS NULL AND $unbilledStatusSql IN ('exempt','courtesy','not_applicable') THEN $unbilledStatusSql
                 WHEN rc.id IS NULL THEN 'pending_generation'
                 WHEN rc.status='cancelled' THEN 'cancelled'
                 WHEN rc.balance_amount<=0 THEN 'paid'
@@ -244,17 +263,21 @@ final class AcademyEventService extends CustomerDataService
             END financial_display_status,
             rc.receivable_number,rc.description receivable_description,rc.notes receivable_notes,
             rc.original_amount,rc.paid_amount,rc.balance_amount,rc.due_date receivable_due_date,
-            (SELECT pay.id FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=p.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_id,
-            (SELECT pay.payment_date FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=p.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_date,
-            (SELECT pay.payment_method FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=p.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_method
-            FROM `$p` p
-            LEFT JOIN `$s` s ON s.id=p.student_id AND s.unidade_id=? AND s.deleted=0
-            LEFT JOIN `$x` x ON x.id=p.external_athlete_id AND x.unit_id=p.unit_id AND x.deleted=0
-            LEFT JOIN `$r` r ON r.id=p.responsible_id AND r.deleted=0
-            JOIN `$c` c ON c.id=p.category_id AND c.unit_id=p.unit_id AND c.deleted=0
-            LEFT JOIN `$receivables` rc ON rc.id=p.receivable_id AND rc.unit_id=p.unit_id AND rc.deleted=0
-            WHERE p.unit_id=? AND p.event_id=? AND p.deleted=0 ORDER BY c.name ASC, athlete_name ASC";
+            (SELECT pay.id FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=rr.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_id,
+            (SELECT pay.payment_date FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=rr.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_date,
+            (SELECT pay.payment_method FROM `{$this->table("gd_payment_allocations")}` pa JOIN `{$this->table("gd_payments")}` pay ON pay.id=pa.payment_id AND pay.unit_id=pa.unit_id AND pay.deleted=0 AND pay.status='confirmed' WHERE pa.unit_id=rr.unit_id AND pa.receivable_id=rc.id AND pa.status='active' ORDER BY pay.payment_date DESC,pay.id DESC LIMIT 1) last_payment_method
+            FROM `$roster` rr
+            JOIN `{$this->table("gd_academy_events")}` ev ON ev.id=rr.event_id AND ev.unit_id=rr.unit_id AND ev.deleted=0
+            LEFT JOIN `$s` s ON s.id=rr.student_id AND s.unidade_id=? AND s.deleted=0
+            LEFT JOIN `$x` x ON x.id=rr.external_athlete_id AND x.unit_id=rr.unit_id AND x.deleted=0
+            LEFT JOIN `$r` r ON r.id=COALESCE(rr.responsible_id,s.responsavel_id,x.responsible_id) AND r.deleted=0
+            LEFT JOIN `$receivables` rc ON rc.id=COALESCE(
+                (SELECT nrc.id FROM `$receivables` nrc WHERE nrc.unit_id=rr.unit_id AND nrc.source_type='academy_event_roster' AND nrc.source_id=rr.id AND nrc.deleted=0 ORDER BY nrc.id DESC LIMIT 1),
+                (SELECT lrc.id FROM `$p` lp JOIN `$receivables` lrc ON lrc.id=lp.receivable_id AND lrc.unit_id=lp.unit_id AND lrc.source_type='academy_event_participation' AND lrc.deleted=0 AND lrc.status<>'cancelled' WHERE lp.unit_id=rr.unit_id AND lp.roster_id=rr.id AND lp.deleted=0 ORDER BY lp.id ASC,lrc.id DESC LIMIT 1)
+            ) AND rc.unit_id=rr.unit_id AND rc.deleted=0
+            WHERE rr.unit_id=? AND rr.event_id=? AND rr.deleted=0 ORDER BY athlete_name ASC";
         $rows = $this->db->query($sql, [$this->legacy_unit_id, $this->unit_id, $eventId])->getResult();
+        foreach ($rows as $row) $row->id = (int) ($row->participant_id ?: $row->roster_id);
         $metrics = $this->eventMetrics([$eventId])[$eventId] ?? $this->emptyMetrics();
         return ["event" => $event, "metrics" => $metrics, "participants" => $rows];
     }
@@ -273,7 +296,7 @@ final class AcademyEventService extends CustomerDataService
         $filtered = array_values(array_filter($rows, static function ($row) use ($status, $categoryId, $search): bool {
             $displayStatus = (string) ($row->financial_display_status ?? "pending_generation");
             if ($status !== "" && $displayStatus !== $status) return false;
-            if ($categoryId > 0 && (int) ($row->category_id ?? 0) !== $categoryId) return false;
+            if ($categoryId > 0 && !in_array((string) $categoryId, explode(",", (string) ($row->category_ids ?? "")), true)) return false;
             if ($search !== "") {
                 $haystack = mb_strtolower(implode(" ", [
                     (string) ($row->athlete_name ?? ""),
@@ -301,14 +324,19 @@ final class AcademyEventService extends CustomerDataService
     {
         $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId);
         if (!$participant) throw new \DomainException("gd_record_not_found");
-        $finance = $this->eventFinance((int) $participant->event_id);
+        return $this->eventFinanceRoster($this->participantRosterId($participant));
+    }
+
+    public function eventFinanceRoster(int $rosterId): array
+    {
+        $roster = $this->scopedRow($this->table("gd_academy_event_roster"), $rosterId);
+        if (!$roster) throw new \DomainException("gd_record_not_found");
+        $finance = $this->eventFinance((int) $roster->event_id);
         foreach ($finance["participants"] as $row) {
-            if ((int) ($row->id ?? 0) !== $participantId) continue;
+            if ((int) ($row->roster_id ?? 0) !== $rosterId) continue;
             $receivable = null;
-            if ((int) ($row->receivable_id ?? 0) > 0) {
-                $receivable = (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->getReceivable((int) $row->receivable_id);
-            }
-            return ["event" => $finance["event"], "participant" => $row, "receivable" => $receivable, "payment_history" => $receivable ? ($receivable->allocations ?? []) : []];
+            if ((int) ($row->receivable_id ?? 0) > 0) $receivable = (new FinanceService($this->unit_id, $this->actor_id, $this->login_user))->getReceivable((int) $row->receivable_id);
+            return ["event" => $finance["event"], "participant" => $row, "roster" => $roster, "receivable" => $receivable, "payment_history" => $receivable ? ($receivable->allocations ?? []) : []];
         }
         throw new \DomainException("gd_record_not_found");
     }
@@ -322,7 +350,14 @@ final class AcademyEventService extends CustomerDataService
         $allocations = $this->table("gd_payment_allocations");
         $receivables = $this->table("gd_receivables");
         $participants = $this->table("gd_academy_event_participants");
-        $rows = $this->db->query("SELECT DISTINCT a.receivable_id FROM `$allocations` a JOIN `$receivables` r ON r.id=a.receivable_id AND r.unit_id=a.unit_id AND r.source_type='academy_event_participation' AND r.deleted=0 JOIN `$participants` p ON p.id=r.source_id AND p.unit_id=r.unit_id AND p.deleted=0 WHERE a.unit_id=? AND a.payment_id=? AND a.status='active'", [$this->unit_id, $paymentId])->getResult();
+        $roster = $this->table("gd_academy_event_roster");
+        $rows = $this->db->query("SELECT DISTINCT a.receivable_id FROM `$allocations` a
+            JOIN `$receivables` r ON r.id=a.receivable_id AND r.unit_id=a.unit_id AND r.deleted=0
+            LEFT JOIN `$participants` p ON p.id=r.source_id AND p.unit_id=r.unit_id AND p.deleted=0
+            LEFT JOIN `$roster` rr ON rr.id=r.source_id AND rr.unit_id=r.unit_id AND rr.deleted=0
+            WHERE a.unit_id=? AND a.payment_id=? AND a.status='active'
+                AND ((r.source_type='academy_event_participation' AND p.id IS NOT NULL)
+                    OR (r.source_type='academy_event_roster' AND rr.id IS NOT NULL))", [$this->unit_id, $paymentId])->getResult();
         if (!$rows) return null;
         $allowed = [];
         foreach ($rows as $row) $allowed[(int) $row->receivable_id] = true;
@@ -332,7 +367,15 @@ final class AcademyEventService extends CustomerDataService
 
     public function reverseEventPayment(int $participantId, string $reason): array
     {
-        $context = $this->eventFinanceParticipant($participantId);
+        $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId);
+        if (!$participant) throw new \DomainException("gd_record_not_found");
+        $rosterId = $this->participantRosterId($participant);
+        return $this->reverseEventRosterPayment($rosterId, $reason);
+    }
+
+    public function reverseEventRosterPayment(int $rosterId, string $reason): array
+    {
+        $context = $this->eventFinanceRoster($rosterId);
         $receivable = $context["receivable"];
         if (!$receivable) throw new \DomainException("gd_finance_receivable_not_found");
         $paymentId = 0;
@@ -347,8 +390,7 @@ final class AcademyEventService extends CustomerDataService
         $status = $fresh && DataNormalizationService::decimalCompare((string) ($fresh->balance_amount ?? "0.00"), "0.00") <= 0
             ? "paid"
             : (($fresh && DataNormalizationService::decimalCompare((string) ($fresh->paid_amount ?? "0.00"), "0.00") > 0) ? "partial" : "generated");
-        $this->db->table($this->table("gd_academy_event_participants"))->where("id", $participantId)->where("unit_id", $this->unit_id)->update(["financial_status" => $status, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
-        $this->audit_change("payment_reverse", "academy_event_participant", $participantId, null, ["receivable_id" => (int) $receivable->id, "payment_id" => $paymentId, "financial_status" => $status], ["reason" => DataNormalizationService::text($reason)]);
+        $this->audit_change("payment_reverse", "academy_event_roster", $rosterId, null, ["receivable_id" => (int) $receivable->id, "payment_id" => $paymentId, "financial_status" => $status], ["reason" => DataNormalizationService::text($reason)]);
         return ["saved" => true, "payment_id" => $paymentId, "status" => $status];
     }
 
@@ -575,6 +617,10 @@ final class AcademyEventService extends CustomerDataService
             ->get()->getResult();
         $participantIds = array_values(array_filter(array_map(static fn($row): int => (int) $row->id, $participants)));
         $receivableIds = array_values(array_filter(array_map(static fn($row): int => (int) ($row->receivable_id ?? 0), $participants)));
+        $rosterTable = $this->table("gd_academy_event_roster");
+        $receivableTable = $this->table("gd_receivables");
+        $rosterReceivables = $this->db->query("SELECT rc.id FROM `$receivableTable` rc JOIN `$rosterTable` rr ON rr.id=rc.source_id AND rr.unit_id=rc.unit_id WHERE rc.unit_id=? AND rc.source_type='academy_event_roster' AND rc.deleted=0 AND rr.event_id=?", [$this->unit_id, $eventId])->getResult();
+        $receivableIds = array_merge($receivableIds, array_map(static fn($row): int => (int) $row->id, $rosterReceivables));
 
         $matches = $this->db->table($matchTable)
             ->select("id")
@@ -851,6 +897,7 @@ final class AcademyEventService extends CustomerDataService
             "unit_id" => $this->unit_id, "event_id" => $eventId, "athlete_type" => $type,
             "student_id" => $studentId, "external_athlete_id" => $externalId,
             "responsible_id" => $responsibleId,
+            "participation_amount" => DataNormalizationService::decimal($event->default_participation_amount ?? "0", 2),
             "notes" => DataNormalizationService::text($input["notes"] ?? "") ?: null,
             "status" => "active", "lock_version" => 1, "created_at" => $now, "updated_at" => $now,
         ], true);
@@ -869,7 +916,7 @@ final class AcademyEventService extends CustomerDataService
         if (!$row) throw new \DomainException("gd_record_not_found");
         $used = $this->db->table($this->table("gd_academy_event_participants"))
             ->where("unit_id", $this->unit_id)->where("roster_id", $rosterId)->where("deleted", 0)->countAllResults();
-        if ($used > 0) throw new \DomainException("gd_event_roster_in_use");
+        if ($used > 0 || $this->eventRosterReceivableId($rosterId) > 0) throw new \DomainException("gd_event_roster_in_use");
         $now = gmdate("Y-m-d H:i:s");
         $this->db->table($table)->where("id", $rosterId)->where("unit_id", $this->unit_id)->where("deleted", 0)->update([
             "deleted" => 1, "updated_at" => $now, "updated_by" => $this->actor_id ?: null,
@@ -1185,11 +1232,30 @@ final class AcademyEventService extends CustomerDataService
 
     public function chargeParticipant(int $participantId, array $input = []): array
     {
-        $table = $this->table("gd_academy_event_participants"); $participant = $this->scopedRow($table, $participantId); if (!$participant) throw new \DomainException("gd_record_not_found");
-        if ((int) $participant->receivable_id) return ["created" => false, "id" => (int) $participant->receivable_id, "duplicate" => true];
-        if (in_array((string) $participant->financial_status, ["exempt", "courtesy", "cancelled"], true)) throw new \DomainException("gd_event_financial_unavailable");
-        $amount = DataNormalizationService::decimal($input["amount"] ?? $participant->amount, 2); if (DataNormalizationService::decimalCompare($amount, "0.00") <= 0) throw new \DomainException("gd_event_amount_required");
-        $responsible = (int) ($participant->responsible_id ?? 0); if (!$responsible) throw new \DomainException("gd_event_responsible_required");
+        $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId);
+        if (!$participant) throw new \DomainException("gd_record_not_found");
+        return $this->chargeEventRoster($this->participantRosterId($participant), $input);
+    }
+
+    public function chargeEventRoster(int $rosterId, array $input = []): array
+    {
+        $roster = $this->scopedRow($this->table("gd_academy_event_roster"), $rosterId);
+        if (!$roster) throw new \DomainException("gd_record_not_found");
+        $existingId = $this->eventRosterReceivableId($rosterId);
+        if ($existingId > 0) return ["created" => false, "id" => $existingId, "duplicate" => true];
+        if ($this->rosterFinanciallyUnavailable($rosterId)) throw new \DomainException("gd_event_financial_unavailable");
+        $amount = DataNormalizationService::decimal($input["amount"] ?? $this->eventRosterAmount($roster), 2);
+        if (DataNormalizationService::decimalCompare($amount, "0.00") <= 0) throw new \DomainException("gd_event_amount_required");
+        $responsible = (int) ($roster->responsible_id ?? 0);
+        if (!$responsible && (int) ($roster->external_athlete_id ?? 0) > 0) {
+            $external = $this->scopedRow($this->table("gd_academy_external_athletes"), (int) $roster->external_athlete_id);
+            $responsible = (int) ($external->responsible_id ?? 0);
+        } elseif (!$responsible && (int) ($roster->student_id ?? 0) > 0) {
+            $student = $this->db->table($this->table("grupo_donato_alunos"))->select("responsavel_id")
+                ->where("id", (int) $roster->student_id)->where("unidade_id", $this->legacy_unit_id)->where("deleted", 0)->get(1)->getRow();
+            $responsible = (int) ($student->responsavel_id ?? 0);
+        }
+        if (!$responsible) throw new \DomainException("gd_event_responsible_required");
         $account = $this->ensureFamilyAccount($responsible);
         $strategy = (string) ($input["charge_strategy"] ?? "open"); if (!in_array($strategy, self::CHARGE_STRATEGIES, true)) throw new \DomainException("gd_invalid_value");
         $today = gmdate("Y-m-d");
@@ -1200,22 +1266,39 @@ final class AcademyEventService extends CustomerDataService
         }
         $due = $this->date($input["due_date"] ?? "", true) ?: $defaultDue;
         if ($due < $today && $strategy !== "immediate") throw new \DomainException("gd_event_due_date_invalid");
-        $event = $this->assertEvent((int) $participant->event_id);
+        $event = $this->assertEvent((int) $roster->event_id);
         $finance = new FinanceService($this->unit_id, $this->actor_id, $this->login_user);
-        $saved = $finance->createReceivable(["source_type" => "academy_event_participation", "source_id" => $participantId, "customer_account_id" => $account, "description" => "Evento " . $event->name . " - " . $this->participantName($participant), "issue_date" => min(gmdate("Y-m-d"), $due), "due_date" => $due, "original_amount" => $amount, "unit_amount" => $amount, "quantity" => "1", "reference_month" => "", "business_area_id" => (int) ($event->business_area_id ?? 0), "cost_center_id" => (int) ($event->cost_center_id ?? 0), "notes" => DataNormalizationService::text($input["notes"] ?? "")]);
+        $saved = $finance->createReceivable(["source_type" => "academy_event_roster", "source_id" => $rosterId, "customer_account_id" => $account, "description" => "Evento " . $event->name . " - " . $this->rosterName($roster), "issue_date" => min(gmdate("Y-m-d"), $due), "due_date" => $due, "original_amount" => $amount, "unit_amount" => $amount, "quantity" => "1", "reference_month" => "", "business_area_id" => (int) ($event->business_area_id ?? 0), "cost_center_id" => (int) ($event->cost_center_id ?? 0), "notes" => DataNormalizationService::text($input["notes"] ?? "")]);
         $receivableId = (int) ($saved["id"] ?? 0); if (!$receivableId) throw new \RuntimeException("save_failed");
-        $updated = $this->db->table($table)->where("id", $participantId)->where("unit_id", $this->unit_id)->where("receivable_id IS NULL", null, false)->update(["receivable_id" => $receivableId, "amount" => $amount, "due_date" => $due, "charge_strategy" => $strategy, "financial_reference_month" => "", "financial_status" => "generated", "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
-        if (!$updated && !(int) $participant->receivable_id) throw new \DomainException("gd_event_charge_conflict");
+        if (!empty($saved["created"])) {
+            $this->db->table($this->table("gd_academy_event_roster"))->where("id", $rosterId)->where("unit_id", $this->unit_id)
+                ->update(["participation_amount" => $amount, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
+        }
         $payment = null;
-        if (DataNormalizationService::decimalCompare(DataNormalizationService::decimal($input["payment_amount"] ?? "0", 2), "0.00") > 0) $payment = $this->registerPayment($participantId, $input + ["receivable_id" => $receivableId]);
-        $this->audit_change("charge", "academy_event_participant", $participantId, (array) $participant, ["receivable_id" => $receivableId, "amount" => $amount, "strategy" => $strategy], ["finance_created" => !empty($saved["created"])]);
+        if (DataNormalizationService::decimalCompare(DataNormalizationService::decimal($input["payment_amount"] ?? "0", 2), "0.00") > 0) $payment = $this->registerEventRosterPayment($rosterId, $input + ["receivable_id" => $receivableId]);
+        $this->audit_change("charge", "academy_event_roster", $rosterId, (array) $roster, ["receivable_id" => $receivableId, "amount" => $amount, "strategy" => $strategy], ["finance_created" => !empty($saved["created"])]);
         return ["created" => !empty($saved["created"]), "id" => $receivableId, "payment" => $payment];
     }
 
     public function registerPayment(int $participantId, array $input): array
     {
-        $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId); if (!$participant) throw new \DomainException("gd_record_not_found");
-        $receivableId = (int) $participant->receivable_id; if (!$receivableId) { $chargeInput = $input; unset($chargeInput["payment_amount"]); $this->chargeParticipant($participantId, $chargeInput); $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId); $receivableId = (int) $participant->receivable_id; }
+        $participant = $this->scopedRow($this->table("gd_academy_event_participants"), $participantId);
+        if (!$participant) throw new \DomainException("gd_record_not_found");
+        return $this->registerEventRosterPayment($this->participantRosterId($participant), $input);
+    }
+
+    public function registerEventRosterPayment(int $rosterId, array $input): array
+    {
+        $roster = $this->scopedRow($this->table("gd_academy_event_roster"), $rosterId);
+        if (!$roster) throw new \DomainException("gd_record_not_found");
+        $receivableId = $this->eventRosterReceivableId($rosterId);
+        if (!$receivableId) {
+            $chargeInput = $input;
+            unset($chargeInput["payment_amount"]);
+            $this->chargeEventRoster($rosterId, $chargeInput);
+            $receivableId = $this->eventRosterReceivableId($rosterId);
+        }
+        if (!$receivableId) throw new \DomainException("gd_finance_receivable_not_found");
         $amount = DataNormalizationService::decimal($input["payment_amount"] ?? ($input["amount"] ?? ""), 2); if (DataNormalizationService::decimalCompare($amount, "0.00") <= 0) throw new \DomainException("gd_finance_payment_amount_required");
         $method = Constants::normalizePaymentMethod((string) ($input["payment_method"] ?? "")); if (!$method) throw new \DomainException("gd_finance_payment_method_required");
         $account = (int) ($input["financial_account_id"] ?? 0); if (!$account) $account = $this->defaultFinancialAccount();
@@ -1223,8 +1306,7 @@ final class AcademyEventService extends CustomerDataService
         $result = $finance->registerPayment(["allocations" => [$receivableId => $amount], "amount" => $amount, "payment_date" => $input["payment_date"] ?? gmdate("Y-m-d"), "payment_method" => $method, "financial_account_id" => $account, "notes" => $input["payment_notes"] ?? "Pagamento de evento", "external_reference" => $input["external_reference"] ?? ""]);
         $fresh = $this->db->table($this->table("gd_receivables"))->where("id", $receivableId)->where("unit_id", $this->unit_id)->get(1)->getRow();
         $status = $fresh && (string) $fresh->status === "paid" ? "paid" : "partial";
-        $this->db->table($this->table("gd_academy_event_participants"))->where("id", $participantId)->where("unit_id", $this->unit_id)->update(["financial_status" => $status, "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]);
-        $this->audit_change("payment", "academy_event_participant", $participantId, null, ["receivable_id" => $receivableId, "amount" => $amount, "status" => $status], ["payment_id" => (int) ($result["id"] ?? 0)]); return $result + ["receivable_id" => $receivableId, "status" => $status];
+        $this->audit_change("payment", "academy_event_roster", $rosterId, null, ["receivable_id" => $receivableId, "amount" => $amount, "status" => $status], ["payment_id" => (int) ($result["id"] ?? 0)]); return $result + ["receivable_id" => $receivableId, "status" => $status];
     }
 
     public function setParticipantFinancialStatus(int $participantId, string $status, string $note = ""): array
@@ -1339,7 +1421,27 @@ final class AcademyEventService extends CustomerDataService
 
     public function familyAccount(int $responsibleId): array
     {
-        $responsible = $this->legacyResponsible($responsibleId); if (!$responsible) throw new \DomainException("gd_responsible_not_found"); $accountId = $this->ensureFamilyAccount($responsibleId); $r = $this->table("gd_receivables"); $p = $this->table("gd_academy_event_participants"); $a = $this->table("gd_academy_events"); $c = $this->table("gd_academy_event_categories"); $students = $this->table("grupo_donato_alunos"); $rows = $this->db->query("SELECT r.*,p.student_id,p.category_id,c.name category_name,a.name event_name,s.nome_aluno child_name FROM `$r` r LEFT JOIN `$p` p ON p.receivable_id=r.id AND p.unit_id=r.unit_id AND p.deleted=0 LEFT JOIN `$a` a ON a.id=p.event_id AND a.unit_id=p.unit_id AND a.deleted=0 LEFT JOIN `$c` c ON c.id=p.category_id AND c.unit_id=p.unit_id AND c.deleted=0 LEFT JOIN `$students` s ON s.id=p.student_id AND s.unidade_id=? AND s.deleted=0 WHERE r.unit_id=? AND r.customer_account_id=? AND r.deleted=0 ORDER BY r.due_date ASC,r.id ASC", [$this->legacy_unit_id, $this->unit_id, $accountId])->getResult();
+        $responsible = $this->legacyResponsible($responsibleId);
+        if (!$responsible) throw new \DomainException("gd_responsible_not_found");
+        $accountId = $this->ensureFamilyAccount($responsibleId);
+        $r = $this->table("gd_receivables");
+        $p = $this->table("gd_academy_event_participants");
+        $roster = $this->table("gd_academy_event_roster");
+        $a = $this->table("gd_academy_events");
+        $c = $this->table("gd_academy_event_categories");
+        $students = $this->table("grupo_donato_alunos");
+        $external = $this->table("gd_academy_external_athletes");
+        $rows = $this->db->query("SELECT rc.*,COALESCE(p.student_id,rr.student_id) student_id,p.category_id,
+            COALESCE(c.name,(SELECT GROUP_CONCAT(DISTINCT cc.name ORDER BY cc.name SEPARATOR ', ') FROM `$p` cp JOIN `$c` cc ON cc.id=cp.category_id AND cc.unit_id=cp.unit_id AND cc.deleted=0 WHERE cp.unit_id=rr.unit_id AND cp.roster_id=rr.id AND cp.deleted=0)) category_name,
+            ev.name event_name,COALESCE(s.nome_aluno,x.name) child_name
+            FROM `$r` rc
+            LEFT JOIN `$p` p ON rc.source_type='academy_event_participation' AND p.receivable_id=rc.id AND p.unit_id=rc.unit_id AND p.deleted=0
+            LEFT JOIN `$roster` rr ON rc.source_type='academy_event_roster' AND rr.id=rc.source_id AND rr.unit_id=rc.unit_id AND rr.deleted=0
+            LEFT JOIN `$a` ev ON ev.id=COALESCE(p.event_id,rr.event_id) AND ev.unit_id=rc.unit_id AND ev.deleted=0
+            LEFT JOIN `$c` c ON c.id=p.category_id AND c.unit_id=p.unit_id AND c.deleted=0
+            LEFT JOIN `$students` s ON s.id=COALESCE(p.student_id,rr.student_id) AND s.unidade_id=? AND s.deleted=0
+            LEFT JOIN `$external` x ON x.id=COALESCE(p.external_athlete_id,rr.external_athlete_id) AND x.unit_id=rc.unit_id AND x.deleted=0
+            WHERE rc.unit_id=? AND rc.customer_account_id=? AND rc.deleted=0 ORDER BY rc.due_date ASC,rc.id ASC", [$this->legacy_unit_id, $this->unit_id, $accountId])->getResult();
         // Legacy monthly charges remain visible in the same family view while
         // their historical storage is migrated separately by the Academy.
         $legacy = []; $legacyTable = $this->table("grupo_donato_cobrancas"); if ($this->db->tableExists($legacyTable)) { $legacyQuery = $this->db->table($legacyTable)->where("responsavel_id", $responsibleId); if ($this->db->fieldExists("deleted", $legacyTable)) $legacyQuery->where("deleted", 0); $legacy = $legacyQuery->orderBy("vencimento", "ASC")->get()->getResult(); }
@@ -1354,6 +1456,13 @@ final class AcademyEventService extends CustomerDataService
     public function cancelEvent(int $eventId, string $reason): array
     {
         $event = $this->assertEvent($eventId); if ((string) $event->status === "completed") throw new \DomainException("gd_invalid_event_transition"); if ((string) $event->status === "cancelled") return ["saved" => false, "already_cancelled" => true, "warnings" => []]; $reason = DataNormalizationService::text($reason); if ($reason === "") throw new \DomainException("gd_reason_required"); $warnings = []; $finance = new FinanceService($this->unit_id, $this->actor_id, $this->login_user); foreach ($this->db->table($this->table("gd_academy_event_participants"))->where("unit_id", $this->unit_id)->where("event_id", $eventId)->where("deleted", 0)->get()->getResult() as $participant) { if ((int) $participant->receivable_id) { try { $finance->cancelReceivable((int) $participant->receivable_id, "Evento cancelado: " . $reason); $this->db->table($this->table("gd_academy_event_participants"))->where("id", (int) $participant->id)->update(["financial_status" => "cancelled"]); } catch (\Throwable $e) { $warnings[] = $this->participantName($participant) . ": " . $e->getMessage(); } } }
+        $rosterTable = $this->table("gd_academy_event_roster");
+        $receivableTable = $this->table("gd_receivables");
+        $rosterReceivables = $this->db->query("SELECT rc.id,rr.id roster_id,rr.athlete_type,rr.student_id,rr.external_athlete_id FROM `$receivableTable` rc JOIN `$rosterTable` rr ON rr.id=rc.source_id AND rr.unit_id=rc.unit_id WHERE rc.unit_id=? AND rc.source_type='academy_event_roster' AND rc.deleted=0 AND rr.event_id=? AND rr.deleted=0", [$this->unit_id, $eventId])->getResult();
+        foreach ($rosterReceivables as $row) {
+            try { $finance->cancelReceivable((int) $row->id, "Evento cancelado: " . $reason); }
+            catch (\Throwable $e) { $warnings[] = $this->rosterName($row) . ": " . $e->getMessage(); }
+        }
         $table = $this->table("gd_academy_events"); $this->db->table($table)->where("id", $eventId)->where("unit_id", $this->unit_id)->update(["status" => "cancelled", "cancelled_at" => gmdate("Y-m-d H:i:s"), "cancelled_by" => $this->actor_id ?: null, "notes" => trim((string) $event->notes . "\nCancelamento: " . $reason), "updated_at" => gmdate("Y-m-d H:i:s"), "updated_by" => $this->actor_id ?: null]); $this->audit_change("cancel", "academy_event", $eventId, (array) $event, (array) $this->events->get_scoped($eventId, $this->unit_id), ["reason" => $reason, "warnings" => $warnings]); return ["saved" => true, "warnings" => $warnings];
     }
 
@@ -1417,15 +1526,83 @@ final class AcademyEventService extends CustomerDataService
         return $builder->get(1)->getRow();
     }
 
+    private function participantRosterId(object $participant): int
+    {
+        $rosterId = (int) ($participant->roster_id ?? 0);
+        if ($rosterId > 0) return $rosterId;
+        $roster = $this->ensureRoster(
+            (int) $participant->event_id,
+            (string) ($participant->athlete_type ?? "internal"),
+            (int) ($participant->student_id ?? 0) ?: null,
+            (int) ($participant->external_athlete_id ?? 0) ?: null,
+            (int) ($participant->responsible_id ?? 0) ?: null,
+            $participant->notes ?? null
+        );
+        $rosterId = (int) $roster->id;
+        $this->db->table($this->table("gd_academy_event_participants"))
+            ->where("id", (int) $participant->id)->where("unit_id", $this->unit_id)
+            ->where("roster_id IS NULL", null, false)->update(["roster_id" => $rosterId]);
+        return $rosterId;
+    }
+
+    private function eventRosterReceivableId(int $rosterId): int
+    {
+        $receivables = $this->table("gd_receivables");
+        $current = $this->db->table($receivables)->select("id")
+            ->where("unit_id", $this->unit_id)->where("source_type", "academy_event_roster")
+            ->where("source_id", $rosterId)->where("deleted", 0)->orderBy("id", "DESC")->get(1)->getRow();
+        if ($current) return (int) $current->id;
+
+        $participants = $this->table("gd_academy_event_participants");
+        $legacy = $this->db->table($participants . " p")
+            ->select("rc.id")
+            ->join($receivables . " rc", "rc.id=p.receivable_id AND rc.unit_id=p.unit_id AND rc.source_type='academy_event_participation' AND rc.deleted=0", "inner", false)
+            ->where("p.unit_id", $this->unit_id)->where("p.roster_id", $rosterId)
+            ->where("p.deleted", 0)->where("rc.status !=", "cancelled")
+            ->orderBy("p.id", "ASC")->orderBy("rc.id", "DESC")->get(1)->getRow();
+        return (int) ($legacy->id ?? 0);
+    }
+
+    private function eventRosterAmount(object $roster): string
+    {
+        if (isset($roster->participation_amount) && $roster->participation_amount !== null) {
+            $stored = DataNormalizationService::decimal($roster->participation_amount, 2);
+            if (DataNormalizationService::decimalCompare($stored, "0.00") > 0) return $stored;
+        }
+        $event = $this->assertEvent((int) $roster->event_id);
+        return DataNormalizationService::decimal($event->default_participation_amount ?? "0", 2);
+    }
+
+    private function rosterFinanciallyUnavailable(int $rosterId): bool
+    {
+        $table = $this->table("gd_academy_event_participants");
+        $row = $this->db->query("SELECT COUNT(*) total, SUM(financial_status IN ('exempt','courtesy','cancelled','not_applicable')) unavailable FROM `$table` WHERE unit_id=? AND roster_id=? AND deleted=0", [$this->unit_id, $rosterId])->getRow();
+        return (int) ($row->total ?? 0) > 0 && (int) ($row->total ?? 0) === (int) ($row->unavailable ?? 0);
+    }
+
+    private function rosterName(object $roster): string
+    {
+        if ((string) ($roster->athlete_type ?? "") === "external") {
+            $external = $this->scopedRow($this->table("gd_academy_external_athletes"), (int) ($roster->external_athlete_id ?? 0));
+            return (string) ($external->name ?? "Atleta externo");
+        }
+        $student = $this->db->table($this->table("grupo_donato_alunos"))
+            ->where("id", (int) ($roster->student_id ?? 0))->where("unidade_id", $this->legacy_unit_id)
+            ->where("deleted", 0)->get(1)->getRow();
+        return (string) ($student->nome_aluno ?? "Aluno");
+    }
+
     private function ensureRoster(int $eventId, string $type, ?int $studentId, ?int $externalId, ?int $responsibleId, $notes = null): object
     {
         $existing = $this->findRoster($eventId, $studentId, $externalId);
         if ($existing) return $existing;
+        $event = $this->assertEvent($eventId);
         $now = gmdate("Y-m-d H:i:s");
         $data = $this->stamp([
             "unit_id" => $this->unit_id, "event_id" => $eventId, "athlete_type" => $type,
             "student_id" => $studentId, "external_athlete_id" => $externalId,
             "responsible_id" => $responsibleId,
+            "participation_amount" => DataNormalizationService::decimal($event->default_participation_amount ?? "0", 2),
             "notes" => DataNormalizationService::text($notes ?? "") ?: null,
             "status" => "active", "lock_version" => 1, "created_at" => $now, "updated_at" => $now,
         ], true);
@@ -1441,7 +1618,67 @@ final class AcademyEventService extends CustomerDataService
 
     private function eventMetrics(array $ids): array
     {
-        if (!$ids) return []; $placeholders = implode(",", array_fill(0, count($ids), "?")); $params = array_merge([$this->unit_id], $ids); $p = $this->table("gd_academy_event_participants"); $ev = $this->table("gd_academy_athlete_evaluations"); $r = $this->table("gd_receivables"); $rows = $this->db->query("SELECT p.event_id,COUNT(*) called_count,SUM(p.confirmation_status='confirmed') confirmed_count,SUM(p.confirmation_status IN ('waiting','pending','no_response')) pending_confirmations,SUM(e.id IS NULL AND p.lineup_status NOT IN ('cut','absent')) pending_evaluations,COALESCE(SUM(CASE WHEN p.financial_status NOT IN ('exempt','courtesy','cancelled','not_applicable') THEN p.amount ELSE 0 END),0) expected_amount,COALESCE(SUM(r.paid_amount),0) received_amount,COALESCE(SUM(r.balance_amount),0) open_amount,COALESCE(SUM(CASE WHEN r.status='overdue' THEN r.balance_amount ELSE 0 END),0) overdue_amount,SUM(r.status IN ('open','partial','overdue')) pending_payments FROM `$p` p LEFT JOIN `$ev` e ON e.participant_id=p.id AND e.unit_id=p.unit_id AND e.deleted=0 LEFT JOIN `$r` r ON r.id=p.receivable_id AND r.unit_id=p.unit_id AND r.deleted=0 WHERE p.unit_id=? AND p.event_id IN ($placeholders) AND p.deleted=0 GROUP BY p.event_id", $params)->getResult(); $out = []; foreach ($rows as $row) $out[(int) $row->event_id] = ["called" => (int) $row->called_count, "confirmed" => (int) $row->confirmed_count, "pending_confirmations" => (int) $row->pending_confirmations, "pending_evaluations" => (int) $row->pending_evaluations, "expected_amount" => (string) $row->expected_amount, "received_amount" => (string) $row->received_amount, "open_amount" => (string) $row->open_amount, "overdue_amount" => (string) $row->overdue_amount, "pending_payments" => (int) $row->pending_payments]; return $out;
+        if (!$ids) return [];
+        $placeholders = implode(",", array_fill(0, count($ids), "?"));
+        $p = $this->table("gd_academy_event_participants");
+        $ev = $this->table("gd_academy_athlete_evaluations");
+        $rows = $this->db->query("SELECT p.event_id,COUNT(*) called_count,
+            SUM(p.confirmation_status='confirmed') confirmed_count,
+            SUM(p.confirmation_status IN ('waiting','pending','no_response')) pending_confirmations,
+            SUM(e.id IS NULL AND p.lineup_status NOT IN ('cut','absent')) pending_evaluations
+            FROM `$p` p LEFT JOIN `$ev` e ON e.participant_id=p.id AND e.unit_id=p.unit_id AND e.deleted=0
+            WHERE p.unit_id=? AND p.event_id IN ($placeholders) AND p.deleted=0 GROUP BY p.event_id",
+            array_merge([$this->unit_id], $ids))->getResult();
+        $out = [];
+        foreach ($ids as $id) $out[(int) $id] = ["called" => 0, "confirmed" => 0, "pending_confirmations" => 0, "pending_evaluations" => 0, "expected_amount" => "0.00", "received_amount" => "0.00", "open_amount" => "0.00", "overdue_amount" => "0.00", "pending_payments" => 0];
+        foreach ($rows as $row) {
+            $out[(int) $row->event_id]["called"] = (int) $row->called_count;
+            $out[(int) $row->event_id]["confirmed"] = (int) $row->confirmed_count;
+            $out[(int) $row->event_id]["pending_confirmations"] = (int) $row->pending_confirmations;
+            $out[(int) $row->event_id]["pending_evaluations"] = (int) $row->pending_evaluations;
+        }
+
+        $roster = $this->table("gd_academy_event_roster");
+        $events = $this->table("gd_academy_events");
+        $fees = $this->db->query("SELECT rr.event_id,SUM(CASE
+                WHEN EXISTS (SELECT 1 FROM `$p` xp WHERE xp.unit_id=rr.unit_id AND xp.roster_id=rr.id AND xp.deleted=0)
+                    AND NOT EXISTS (SELECT 1 FROM `$p` xp WHERE xp.unit_id=rr.unit_id AND xp.roster_id=rr.id AND xp.deleted=0 AND xp.financial_status NOT IN ('exempt','courtesy','cancelled','not_applicable')) THEN 0
+                ELSE COALESCE(NULLIF(rr.participation_amount,0),NULLIF(ev.default_participation_amount,0),COALESCE(pf.amount,0)) END) expected_amount
+            FROM `$roster` rr JOIN `$events` ev ON ev.id=rr.event_id AND ev.unit_id=rr.unit_id AND ev.deleted=0
+            LEFT JOIN (SELECT unit_id,roster_id,MAX(amount) amount FROM `$p` WHERE unit_id=? AND deleted=0 GROUP BY unit_id,roster_id) pf ON pf.unit_id=rr.unit_id AND pf.roster_id=rr.id
+            WHERE rr.unit_id=? AND rr.event_id IN ($placeholders) AND rr.deleted=0 GROUP BY rr.event_id",
+            array_merge([$this->unit_id, $this->unit_id], $ids))->getResult();
+        foreach ($fees as $row) $out[(int) $row->event_id]["expected_amount"] = (string) ($row->expected_amount ?? "0.00");
+
+        $receivables = $this->table("gd_receivables");
+        $receiptRows = $this->db->query("SELECT COALESCE(rr.event_id,p.event_id) event_id,COALESCE(rr.id,p.roster_id,p.id) roster_key,
+            rc.paid_amount,rc.balance_amount,rc.status
+            FROM `$receivables` rc
+            LEFT JOIN `$roster` rr ON rc.source_type='academy_event_roster' AND rr.id=rc.source_id AND rr.unit_id=rc.unit_id AND rr.deleted=0
+            LEFT JOIN `$p` p ON rc.source_type='academy_event_participation' AND p.id=rc.source_id AND p.unit_id=rc.unit_id AND p.deleted=0
+            WHERE rc.unit_id=? AND rc.deleted=0 AND rc.status<>'cancelled'
+                AND ((rc.source_type='academy_event_roster' AND rr.event_id IN ($placeholders))
+                    OR (rc.source_type='academy_event_participation' AND p.event_id IN ($placeholders)))",
+            array_merge([$this->unit_id], $ids, $ids))->getResult();
+        $pendingByEvent = [];
+        foreach ($receiptRows as $row) {
+            $eventId = (int) $row->event_id;
+            if (!isset($out[$eventId])) continue;
+            $out[$eventId]["received_amount"] = DataNormalizationService::decimal(
+                (string) ((float) $out[$eventId]["received_amount"] + (float) ($row->paid_amount ?? 0)), 2
+            );
+            $out[$eventId]["open_amount"] = DataNormalizationService::decimal(
+                (string) ((float) $out[$eventId]["open_amount"] + (float) ($row->balance_amount ?? 0)), 2
+            );
+            if ((string) $row->status === "overdue") {
+                $out[$eventId]["overdue_amount"] = DataNormalizationService::decimal(
+                    (string) ((float) $out[$eventId]["overdue_amount"] + (float) ($row->balance_amount ?? 0)), 2
+                );
+            }
+            if ((float) ($row->balance_amount ?? 0) > 0) $pendingByEvent[$eventId][(int) $row->roster_key] = true;
+        }
+        foreach ($pendingByEvent as $eventId => $rosters) $out[$eventId]["pending_payments"] = count($rosters);
+        return $out;
     }
 
     private function eventSummary(array $ids): array

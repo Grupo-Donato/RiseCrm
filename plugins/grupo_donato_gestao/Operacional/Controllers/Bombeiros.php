@@ -386,13 +386,25 @@ class Bombeiros extends Security_Controller
     public function event_charge()
     {
         $this->_event_require_finance();
-        return $this->_event_json(fn() => $this->_academy_event_service()->chargeParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+        return $this->_event_json(function () {
+            $service = $this->_academy_event_service();
+            $rosterId = (int) $this->request->getPost("roster_id");
+            return $rosterId > 0
+                ? $service->chargeEventRoster($rosterId, $this->request->getPost())
+                : $service->chargeParticipant((int) $this->request->getPost("participant_id"), $this->request->getPost());
+        });
     }
 
     public function event_payment()
     {
         $this->_event_require_finance();
-        return $this->_event_json(fn() => $this->_academy_event_service()->registerPayment((int) $this->request->getPost("participant_id"), $this->request->getPost()));
+        return $this->_event_json(function () {
+            $service = $this->_academy_event_service();
+            $rosterId = (int) $this->request->getPost("roster_id");
+            return $rosterId > 0
+                ? $service->registerEventRosterPayment($rosterId, $this->request->getPost())
+                : $service->registerPayment((int) $this->request->getPost("participant_id"), $this->request->getPost());
+        });
     }
 
     public function event_financial_status()
@@ -438,7 +450,12 @@ class Bombeiros extends Security_Controller
     {
         $this->_event_require_finance();
         try {
-            return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\academy_event_charge_modal", $this->_academy_event_service()->eventFinanceParticipant((int) $this->request->getPost("participant_id")));
+            $service = $this->_academy_event_service();
+            $rosterId = (int) $this->request->getPost("roster_id");
+            $context = $rosterId > 0
+                ? $service->eventFinanceRoster($rosterId)
+                : $service->eventFinanceParticipant((int) $this->request->getPost("participant_id"));
+            return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\academy_event_charge_modal", $context);
         } catch (\DomainException $e) {
             if ($e->getMessage() === "gd_record_not_found") return show_404();
             throw $e;
@@ -449,7 +466,11 @@ class Bombeiros extends Security_Controller
     {
         $this->_event_require_finance();
         try {
-            $context = $this->_academy_event_service()->eventFinanceParticipant((int) $this->request->getPost("participant_id"));
+            $service = $this->_academy_event_service();
+            $rosterId = (int) $this->request->getPost("roster_id");
+            $context = $rosterId > 0
+                ? $service->eventFinanceRoster($rosterId)
+                : $service->eventFinanceParticipant((int) $this->request->getPost("participant_id"));
             if (empty($context["receivable"])) throw new \DomainException("gd_finance_receivable_not_found");
             $context["reload_target"] = (string) $this->request->getPost("reload_target");
             return $this->template->view("grupo_donato_gestao\\Operacional\\Views\\academy_event_payment_modal", $context);
@@ -462,10 +483,14 @@ class Bombeiros extends Security_Controller
     public function event_reverse_payment()
     {
         $this->_event_require_finance();
-        return $this->_event_json(fn() => $this->_academy_event_service()->reverseEventPayment(
-            (int) $this->request->getPost("participant_id"),
-            (string) $this->request->getPost("reason")
-        ));
+        return $this->_event_json(function () {
+            $service = $this->_academy_event_service();
+            $rosterId = (int) $this->request->getPost("roster_id");
+            $reason = (string) $this->request->getPost("reason");
+            return $rosterId > 0
+                ? $service->reverseEventRosterPayment($rosterId, $reason)
+                : $service->reverseEventPayment((int) $this->request->getPost("participant_id"), $reason);
+        });
     }
 
     public function event_payment_receipt(int $paymentId = 0)
@@ -1267,6 +1292,11 @@ class Bombeiros extends Security_Controller
         $model_info = $id ? $this->Bombeiros_alunos_model->get_details(["id" => $id, "unidade_id" => $this->_active_unit_id()])->getRow() : $this->_empty_aluno();
 
         $view_data["model_info"] = $model_info ?: $this->_empty_aluno();
+        $view_data["mensalidade_padrao"] = $this->_mensalidade_padrao_unidade($view_data["model_info"]->unidade_id ?? $this->_active_unit_id());
+        $view_data["mensalidade_padroes_por_unidade"] = [];
+        foreach ($this->Bombeiros_unidades_model->get_details(["status" => "Ativo"])->getResult() as $unidade) {
+            $view_data["mensalidade_padroes_por_unidade"][(string) $unidade->id] = $this->_mensalidade_padrao_unidade($unidade->id);
+        }
         $view_data["unidades_dropdown"] = $this->_unidades_dropdown();
         $view_data["turmas"] = $this->_turmas_matricula_options();
         $view_data["cross_unit_units"] = empty($id) ? $this->_unidades_cross_unit_dropdown() : [];
@@ -1782,7 +1812,7 @@ class Bombeiros extends Security_Controller
 
             $valor_mensalidade = $public_matricula ? 220.00 : $this->_money_to_float($this->request->getPost("valor_mensalidade") ?: $this->request->getPost("valor_parcela"));
             if (!$valor_mensalidade) {
-                $valor_mensalidade = $public_matricula ? 220.00 : 237.00;
+                $valor_mensalidade = $public_matricula ? 220.00 : $this->_mensalidade_padrao_unidade($unidade_id);
             }
             // A cobrança deixou de ser um plano parcelado: existe um único
             // valor mensal, renovado por competência enquanto o aluno estiver
@@ -2796,10 +2826,11 @@ class Bombeiros extends Security_Controller
             }
         }
 
-        $valor = (float) ($cobranca->valor ?: ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: 237.00)));
+        $mensalidade_padrao = $this->_mensalidade_padrao_unidade($unidade_id);
+        $valor = (float) ($cobranca->valor ?: ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: $mensalidade_padrao)));
         $dados_cobranca = [
             "status" => $pago ? "Pago" : "Pendente",
-            "valor" => $valor ?: 237.00,
+            "valor" => $valor ?: $mensalidade_padrao,
             "competencia" => sprintf("%02d/%04d", $mes_referencia, $ano_referencia),
             "mes_referencia" => $mes_referencia,
             "ano_referencia" => $ano_referencia,
@@ -4530,14 +4561,15 @@ class Bombeiros extends Security_Controller
                     )";
             $alunos = $db->query($sql)->getResult();
             foreach ($alunos as $aluno) {
-                $valor = (float) ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: 237.00));
+                $mensalidade_padrao = $this->_mensalidade_padrao_unidade($unidade_id);
+                $valor = (float) ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: $mensalidade_padrao));
                 $vencimento = $this->_vencimento_mensalidade_mes($aluno, $mes, $ano);
                 $dados_cobranca = [
                     "aluno_id" => (int) $aluno->id,
                     "responsavel_id" => $aluno->responsavel_id ?: null,
                     "unit_id" => $unidade_id,
                     "vencimento" => $vencimento,
-                    "valor" => $valor ?: 237.00,
+                    "valor" => $valor ?: $mensalidade_padrao,
                     "competencia" => sprintf("%02d/%04d", $mes, $ano),
                     "mes_referencia" => $mes,
                     "ano_referencia" => $ano,
@@ -4646,14 +4678,15 @@ class Bombeiros extends Security_Controller
             $aluno->ultima_mensalidade_vencimento = $ultima->ultima_mensalidade_vencimento ?? null;
         }
 
-        $valor = (float) ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: 237.00));
+        $mensalidade_padrao = $this->_mensalidade_padrao_unidade($unidade_id);
+        $valor = (float) ($aluno->valor_mensalidade ?: ($aluno->valor_mensal ?: $mensalidade_padrao));
         $vencimento = $this->_vencimento_mensalidade_mes($aluno, $mes, $ano);
         $dados_cobranca = [
             "aluno_id" => (int) $aluno->id,
             "responsavel_id" => $aluno->responsavel_id ?: null,
             "unit_id" => $unidade_id,
             "vencimento" => $vencimento,
-            "valor" => $valor ?: 237.00,
+            "valor" => $valor ?: $mensalidade_padrao,
             "competencia" => sprintf("%02d/%04d", $mes, $ano),
             "mes_referencia" => $mes,
             "ano_referencia" => $ano,
@@ -5133,6 +5166,20 @@ class Bombeiros extends Security_Controller
     private function _active_unit_id()
     {
         return $this->_get_unidade_id_ativa();
+    }
+
+    private function _mensalidade_padrao_unidade($unidade_id)
+    {
+        $unidade_id = (int) $unidade_id;
+        if (!$unidade_id) {
+            return 237.00;
+        }
+
+        $db = db_connect();
+        $table = $db->prefixTable("grupo_donato_unidades");
+        $unidade = $db->query("SELECT slug FROM $table WHERE id=? AND deleted=0 LIMIT 1", [$unidade_id])->getRow();
+
+        return ($unidade && strtolower((string) $unidade->slug) === "camisa_9") ? 220.00 : 237.00;
     }
 
     private function _turmas_da_unidade($unit_id, $active_only = false)
@@ -7129,7 +7176,7 @@ class Bombeiros extends Security_Controller
             $options[] = modal_anchor(get_uri("grupo_donato/operacional/event_charge_modal"), "<i data-feather='plus-circle' class='icon-16'></i> Gerar cobrança", [
                 "class" => "btn btn-default btn-sm",
                 "title" => "Gerar cobrança do evento",
-                "data-post-participant_id" => (int) $data->id,
+                "data-post-roster_id" => (int) $data->roster_id,
                 "data-modal-class" => "gd-payment-modal",
             ]);
         } elseif (!$hasReceivable && $status === "pending_generation") {
@@ -7138,7 +7185,7 @@ class Bombeiros extends Security_Controller
             $options[] = modal_anchor(get_uri("grupo_donato/operacional/event_payment_modal"), "<i data-feather='check-circle' class='icon-16'></i> Baixar pagamento", [
                 "class" => "btn btn-primary btn-sm",
                 "title" => "Baixar pagamento",
-                "data-post-participant_id" => (int) $data->id,
+                "data-post-roster_id" => (int) $data->roster_id,
                 "data-post-reload_target" => "gd-academy-event-finance-table",
                 "data-modal-class" => "gd-payment-modal",
             ]);
@@ -7156,7 +7203,7 @@ class Bombeiros extends Security_Controller
                 $options[] = ajax_anchor(get_uri("grupo_donato/operacional/event_reverse_payment"), "<i data-feather='rotate-ccw' class='icon-16'></i> Desfazer baixa", [
                     "class" => "btn btn-danger btn-sm ml5",
                     "title" => "Desfazer baixa",
-                    "data-post-participant_id" => (int) $data->id,
+                    "data-post-roster_id" => (int) $data->roster_id,
                     "data-post-reason" => "Estorno manual de pagamento de evento",
                     "data-reload-on-success" => 1,
                 ]);
@@ -7165,6 +7212,7 @@ class Bombeiros extends Security_Controller
 
         $description = (string) ($data->receivable_description ?? "Participação no evento");
         if ((string) ($data->receivable_number ?? "") !== "") $description .= " · " . (string) $data->receivable_number;
+        if ((int) ($data->legacy_receivable_count ?? 0) > 1) $description .= " · " . (int) $data->legacy_receivable_count . " cobranças antigas por categoria";
         $balance = $hasReceivable ? "<small class='d-block text-off'>Saldo: " . $money($data->balance_amount) . "</small>" : "";
         $method = (string) ($data->last_payment_method ?? "");
         $methodLabel = $method !== "" ? app_lang("gd_finance_method_" . $method) : "-";
@@ -7382,7 +7430,7 @@ class Bombeiros extends Security_Controller
                 "gd_duplicate_participant" => "Este atleta ja esta convocado nesta categoria.",
                 "gd_duplicate_event_roster" => "Este atleta ja esta na lista deste evento.",
                 "gd_event_roster_not_found" => "O atleta selecionado nao pertence a este evento.",
-                "gd_event_roster_in_use" => "Remova primeiro as convocacoes deste atleta nas categorias.",
+                "gd_event_roster_in_use" => "Resolva as categorias e cobranças vinculadas a este atleta antes de removê-lo da lista-base.",
                 "gd_student_not_found" => "Aluno nao encontrado ou inativo na unidade ativa.",
                 "gd_external_name_required" => "Informe o nome do atleta convidado.",
                 "gd_responsible_not_found" => "Responsavel nao encontrado.",
@@ -7396,8 +7444,9 @@ class Bombeiros extends Security_Controller
                 "gd_lineup_required" => "Nenhum atleta foi enviado para a escalação.",
                 "gd_external_athlete_not_found" => "Atleta externo nao encontrado nesta unidade.",
                 "gd_match_participant_mismatch" => "A partida nao pertence a categoria do atleta.",
-                "gd_event_responsible_required" => "A participacao precisa de um responsavel valido para cobranca.",
+                "gd_event_responsible_required" => "Este atleta precisa de um responsável válido para cobrança.",
                 "gd_event_amount_required" => "Informe um valor de participacao maior que zero.",
+                "gd_event_financial_unavailable" => "A situação financeira deste atleta não permite cobrança.",
                 "gd_event_charged_amount_immutable" => "A condicao financeira nao pode ser alterada depois da geracao do recebivel.",
                 "gd_event_finalize_required" => "Use a acao Finalizar para concluir o evento.",
                 "gd_event_cancel_required" => "Use a acao Cancelar para cancelar o evento.",

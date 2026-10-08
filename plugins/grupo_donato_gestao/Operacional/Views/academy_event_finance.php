@@ -4,10 +4,6 @@ $metrics = is_array($metrics ?? null) ? $metrics : [];
 $participants = is_array($participants ?? null) ? $participants : [];
 $money = static fn($value): string => "R$ " . number_format((float) ($value ?? 0), 2, ",", ".");
 $eventId = (int) ($event->id ?? 0);
-$categories = [];
-foreach ($participants as $participant) {
-    if ((int) ($participant->category_id ?? 0) > 0) $categories[(int) $participant->category_id] = (string) ($participant->category_name ?? "Categoria");
-}
 $statusOptions = [
     ["id" => "", "text" => "Todos"],
     ["id" => "pending_generation", "text" => "Pendente de cobrança"],
@@ -19,8 +15,6 @@ $statusOptions = [
     ["id" => "courtesy", "text" => "Cortesia"],
     ["id" => "cancelled", "text" => "Cancelado"],
 ];
-$categoryOptions = [["id" => "", "text" => "Todas as categorias"]];
-foreach ($categories as $categoryId => $categoryName) $categoryOptions[] = ["id" => (string) $categoryId, "text" => $categoryName];
 ?>
 
 <style>
@@ -54,7 +48,7 @@ foreach ($categories as $categoryId => $categoryName) $categoryOptions[] = ["id"
     <div class="gd-academy-section-title">
         <div>
             <h2>Pagamentos do evento</h2>
-            <p class="gd-academy-muted mb0">Use a mesma rotina financeira das demais áreas: gerar cobrança, baixar parcial ou total, consultar comprovante e desfazer baixa.</p>
+            <p class="gd-academy-muted mb0">Cada atleta da lista-base aparece uma vez, mesmo quando participa de mais de uma categoria.</p>
         </div>
     </div>
 
@@ -64,12 +58,11 @@ foreach ($categories as $categoryId => $categoryName) $categoryOptions[] = ["id"
         <?php endforeach; ?>
     </div>
 
-    <p class="gd-finance-help">A cobrança continua sendo um lançamento próprio do evento dentro da conta familiar do responsável.</p>
+    <p class="gd-finance-help">O valor é definido por atleta usando o padrão do evento ou o valor individual salvo na lista-base. Você pode ajustar o valor ao gerar a cobrança.</p>
 
     <div class="gd-mobile-filter-panel">
         <div class="row">
             <div class="col-sm-6 mb10"><label for="gd-event-finance-mobile-status">Status</label><select id="gd-event-finance-mobile-status" class="form-control"><option value="">Todos</option><?php foreach (array_slice($statusOptions, 1) as $option): ?><option value="<?php echo esc($option["id"]); ?>"><?php echo esc($option["text"]); ?></option><?php endforeach; ?></select></div>
-            <div class="col-sm-6 mb10"><label for="gd-event-finance-mobile-category">Categoria</label><select id="gd-event-finance-mobile-category" class="form-control"><?php foreach ($categoryOptions as $option): ?><option value="<?php echo esc($option["id"]); ?>"><?php echo esc($option["text"]); ?></option><?php endforeach; ?></select></div>
             <div class="col-12 gd-mobile-filter-actions"><button type="button" id="gd-event-finance-mobile-filter" class="btn btn-primary"><i data-feather="filter" class="icon-16"></i> Filtrar</button><button type="button" id="gd-event-finance-mobile-clear" class="btn btn-default"><i data-feather="x" class="icon-16"></i> Limpar</button></div>
         </div>
     </div>
@@ -84,8 +77,7 @@ $(function () {
     var selector = "#gd-academy-event-finance-table";
     var tableUrl = "<?php echo get_uri("grupo_donato/operacional/event_finance_list_data"); ?>?event_id=<?php echo $eventId; ?>";
     var statusOptions = <?php echo json_encode($statusOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
-    var categoryOptions = <?php echo json_encode($categoryOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
-    var labels = ["Atleta", "Responsável", "Categoria", "Descrição", "Valor", "Vencimento", "Status", "Data pagamento", "Forma", "Ações"];
+    var labels = ["Atleta", "Responsável", "Categorias", "Descrição", "Valor", "Vencimento", "Status", "Data pagamento", "Forma", "Ações"];
 
     window.reloadGdAcademyEventFinanceTable = function () {
         if (window.reloadBombeirosTable) {
@@ -101,14 +93,11 @@ $(function () {
         order: [[0, "asc"]],
         stateSave: false,
         tableRefreshButton: true,
-        filterDropdown: [
-            { name: "status_pagamento", class: "w170", options: statusOptions },
-            { name: "category_id", class: "w170", options: categoryOptions }
-        ],
+        filterDropdown: [{ name: "status_pagamento", class: "w170", options: statusOptions }],
         columns: [
             { title: "Atleta", class: "all w170" },
             { title: "Responsável", class: "w160" },
-            { title: "Categoria", class: "w120" },
+            { title: "Categorias", class: "w180" },
             { title: "Descrição", class: "w220" },
             { title: "Valor", class: "w120" },
             { title: "Vencimento", class: "w110" },
@@ -133,14 +122,13 @@ $(function () {
         var settings = window.InstanceCollection ? window.InstanceCollection["gd-academy-event-finance-table"] : null;
         if (settings) {
             settings.filterParams.status_pagamento = $("#gd-event-finance-mobile-status").val();
-            settings.filterParams.category_id = $("#gd-event-finance-mobile-category").val();
         }
         window.reloadGdAcademyEventFinanceTable();
     };
 
     $(document).off("click.gdAcademyEventFinance", "#gd-event-finance-mobile-filter").on("click.gdAcademyEventFinance", "#gd-event-finance-mobile-filter", applyMobileFilters);
     $(document).off("click.gdAcademyEventFinance", "#gd-event-finance-mobile-clear").on("click.gdAcademyEventFinance", "#gd-event-finance-mobile-clear", function () {
-        $("#gd-event-finance-mobile-status,#gd-event-finance-mobile-category").val("");
+        $("#gd-event-finance-mobile-status").val("");
         applyMobileFilters();
     });
 });
